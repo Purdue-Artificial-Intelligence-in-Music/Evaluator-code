@@ -150,7 +150,7 @@ def main():
                         cv2.LINE_AA,
                     )
 
-            cv2.imshow('frame', cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            cv2.imshow('frame', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         # clean up
