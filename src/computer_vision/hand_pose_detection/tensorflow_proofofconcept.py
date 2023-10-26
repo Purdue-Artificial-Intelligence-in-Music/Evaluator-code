@@ -38,7 +38,7 @@ connections = [
 ]
 
 lines: dict[str, list[int]] = {
-    "thumb": [0, 1, 2, 3],
+    "thumb": [0, 1, 2, 3, 4],
     "index": [5, 6, 7, 8],
     "middle": [9, 10, 11, 12],
     "ring": [13, 14, 15, 16],
@@ -51,16 +51,17 @@ def distance(a: (int, int), b: (int, int)) -> float:
     bx, by = b
     return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
 
+
+# essentially straightness is just sinuosity
 def straightness(points: [int], landmarks: list[(int, int)]) -> float:
     # segment distances
     lm = [landmarks[i] for i in points]
     d_running = 0
     for i in range(0, len(points) - 1):
-        d_running += distance(lm[i], lm[i+1])
+        d_running += distance(lm[i], lm[i + 1])
     # total
     dtot = distance(lm[0], lm[-1])
     return dtot / d_running
-
 
 
 current_result: list[HandLandmarkerResult] = []
