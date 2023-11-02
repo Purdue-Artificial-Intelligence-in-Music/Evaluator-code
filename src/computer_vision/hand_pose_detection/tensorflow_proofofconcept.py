@@ -16,34 +16,24 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 
 current_frame = 0
 
-connections = [
-    # along thumb
-    (0, 1),
-    (1, 2),
-    (2, 3),
-    (3, 4),
-    # base of palm to base of each finger
-    (0, 5),
-    (0, 9),
-    (0, 13),
-    (0, 17),
-    # index finger
-    (5, 6), (6, 7), (7, 8),
-    # middle finger
-    (9, 10), (10, 11), (11, 12),
-    # ring finger
-    (13, 14), (14, 15), (15, 16),
-    # pinky finger
-    (17, 18), (18, 19), (19, 20)
-]
-
 lines: dict[str, list[int]] = {
     "thumb": [0, 1, 2, 3, 4],
-    "index": [5, 6, 7, 8],
-    "middle": [9, 10, 11, 12],
-    "ring": [13, 14, 15, 16],
-    "pinky": [17, 18, 19, 20]
+    "index": [0, 5, 6, 7, 8],
+    "middle": [0, 9, 10, 11, 12],
+    "ring": [0, 13, 14, 15, 16],
+    "pinky": [0, 17, 18, 19, 20]
 }
+
+
+def telescoping(line: list[int]) -> list[(int, int)]:
+    result = []
+    for i in range(0, len(line) - 1):
+        result.append((line[i], line[i + 1]))
+    return result
+
+
+connections = [pair for x in lines for pair in telescoping(lines[x])]
+nodes = [node for finger in lines for node in lines[finger]]
 
 
 def distance(a: (int, int), b: (int, int)) -> float:
@@ -68,6 +58,7 @@ current_result: list[HandLandmarkerResult] = []
 
 
 # Create a hand landmarker instance with the live stream mode:
+
 def print_result(result: HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
     current_result.clear()
     if len(result.handedness) != 0:
@@ -76,6 +67,7 @@ def print_result(result: HandLandmarkerResult, output_image: mp.Image, timestamp
 
 options = HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path='../../../models/hand_landmarker.task'),
+    num_hands=2,
     running_mode=VisionRunningMode.LIVE_STREAM,
     result_callback=print_result)
 
@@ -127,8 +119,8 @@ def main():
                 i = 0
                 landmarks = [get_position(x, width, height) for x in result.hand_landmarks[0]]
                 # draw dots
-                for i, pos in enumerate(landmarks):
-                    frame = cv2.circle(frame, pos, radius=5, color=(0, 255, 255), thickness=-1)
+                for i in nodes:
+                    frame = cv2.circle(frame, landmarks[i], radius=5, color=(0, 255, 255), thickness=-1)
                 # draw connectors
                 for (iA, iB) in connections:
                     a = landmarks[iA]
