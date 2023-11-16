@@ -1,0 +1,13 @@
+names:
+- Bow
+- Strings
+nc: 2
+roboflow:
+  license: CC BY 4.0
+  project: bow-and-strings
+  url: https://universe.roboflow.com/purdue-aim/bow-and-strings/dataset/2
+  version: 2
+  workspace: purdue-aim
+test: ../test/images
+train: Bow-and-Strings-2/train/images
+val: Bow-and-Strings-2/valid/images
