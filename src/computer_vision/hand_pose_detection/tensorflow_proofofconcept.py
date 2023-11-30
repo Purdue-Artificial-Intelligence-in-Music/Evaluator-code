@@ -150,7 +150,7 @@ def main():
                 1,
                 cv2.LINE_AA
             )
-            dy = 50
+            dy = 25
             yPos = 50
             if len(current_result) != 0:
                 result = current_result[0]
@@ -165,7 +165,7 @@ def main():
                         output,
                         (10, yPos),
                         cv2.QT_FONT_NORMAL,
-                        1,
+                        dy / 50,
                         (255, 0, 0),
                         1,
                         cv2.LINE_AA,
@@ -192,11 +192,12 @@ def main():
                             output,
                             (10, yPos),
                             cv2.QT_FONT_NORMAL,
-                            1,
+                            dy / 50,
                             (255, 0, 0),
                             1,
                             cv2.LINE_AA,
                         )
+                    yPos += dy
 
             cv2.imshow('frame', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
