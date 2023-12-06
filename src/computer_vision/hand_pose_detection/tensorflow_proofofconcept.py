@@ -4,16 +4,17 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 
-# Video reading code adapted from:
-# https://www.geeksforgeeks.org/python-opencv-capture-video-from-camera/
-
 # Base option setup
 BaseOptions = mp.tasks.BaseOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
+# Hand Landmarker
 HandLandmarker = mp.tasks.vision.HandLandmarker
 HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 HandLandmarkerResult = mp.tasks.vision.HandLandmarkerResult
-VisionRunningMode = mp.tasks.vision.RunningMode
-
+# Pose Landmarker
+PoseLandmarker = mp.tasks.vision.PoseLandmarker
+PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+PoseLandmarkerResult = mp.tasks.vision.PoseLandmarkerResult
 # Global frame count
 current_frame = 0
 
@@ -46,8 +47,8 @@ def telescoping(values: list[int]) -> list[(int, int)]:
 
 
 # Pre-computed connections and nodes derived from `lines`
-connections = [pair for x in lines for pair in telescoping(lines[x])]
-nodes = [node for finger in lines for node in lines[finger]]
+hand_connections = [pair for x in lines for pair in telescoping(lines[x])]
+hand_nodes = [node for finger in lines for node in lines[finger]]
 
 
 def distance(a: (int, int), b: (int, int)) -> float:
@@ -84,10 +85,11 @@ def straightness(points: [int], landmarks: list[(int, int)]) -> float:
 
 # Data structure for persistent storae of the result
 # TODO: probably convert this to a instance variable of a class
-current_result: list[HandLandmarkerResult] = []
+current_hand_result: list[HandLandmarkerResult] = []
+current_pose_result: list[PoseLandmarkerResult] = []
 
 
-def handle_result(result: HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int) -> None:
+def handle_result_hand(result: HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int) -> None:
     """
     Handles the result of model by saving it into the global `current_result`
     :param result: the result obtained
@@ -95,17 +97,41 @@ def handle_result(result: HandLandmarkerResult, output_image: mp.Image, timestam
     :param timestamp_ms: IGNORED (needed for calling convention)
     :param output_image: IGNORED (needed for calling convention)
     """
-    current_result.clear()
+    current_hand_result.clear()
     if len(result.handedness) != 0:
-        current_result.append(result)
+        current_hand_result.append(result)
+
+
+def handle_result_pose(result: PoseLandmarkerResult, output_image: mp.Image, timestamp_ms: int) -> None:
+    """
+        Handles the result of model by saving it into the global `current_result`
+        :param result: the result obtained
+
+        :param timestamp_ms: IGNORED (needed for calling convention)
+        :param output_image: IGNORED (needed for calling convention)
+        """
+    current_pose_result.clear()
+    if len(result.pose_landmarks) > 0:
+        current_pose_result.append(result)
 
 
 # Setup options for the model
-options = HandLandmarkerOptions(
+# INFO: Must download
+# https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
+# as $REPO/models/pose_landmarker.task
+# https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
+# as $REPO/models/hand_landmarker.task
+hand_options = HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path='../../../models/hand_landmarker.task'),
-    num_hands=2,
+    num_hands=4,
     running_mode=VisionRunningMode.LIVE_STREAM,
-    result_callback=handle_result)
+    result_callback=handle_result_hand)
+pose_options = PoseLandmarkerOptions(
+    base_options=BaseOptions(model_asset_path='../../../models/pose_landmarker.task'),
+    output_segmentation_masks=True,
+    running_mode=VisionRunningMode.LIVE_STREAM,
+    result_callback=handle_result_pose
+)
 
 
 def get_position(lm: NormalizedLandmark, width: int, height: int) -> (int, int):
@@ -125,68 +151,50 @@ def main():
     """
     Main function that sets up video feed, runs model, and displays livestream
     """
-    with HandLandmarker.create_from_options(options) as landmarker:
-        # get video capture
-        video_capture = cv2.VideoCapture(0)
-        frame_count = 0
-        while True:
-            # get next frame
-            ret, frame = video_capture.read()
-            frame_count += 1
-            frame = cv2.flip(frame, 1)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-            landmarker.detect_async(mp_image, frame_count)
-            # display the frame
-            frame = np.copy(frame)
-            height = len(frame)
-            width = len(frame[0])
-            frame = cv2.putText(
-                frame,
-                "Frame {}".format(frame_count),
-                (10, 50),
-                cv2.QT_FONT_NORMAL,
-                1,
-                (0, 0, 255),
-                1,
-                cv2.LINE_AA
-            )
-            dy = 25
-            yPos = 50
-            if len(current_result) != 0:
-                result = current_result[0]
-                for hands in result.handedness:
-                    yPos += dy
-                    category = hands[0]
-                    name = category.category_name
-                    score = int(category.score * 100)
-                    output = "Found {} hand ({}%)".format(name, score)
-                    frame = cv2.putText(
-                        frame,
-                        output,
-                        (10, yPos),
-                        cv2.QT_FONT_NORMAL,
-                        dy / 50,
-                        (255, 0, 0),
-                        1,
-                        cv2.LINE_AA,
-                    )
+    with PoseLandmarker.create_from_options(pose_options) as pose_landmarker:
+        with HandLandmarker.create_from_options(hand_options) as hand_landmarker:
+            # get video capture
+            video_capture = cv2.VideoCapture(0)
+            frame_count = 0
+            while True:
+                # get next frame
+                ret, frame = video_capture.read()
+                frame_count += 1
+                frame = cv2.flip(frame, 1)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+                hand_landmarker.detect_async(mp_image, frame_count)
+                pose_landmarker.detect_async(mp_image, frame_count)
+                # display the frame
+                frame = np.copy(frame)
+                height = len(frame)
+                width = len(frame[0])
+                frame = cv2.putText(
+                    frame,
+                    "Frame {}".format(frame_count),
+                    (10, 50),
+                    cv2.QT_FONT_NORMAL,
+                    1,
+                    (0, 0, 255),
+                    1,
+                    cv2.LINE_AA
+                )
+                dy = 25
+                yPos = 50
+                if len(current_pose_result) != 0:
+                    result = current_pose_result[0]
+                    for cur in result.pose_landmarks:
+                        landmarks = [get_position(x, width, height) for x in cur]
+                        for lm in landmarks:
+                            frame = cv2.circle(frame, lm, radius=10, color=(255, 0, 0), thickness=-1)
 
-                for hand_pose_data in result.hand_landmarks:
-                    landmarks = [get_position(x, width, height) for x in hand_pose_data]
-                    # draw dots
-                    for i in nodes:
-                        frame = cv2.circle(frame, landmarks[i], radius=5, color=(0, 255, 255), thickness=-1)
-                    # draw connectors
-                    for (iA, iB) in connections:
-                        a = landmarks[iA]
-                        b = landmarks[iB]
-                        frame = cv2.line(frame, a, b, color=(0, 255, 255), thickness=1)
-                    # get straightness params (basic analytics)
-                    for name in lines:
-                        points = lines[name]
+                if len(current_hand_result) != 0:
+                    result = current_hand_result[0]
+                    for hands in result.handedness:
                         yPos += dy
-                        s = straightness(points, landmarks)
-                        output = "Finger {} straightness: {:.2f}".format(name, s)
+                        category = hands[0]
+                        name = category.category_name
+                        score = int(category.score * 100)
+                        output = "Found {} hand ({}%)".format(name, score)
                         frame = cv2.putText(
                             frame,
                             output,
@@ -197,14 +205,41 @@ def main():
                             1,
                             cv2.LINE_AA,
                         )
-                    yPos += dy
 
-            cv2.imshow('frame', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-        # clean up
-        video_capture.release()
-        cv2.destroyAllWindows()
+                    for hand_pose_data in result.hand_landmarks:
+                        landmarks = [get_position(x, width, height) for x in hand_pose_data]
+                        # draw dots
+                        for i in hand_nodes:
+                            frame = cv2.circle(frame, landmarks[i], radius=5, color=(0, 255, 255), thickness=-1)
+                        # draw connectors
+                        for (iA, iB) in hand_connections:
+                            a = landmarks[iA]
+                            b = landmarks[iB]
+                            frame = cv2.line(frame, a, b, color=(0, 255, 255), thickness=1)
+                        # get straightness params (basic analytics)
+                        for name in lines:
+                            points = lines[name]
+                            yPos += dy
+                            s = straightness(points, landmarks)
+                            output = "Finger {} straightness: {:.2f}".format(name, s)
+                            frame = cv2.putText(
+                                frame,
+                                output,
+                                (10, yPos),
+                                cv2.QT_FONT_NORMAL,
+                                dy / 50,
+                                (255, 0, 0),
+                                1,
+                                cv2.LINE_AA,
+                            )
+                        yPos += dy
+
+                cv2.imshow('frame', frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+            # clean up
+            video_capture.release()
+            cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
