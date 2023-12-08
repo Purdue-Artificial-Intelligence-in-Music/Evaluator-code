@@ -1,3 +1,11 @@
+# DEFINE CONSTANTS
+# Must download
+# https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
+hand_task_file = '../../../models/hand_landmarker.task'
+# https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
+body_task_file = '../../../models/pose_landmarker.task'
+
+
 # import libraries
 import cv2
 import mediapipe as mp
@@ -116,18 +124,14 @@ def handle_result_pose(result: PoseLandmarkerResult, output_image: mp.Image, tim
 
 
 # Setup options for the model
-# INFO: Must download
-# https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
-# as $REPO/models/pose_landmarker.task
-# https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
-# as $REPO/models/hand_landmarker.task
+
 hand_options = HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='../../../models/hand_landmarker.task'),
+    base_options=BaseOptions(model_asset_path=hand_task_file),
     num_hands=4,
     running_mode=VisionRunningMode.LIVE_STREAM,
     result_callback=handle_result_hand)
 pose_options = PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='../../../models/pose_landmarker.task'),
+    base_options=BaseOptions(model_asset_path=body_task_file),
     output_segmentation_masks=True,
     running_mode=VisionRunningMode.LIVE_STREAM,
     result_callback=handle_result_pose
