@@ -1,9 +1,10 @@
 from music21 import *
-musescoreDirectPNGPath : environment.set("musescoreDirectPNGPath",  "YOUR PATH TO 'MuseScore4.exe") 
-musicxmlPath: environment.set("musicxmlPath", "YOUR PATH TO 'MuseScore4.exe'")
+# musescoreDirectPNGPath : environment.set("musescoreDirectPNGPath",  "YOUR PATH TO 'MuseScore4.exe") 
+# musicxmlPath: environment.set("musicxmlPath", "YOUR PATH TO 'MuseScore4.exe'")
+from music21 import audioSearch as audioSearchBase
 
-def runTranscribe(show=True, plot=True, useMic=True,
-                  seconds=15, useScale=None, saveFile=True):
+def runTranscribe(show, plot, useMic, audioFile,
+                  seconds, useScale, saveFile):
     '''
     runs all the methods to record from audio for `seconds` length (default 10.0)
     and transcribe the resulting melody returning a music21.Score object
@@ -11,6 +12,8 @@ def runTranscribe(show=True, plot=True, useMic=True,
     if `show` is True, show the stream.  
     
     if `plot` is True then a Tk graph of the frequencies will be displayed.
+
+    'audioFile' is a filepath to recorded audio to use instead of the mic if usemic is false
     
     if `useMic` is True then use the microphone.  If False it will load the file of `saveFile`
     or the default temp file to run transcriptions from.
@@ -24,24 +27,18 @@ def runTranscribe(show=True, plot=True, useMic=True,
     used as the filename.  If set to anything else then it will use that as the
     filename. 
     '''
-    from music21 import audioSearch as audioSearchBase
 
     if useScale is None:
         useScale = scale.ChromaticScale('C4')
     #beginning - recording or not
-    if saveFile != False:
-        if saveFile == True:
-            WAVE_FILENAME = 'YOUR PATH TO YOUR AUDIO FILE'
-        else:
-            WAVE_FILENAME = saveFile
-    else:
-        WAVE_FILENAME = False
+    if saveFile == True:
+        WAVE_FILENAME = 'YOUR PATH TO YOUR AUDIO FILE'
     
     # the rest of the score
     if useMic is True:
         freqFromAQList = audioSearchBase.getFrequenciesFromMicrophone(length=seconds, storeWaveFilename=WAVE_FILENAME)
     else:
-        freqFromAQList = audioSearchBase.getFrequenciesFromAudioFile(waveFilename=WAVE_FILENAME)
+        freqFromAQList = audioSearchBase.getFrequenciesFromAudioFile(waveFilename=audioFile)
         
     detectedPitchesFreq = audioSearchBase.detectPitchFrequencies(freqFromAQList, useScale)
     detectedPitchesFreq = audioSearchBase.smoothFrequencies(detectedPitchesFreq)
