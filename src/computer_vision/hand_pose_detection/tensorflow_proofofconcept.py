@@ -1,8 +1,13 @@
+# env setup commands:
+    # create conda env and activate
+    # conda install -c conda-forge python=3.10 pip numpy opencv
+    # pip install mediapipe
+
 # DEFINE CONSTANTS
 # Must download
-# https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
-hand_task_file = '../../../models/hand_landmarker.task'
 # https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
+hand_task_file = '../../../models/hand_landmarker.task'
+# https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
 body_task_file = '../../../models/pose_landmarker.task'
 
 
