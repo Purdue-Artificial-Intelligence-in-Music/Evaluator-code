@@ -1,6 +1,6 @@
 from music21 import *
-# musescoreDirectPNGPath : environment.set("musescoreDirectPNGPath",  "YOUR PATH TO 'MuseScore4.exe") 
-# musicxmlPath: environment.set("musicxmlPath", "YOUR PATH TO 'MuseScore4.exe'")
+musescoreDirectPNGPath : environment.set("musescoreDirectPNGPath",  "C:\Program Files\MuseScore 4\\bin\MuseScore4.exe") 
+musicxmlPath: environment.set("musicxmlPath", "C:\Program Files\MuseScore 4\\bin\MuseScore4.exe")
 from music21 import audioSearch as audioSearchBase
 
 def runTranscribe(show, plot, useMic, audioFile,
@@ -62,5 +62,7 @@ def runTranscribe(show, plot, useMic, audioFile,
     return myScore
 
 # This runs the function with specificed parameters
-runTranscribe(show=True, plot=True, useMic=False,
+runTranscribe(show=True, plot=True, useMic=False, audioFile='src/score/eqt-major-sc.wav',
                   seconds=20.0, useScale=None, saveFile=True)
+
+#Chopin__Trois_Valses.mxl
