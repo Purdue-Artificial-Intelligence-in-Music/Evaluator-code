@@ -6,7 +6,7 @@ from IPython.display import Audio
 
 
 # Load the audio file
-AUDIO_FILE = './audio.wav'
+AUDIO_FILE = 'NAME OF AUDIO FILE'
 samples, sample_rate = librosa.load(AUDIO_FILE, sr=None)
 
 
