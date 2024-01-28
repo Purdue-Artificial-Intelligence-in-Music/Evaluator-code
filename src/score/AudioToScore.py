@@ -61,8 +61,9 @@ def runTranscribe(show, plot, useMic, audioFile,
         
     return myScore
 
+
 # This runs the function with specificed parameters
-runTranscribe(show=True, plot=True, useMic=False, audioFile='src/score/eqt-major-sc.wav',
+runTranscribe(show=True, plot=True, useMic=True, audioFile='src/score/eqt-major-sc.wav',
                   seconds=20.0, useScale=None, saveFile=True)
 
 #Chopin__Trois_Valses.mxl
