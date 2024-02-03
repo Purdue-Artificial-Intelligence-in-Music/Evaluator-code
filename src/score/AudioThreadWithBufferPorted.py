@@ -25,10 +25,10 @@ class AudioThreadWithBufferPorted(threading.Thread):
         self.process_func = process_func
         self.args_before = args_before
         self.args_after = args_after
-        self.dtype = np.int16
+        self.dtype = np.float32
         self.p = None  # PyAudio vals
         self.stream = None
-        self.FORMAT = pyaudio.paInt16
+        self.FORMAT = pyaudio.paFloat32
         self.CHANNELS = 1
         self.RATE = rate
         self.starting_chunk_size = starting_chunk_size
@@ -126,7 +126,7 @@ class AudioThreadWithBufferPorted(threading.Thread):
         Returns: nothing of importance to the user
         """
         numpy_array = np.frombuffer(in_data, dtype=self.dtype)
-        data = np.zeros(self.starting_chunk_size, dtype=np.float64)
+        data = np.zeros(self.starting_chunk_size, dtype=self.dtype)
         for i in range(0, self.CHANNELS):
             data += numpy_array[i:self.CHUNK:self.CHANNELS]
         data /= np.float64(self.CHANNELS)
@@ -143,10 +143,10 @@ class AudioThreadWithBufferPorted(threading.Thread):
         self.audio_buffer[self.buffer_index:self.buffer_index + len(data)] = data
         self.buffer_index += len(data)
 
-        #print(self.buffer_index)
+        print(self.buffer_index)
 
-        #print("Added data")
-
+        print("Added data")
+        # self.get_last_samples(self.pred_length * self.RATE)
         self.data = self.process_func(*self.args_before, self.get_last_samples(self.pred_length * self.RATE),
                                       *self.args_after)
 
