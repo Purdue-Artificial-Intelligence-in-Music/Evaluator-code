@@ -46,6 +46,7 @@ class AudioThreadWithBufferPorted(threading.Thread):
         self.buffer_size = self.desired_buffer_size + self.CHUNK - (self.desired_buffer_size % self.CHUNK)
         self.audio_buffer = np.zeros(self.buffer_size, dtype=self.dtype)  # set a zero array
         self.buffer_index = 0
+        self.input_device_index = 1
 
     def set_args_before(self, a):
         """
@@ -77,7 +78,8 @@ class AudioThreadWithBufferPorted(threading.Thread):
                                   input=True,
                                   output=False,
                                   stream_callback=self.callback,
-                                  frames_per_buffer=self.CHUNK)
+                                  frames_per_buffer=self.CHUNK,
+                                  )
         while not self.stop_request:
             time.sleep(1.0)
         self.stop()
@@ -143,10 +145,11 @@ class AudioThreadWithBufferPorted(threading.Thread):
         self.audio_buffer[self.buffer_index:self.buffer_index + len(data)] = data
         self.buffer_index += len(data)
 
-        print(self.buffer_index)
+        #print(self.buffer_index)
 
-        print("Added data")
+        #print("Added data")
         # self.get_last_samples(self.pred_length * self.RATE)
+        #if self.input_on:
         self.data = self.process_func(*self.args_before, self.get_last_samples(self.pred_length * self.RATE),
                                       *self.args_after)
 
