@@ -67,7 +67,7 @@ def main():
         print("librosa out: ", notes)
 
     #Create dataframe
-    my_dict = {'Note Name': notes, 'Frequency': f0}
+    my_dict = {'Note Name': notes, 'Frequency': f0, 'Times': times_like(f0)}
     df = pd.DataFrame(data=my_dict)
     print(df)
 
