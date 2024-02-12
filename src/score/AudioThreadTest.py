@@ -18,11 +18,11 @@ import pandas as pd
 '''
 callback function calls this and passes the most recent parts of the buffer
 Will be useful to calculate frequencies and rms in real time.
+Currently does nothing.
+Will use this once calculations and dataframe generation are done
 
 '''
 def test(arg):
-    a = 0
-    a += 1
     #print(type(arg[0]))
     #print("arg: ", arg)
     # numpy_array = np.frombuffer(arg, dtype=np.float64)
