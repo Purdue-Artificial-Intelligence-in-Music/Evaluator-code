@@ -56,6 +56,8 @@ def main():
     f0, voiced_flag, voiced_probs = pyin(y=buffer,
                                              fmin=note_to_hz('C2'),
                                              fmax=note_to_hz('C7'), sr=44100)
+    #out = get_duration(y=buffer, sr=44100)
+    
     if (len(f0) > 0):
         f0 = f0[~np.isnan(f0)]
     
@@ -65,7 +67,30 @@ def main():
         notes = hz_to_note(f0)
         print("librosa freq: ", f0)
         print("librosa out: ", notes)
+    
+    # rms = feature.rms(y=buffer)
+    # x = np.arange(0, len(rms[0]))
+    # print(len(rms[0]))
+    # print("rms: ", rms)
+    # plt.title("Line graph") 
+    # plt.xlabel("X axis") 
+    # plt.ylabel("Y axis") 
+    # plt.plot(x, rms[0], color ="green") 
+    # plt.show()
+    onset_frames = onset.onset_detect(y=buffer, sr=44100)
+    print('onset_frames:', onset_frames)
+    rms = feature.rms(y=buffer)
+    x = np.arange(0, len(rms[0]))
+    print(len(rms[0]))
+    print("rms: ", rms)
+    plt.title("Line graph") 
+    plt.xlabel("X axis") 
+    plt.ylabel("Y axis") 
+    plt.plot(x, rms[0], color ="green") 
+    plt.show()
 
+    
+   
     #Create dataframe
     my_dict = {'Note Name': notes, 'Frequency': f0, 'Times': times_like(f0)}
     df = pd.DataFrame(data=my_dict)
