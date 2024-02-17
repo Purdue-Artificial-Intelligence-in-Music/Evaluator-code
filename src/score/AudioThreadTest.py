@@ -84,11 +84,23 @@ def main():
     #get the time each entry is recorded    
     times = times_like(f0)
     
-    notes = note_names_from_freqs(f0, 1.23)
+    notes = note_names_from_freqs(f0, 60) #C2 is the lowest note on a Cello (62 Hz)
     
     #The points in the array where a new note begins
     onset_frames = onset.onset_detect(y=buffer, sr=44100)
     print('onset_frames:', onset_frames)
+    
+    #Notes based on onsets
+    onset_freqs = []
+    onset_notes = []
+    onset_times = []
+    for my_onset in onset_frames:
+        freq = f0[my_onset]
+        time_pos = times[my_onset]
+        onset_freqs.append(freq)
+        onset_times.append(time_pos)
+    
+    onset_notes = note_names_from_freqs(onset_freqs, 1.23)
     
     #Calculates RMS value of each entry
     rms = feature.rms(y=buffer)
@@ -106,7 +118,7 @@ def main():
     
    
     #Create dataframe
-    my_dict = {'Note Name': notes, 'Frequency': f0, 'Times': times_like(f0)}
+    my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times}
     df = pd.DataFrame(data=my_dict)
     print(df)
 
