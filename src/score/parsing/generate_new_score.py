@@ -88,15 +88,18 @@ class AudioAnalysis:
         comparing differences to a new dataframe so notes with wrong intonation can be easily identified.
         """
         self.generate_dataframe_from_score()
-        correct_notes = self.correct_df['Note Name']
-        input_notes = self.input_df['Note Name']
+        correct_notes = list(self.correct_df['Note Name'])
+        input_notes = list(self.input_df['Note Name'])
         is_correct = []
-        for i in range(len(correct_notes)):
+        for i in range(len(input_notes)):
             if correct_notes[i] == input_notes[i]:
                 is_correct.append(True)
             else:
                 is_correct.append(False)
         new_df = self.correct_df
+        for i in range(len(correct_notes) - len(input_notes)):
+            input_notes.append(math.nan)
+            is_correct.append(False)
         new_df.insert(3, "Played Notes", input_notes)
         new_df.insert(4, "Correct", is_correct)
         return new_df
@@ -115,6 +118,8 @@ class AudioAnalysis:
         time_signature = self.score.getTimeSignatures()[0].ratioString
         new_score.append(meter.TimeSignature(time_signature))
         for i in range(len(is_correct)):
+            if input_notes[i] == 'nan':
+                continue
             if (correct_notes[i] == 'rest'):
                 rest = music21.note.Rest()
                 rest.duration.type = note_type[i]
