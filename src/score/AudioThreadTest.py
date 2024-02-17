@@ -15,6 +15,8 @@ from music21 import *
 import numpy
 import pandas as pd
 
+from parsing.generate_new_score import AudioAnalysis
+
 '''
 callback function calls this and passes the most recent parts of the buffer
 Will be useful to calculate frequencies and rms in real time.
@@ -73,7 +75,7 @@ def main():
     #Librosa calculations
     numpy_array = np.frombuffer(buffer, dtype=np.float64)
     f0, voiced_flag, voiced_probs = pyin(y=buffer,
-                                             fmin=note_to_hz('C2'),
+                                             fmin=note_to_hz('A0'),
                                              fmax=note_to_hz('C7'), sr=44100)
     #out = get_duration(y=buffer, sr=44100)
     
@@ -84,7 +86,7 @@ def main():
     #get the time each entry is recorded    
     times = times_like(f0)
     
-    notes = note_names_from_freqs(f0, 60) #C2 is the lowest note on a Cello (62 Hz)
+    notes = note_names_from_freqs(f0, 0) #C2 is the lowest note on a Cello (62 Hz)
     
     #The points in the array where a new note begins
     onset_frames = onset.onset_detect(y=buffer, sr=44100)
@@ -100,28 +102,33 @@ def main():
         onset_freqs.append(freq)
         onset_times.append(time_pos)
     
-    onset_notes = note_names_from_freqs(onset_freqs, 1.23)
+    onset_notes = note_names_from_freqs(onset_freqs, 0)
     
     #Calculates RMS value of each entry
     rms = feature.rms(y=buffer)
     
     #Graph rms
-    x = np.arange(0, len(rms[0]))
-    print(len(rms[0]))
-    print("rms: ", rms)
-    plt.title("Line graph") 
-    plt.xlabel("X axis") 
-    plt.ylabel("Y axis") 
-    plt.plot(x, rms[0], color ="green") 
-    plt.show()
+    # x = np.arange(0, len(rms[0]))
+    # print(len(rms[0]))
+    # print("rms: ", rms)
+    # plt.title("Line graph") 
+    # plt.xlabel("X axis") 
+    # plt.ylabel("Y axis") 
+    # plt.plot(x, rms[0], color ="green") 
+    # plt.show()
 
     
    
     #Create dataframe
     my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times}
+    #my_dict = {'Note Name': notes, 'Frequency': f0, 'Times': times}
     df = pd.DataFrame(data=my_dict)
     print(df)
-
+    print(len(df['Note Name']))
+    
+    testing = AudioAnalysis(df, "C:\\Users\\brian\\Desktop\\VIP\\Evaluator-code\\src\\score\\twinkle.musicxml")
+   
+    testing.generate_overlay_score()
 
 '''
 Calculate the Note corresponding to the frequency 
