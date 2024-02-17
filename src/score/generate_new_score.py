@@ -57,8 +57,8 @@ class AudioAnalysis:
                     s += str(measure[j].pitch.octave)
                 notes.append(s)
                 notes_frequency.append(f)
-        measure_notes.append(notes)
-        measure_notes_frequency.append(notes_frequency)
+            measure_notes.append(notes)
+            measure_notes_frequency.append(notes_frequency)
         # bpm = 260
         # quarter_note_duration = (1 / bpm) * 60
         # note_duration = []
@@ -91,7 +91,7 @@ class AudioAnalysis:
         correct_notes = self.correct_df['Note Name']
         input_notes = self.input_df['Note Name']
         is_correct = []
-        for i in range(len(correct_notes)):
+        for i in range(len(input_notes)):
             if correct_notes[i] == input_notes[i]:
                 is_correct.append(True)
             else:
