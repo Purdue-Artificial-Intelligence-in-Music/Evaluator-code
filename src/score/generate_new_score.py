@@ -27,15 +27,14 @@ class AudioAnalysis:
         beats = self.score.getTimeSignatures(recurse=True)[0].numerator
         measures = int(math.ceil(self.score.highestTime / beats)) + 1
         durations = []
-        is_chord = []
         for i in range(1, measures, 1):
             measure = self.score.parts[0].measure(i).flatten().notesAndRests
             lengths = []
             for j in range(0, len(measure)):
                 s = measure[j].duration.quarterLength
-                is_chord.append(False)
                 lengths.append(float(s))
             durations.append(lengths)
+
         measure_notes = []
         measure_notes_frequency = []
         for i in range(1, measures, 1):
@@ -57,8 +56,8 @@ class AudioAnalysis:
                     s += str(measure[j].pitch.octave)
                 notes.append(s)
                 notes_frequency.append(f)
-        measure_notes.append(notes)
-        measure_notes_frequency.append(notes_frequency)
+            measure_notes.append(notes)
+            measure_notes_frequency.append(notes_frequency)
         # bpm = 260
         # quarter_note_duration = (1 / bpm) * 60
         # note_duration = []
@@ -76,10 +75,11 @@ class AudioAnalysis:
         # for i in range(0, len(new_note_duration) - 1):
         #     curr_time += new_note_duration[i]
         #     start_times.append(curr_time)
+        assert(len(new_measure_notes) == len(new_measure_notes_frequency))
 
         note_type = [duration.Duration(quarterLength=quarter_note_length).type for quarter_note_length in new_durations]
-        df = pd.DataFrame({'Note Type': note_type,
-                   'Note Name': new_measure_notes, 'Note Frequency': new_measure_notes_frequency})
+        df = pd.DataFrame({'Note Type': note_type, 'Note Name': new_measure_notes, 'Note Frequency': new_measure_notes_frequency})
+        
         self.correct_df = df
 
     def compare_dataframe(self) -> pd.DataFrame:
@@ -88,15 +88,18 @@ class AudioAnalysis:
         comparing differences to a new dataframe so notes with wrong intonation can be easily identified.
         """
         self.generate_dataframe_from_score()
-        correct_notes = self.correct_df['Note Name']
-        input_notes = self.input_df['Note Name']
+        correct_notes = list(self.correct_df['Note Name'])
+        input_notes = list(self.input_df['Note Name'])
         is_correct = []
-        for i in range(len(correct_notes)):
+        for i in range(len(input_notes)):
             if correct_notes[i] == input_notes[i]:
                 is_correct.append(True)
             else:
                 is_correct.append(False)
         new_df = self.correct_df
+        for i in range(len(correct_notes) - len(input_notes)):
+            input_notes.append(math.nan)
+            is_correct.append(False)
         new_df.insert(3, "Played Notes", input_notes)
         new_df.insert(4, "Correct", is_correct)
         return new_df
@@ -110,24 +113,34 @@ class AudioAnalysis:
         new_score = stream.Stream()
         correct_notes = df['Note Name']
         is_correct = df["Correct"]
-        input_notes = self.input_df['Played Notes']
+        input_notes = df['Played Notes']
+        note_type = df['Note Type']
         time_signature = self.score.getTimeSignatures()[0].ratioString
         new_score.append(meter.TimeSignature(time_signature))
         for i in range(len(is_correct)):
+            if input_notes[i] == 'nan':
+                continue
+            if (correct_notes[i] == 'rest'):
+                rest = music21.note.Rest()
+                rest.duration.type = note_type[i]
+                new_score.append(rest)
+                continue
+            if (note_type[i] == 'zero'):
+                continue
             if is_correct[i]:
-                new_note = music21.note.Note(correct_notes[i])
-                new_note.duration.type = 'quarter'
+                new_note = music21.note.Note(str(correct_notes[i]))
+                new_note.duration.type = str(note_type[i])
                 new_score.append(new_note)
             else:
-                correct_note = music21.note.Note(correct_notes[i])
-                incorrect_note = music21.note.Note(input_notes[i])
-                correct_note.duration.type = 'quarter'
-                incorrect_note.duration.type = 'quarter'
+                correct_note = music21.note.Note(str(correct_notes[i]))
+                incorrect_note = music21.note.Note(str(input_notes[i]))
+                correct_note.duration.type = str(note_type[i])
+                incorrect_note.duration.type = str(note_type[i])
                 incorrect_note.style.color = 'red'
                 combined_chord = music21.chord.Chord([correct_note, incorrect_note])
                 new_score.append(combined_chord)
-        new_score.show()
-        new_score.write('xml', 'overlayed_score.xml')
+        new_score.show('musicxml')
+        new_score.write('mxl', 'overlayed_score.mxl')
         
         
         
