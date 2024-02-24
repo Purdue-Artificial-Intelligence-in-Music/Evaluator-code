@@ -25,25 +25,7 @@ Will use this once calculations and dataframe generation are done
 
 '''
 def test(arg):
-    #print(type(arg[0]))
-    #print("arg: ", arg)
-    # numpy_array = np.frombuffer(arg, dtype=np.float64)
-    # f0, voiced_flag, voiced_probs = pyin(y=arg,
-    #                                          fmin=note_to_hz('C2'),
-    #                                          fmax=note_to_hz('C7'), sr=44100)
-    # if (len(f0) > 0):
-    #     f0 = f0[~np.isnan(f0)]
     
-    # times = times_like(f0)
-    # if len(f0) > 0:
-    #     notes = hz_to_note(f0)
-    #     print("librosa freq: ", f0)
-    #     print("librosa out: ", notes)
-    # time, frequency, confidence, activation = crepe.predict(arg, 16000, viterbi=False)
-    # print(frequency)
-    # if len(frequency) > 0:
-    #     notes = hz_to_note(frequency)
-    #     print("crepe out: ", notes)
     return
 
 '''
@@ -64,7 +46,7 @@ def main():
             print(my_thread.input_on)
             time.sleep(1.5)
             #only let thread run for 5 seconds
-            if time.time() - start > 5:
+            if time.time() - start > 10:
                 break
                 
     except KeyboardInterrupt:
@@ -96,7 +78,7 @@ def main():
     onset_freqs = []
     onset_notes = []
     onset_times = []
-    for my_onset in onset_frames:
+    for my_onset in onset_frames: #note sure about the +1 here. But possibly onset is the note right before the switch
         freq = f0[my_onset]
         time_pos = times[my_onset]
         onset_freqs.append(freq)
@@ -107,28 +89,23 @@ def main():
     #Calculates RMS value of each entry
     rms = feature.rms(y=buffer)
     
-    #Graph rms
-    # x = np.arange(0, len(rms[0]))
-    # print(len(rms[0]))
-    # print("rms: ", rms)
-    # plt.title("Line graph") 
-    # plt.xlabel("X axis") 
-    # plt.ylabel("Y axis") 
-    # plt.plot(x, rms[0], color ="green") 
-    # plt.show()
+    graph_rms(rms[0])
 
     
    
     #Create dataframe
+    if onset_notes[0] == 'rest': #check to deal with starting time
+        onset_notes.pop(0)
+        onset_freqs.pop(0)
+        onset_times.pop(0)
     my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times}
     #my_dict = {'Note Name': notes, 'Frequency': f0, 'Times': times}
     df = pd.DataFrame(data=my_dict)
     print(df)
-    print(len(df['Note Name']))
     
-    testing = AudioAnalysis(df, "C:\\Users\\brian\\Desktop\\VIP\\Evaluator-code\\src\\score\\twinkle.musicxml")
+    # testing = AudioAnalysis(df, "C:\\Users\\brian\\Desktop\\VIP\\Evaluator-code\\src\\score\\twinkle.musicxml")
    
-    testing.generate_overlay_score()
+    # testing.generate_overlay_score()
 
 '''
 Calculate the Note corresponding to the frequency 
@@ -140,12 +117,28 @@ def note_names_from_freqs(f0: np.ndarray, rest_threshold:int=0):
     if len(f0) > 0:
         for freq in f0:
             if freq <= rest_threshold:
-                notes.append('Rest')
+                notes.append('rest')
             else:
-                notes.append(hz_to_note(freq))
+                notes.append(hz_to_note(freq, cents=True))
         print("librosa freq: ", f0)
         print("librosa out: ", notes)
     return notes
 
+
+'''
+Takes in rms array and graphs it
+'''
+def graph_rms(rms, color="green"):
+    #Graph rms
+    x = np.arange(0, len(rms))
+    #print("rms: ", rms)
+    plt.title("Line graph") 
+    plt.xlabel("X axis") 
+    plt.ylabel("Y axis") 
+    plt.plot(x, rms, color =color) 
+    plt.show()
+
 if __name__ == "__main__":
     main()
+    
+    
