@@ -118,7 +118,7 @@ class AudioAnalysis:
         time_signature = self.score.getTimeSignatures()[0].ratioString
         new_score.append(meter.TimeSignature(time_signature))
         for i in range(len(is_correct)):
-            if input_notes[i] == 'nan':
+            if str(input_notes[i]) == 'nan': #ignore nan
                 continue
             if (correct_notes[i] == 'rest'):
                 rest = music21.note.Rest()

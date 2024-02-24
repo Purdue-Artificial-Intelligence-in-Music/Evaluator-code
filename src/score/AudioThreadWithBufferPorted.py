@@ -41,7 +41,7 @@ class AudioThreadWithBufferPorted(threading.Thread):
         self.stop_request = False
         self.data = None
 
-        self.pred_length = 4
+        self.pred_length = 8
         self.desired_buffer_size = self.pred_length * self.RATE * self.CHANNELS
         self.buffer_size = self.desired_buffer_size + self.CHUNK - (self.desired_buffer_size % self.CHUNK)
         self.audio_buffer = np.zeros(self.buffer_size, dtype=self.dtype)  # set a zero array
