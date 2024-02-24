@@ -150,8 +150,9 @@ class AudioThreadWithBufferPorted(threading.Thread):
         #print("Added data")
         # self.get_last_samples(self.pred_length * self.RATE)
         #if self.input_on:
-        self.data = self.process_func(*self.args_before, self.get_last_samples(self.pred_length * self.RATE),
-                                      *self.args_after)
+        #self.data = self.process_func(*self.args_before, self.get_last_samples(self.pred_length * self.RATE),
+        #                              *self.args_after)
+        self.data = self.process_func(*self.args_before, data, *self.args_after)
 
         # This is where process_func in threaded_parent_with_buffer.py is called from
         # if self.wav_index + self.CHUNK <= len(self.wav_data):

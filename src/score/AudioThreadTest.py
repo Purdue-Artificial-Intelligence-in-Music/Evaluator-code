@@ -24,8 +24,13 @@ Currently does nothing.
 Will use this once calculations and dataframe generation are done
 
 '''
+my_buffer = np.empty(0)
 def test(arg):
-    
+    global my_buffer
+    # print("my_buffer: ", my_buffer)
+    # print("arg: ", arg)
+    my_buffer = np.append(my_buffer, arg)
+    # calculate(my_buffer)
     return
 
 '''
@@ -45,14 +50,36 @@ def main():
         while True:
             print(my_thread.input_on)
             time.sleep(1.5)
-            #only let thread run for 5 seconds
-            if time.time() - start > 10:
+            #only let thread run for time seconds
+            time1 = 5
+            timer = 10
+            if time.time() - start > time1:
+                time1 = 10000
+                print('calculation at 5 seconds')
+                calculate(my_buffer)
+            if time.time() - start > timer:
+                print('calculation at 10 seconds')
+                calculate(my_buffer)
                 break
                 
     except KeyboardInterrupt:
         my_thread.stop_request = True
     buffer = my_thread.audio_buffer
     my_thread.stop_request = True
+    
+    # print('my_buffer calculation')
+    
+    # calculate(my_buffer, True)
+    
+    # print('buffer calculation')
+    
+    # calculate(buffer, True)
+    
+'''
+Copied code from main()
+
+''' 
+def calculate(buffer, rms_graph=False):
     
     #Librosa calculations
     numpy_array = np.frombuffer(buffer, dtype=np.float64)
@@ -89,15 +116,16 @@ def main():
     #Calculates RMS value of each entry
     rms = feature.rms(y=buffer)
     
-    graph_rms(rms[0])
+    if rms_graph:
+        graph_rms(rms[0])
 
     
    
     #Create dataframe
-    if onset_notes[0] == 'rest': #check to deal with starting time
-        onset_notes.pop(0)
-        onset_freqs.pop(0)
-        onset_times.pop(0)
+    # if onset_notes[0] == 'rest': #check to deal with starting time
+    #     onset_notes.pop(0)
+    #     onset_freqs.pop(0)
+    #     onset_times.pop(0)
     my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times}
     #my_dict = {'Note Name': notes, 'Frequency': f0, 'Times': times}
     df = pd.DataFrame(data=my_dict)
@@ -120,8 +148,8 @@ def note_names_from_freqs(f0: np.ndarray, rest_threshold:int=0):
                 notes.append('rest')
             else:
                 notes.append(hz_to_note(freq, cents=True))
-        print("librosa freq: ", f0)
-        print("librosa out: ", notes)
+        #print("librosa freq: ", f0)
+        #print("librosa out: ", notes)
     return notes
 
 
