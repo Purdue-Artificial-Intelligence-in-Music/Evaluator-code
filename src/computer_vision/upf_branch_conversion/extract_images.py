@@ -1,6 +1,6 @@
 import cv2
 
-# This script detects faces in each frame of the video
+# This script detects faces in each frame of a video 
 # using the Haar cascade classifier, extracts the faces, and saves them as individual image files.
 
 # can be altered to detect instruments and limbs 
