@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-# We use the Pandas library to read Excel files (which is what the UPF coords are stored in)
+# This program use the Pandas library to read Excel files (which is what the UPF coords are stored in)
 # and Matplotlib library to visualize the coordinates as pixels in an output file.
 
 # Read Excel files
