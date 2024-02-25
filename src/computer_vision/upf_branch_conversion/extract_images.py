@@ -1,9 +1,9 @@
 import cv2
 
-# This supporting script detects faces in each frame of a video 
-# using the Haar cascade classifier, extracts the faces, and saves them as individual image files.
+# This (supporting) script detects faces in each frame of a video using the Haar cascade classifier, 
+# extracts the faces, and saves them as individual image files.
 
-# can be altered to detect instruments and limbs 
+# Can be altered to detect instruments and limbs using a trained object detection model
 
 # Replace "input_video.mp4" with the path to video file 
 # and "haarcascade_frontalface_default.xml" with the path to the XML file containing the pre-trained object detection model
@@ -19,7 +19,7 @@ def main():
 
     frame_count = 0
     
-    # The code extracts frames containing faces for every frame in the video
+    # Extracts frames containing faces for every frame in the video
     while True:
         ret, frame = cap.read()
         if not ret:
