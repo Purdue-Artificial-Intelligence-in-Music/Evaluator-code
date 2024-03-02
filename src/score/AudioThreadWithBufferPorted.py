@@ -4,25 +4,23 @@ import threading
 import time
 
 '''
-This class is a template class for a thread that reads in audio from PyAudio and stores it in a buffer.
+This class is a template class for a thread that reads in audio from PyAudio.
 '''
 
 
-class AudioThreadWithBuffer(threading.Thread):
-    def __init__(self, name, starting_chunk_size, rate, process_func, args_before=(), args_after=()):
+class AudioThreadWithBufferPorted(threading.Thread):
+    def __init__(self, name, rate, starting_chunk_size, process_func, args_before=(), args_after=()):
         """
-        Initializes an AudioThreadWithBuffer object (a thread that takes audio, stores it in a buffer,
-        optionally processes it, and returns new audio to play back).
+        Initializes an AudioThread.
         Parameters:
             name: the name of the thread
             starting_chunk_size: an integer representing the chunk size in samples
             process_func: the function to be called as a callback when new audio is received from PyAudio
-            wav_file: path to a wav file to pass to process_func
             args_before: a tuple of arguments for process_func to be put before the sound array
             args_after: a tuple of arguments for process_func to be put after the sound array
         Returns: nothing
         """
-        super(AudioThreadWithBuffer, self).__init__()
+        super(AudioThreadWithBufferPorted, self).__init__()
         self.name = name  # General imports
         self.process_func = process_func
         self.args_before = args_before
@@ -36,11 +34,12 @@ class AudioThreadWithBuffer(threading.Thread):
         self.starting_chunk_size = starting_chunk_size
         self.CHUNK = self.starting_chunk_size * self.CHANNELS
 
-        # Instance vals
-        self.data = None
+        self.on_threshold = 0.001
         self.input_on = False
-        self.stop_request = False
+        self.last_time_on = 0.0
 
+        self.stop_request = False
+        self.data = None
 
         self.pred_length = 8
         self.desired_buffer_size = self.pred_length * self.RATE * self.CHANNELS
@@ -48,10 +47,6 @@ class AudioThreadWithBuffer(threading.Thread):
         self.audio_buffer = np.zeros(self.buffer_size, dtype=self.dtype)  # set a zero array
         self.buffer_index = 0
         self.input_device_index = 1
-
-        # hysteresis for gain control
-        self.last_gain = 0.0
-        self.last_time_updated = time.time()
 
     def set_args_before(self, a):
         """
@@ -81,7 +76,7 @@ class AudioThreadWithBuffer(threading.Thread):
                                   channels=self.CHANNELS,
                                   rate=self.RATE,
                                   input=True,
-                                  output=True,  # output audio
+                                  output=False,
                                   stream_callback=self.callback,
                                   frames_per_buffer=self.CHUNK,
                                   )
@@ -106,15 +101,16 @@ class AudioThreadWithBuffer(threading.Thread):
         Parameters: audio: the audio input
         Returns: nothing
         """
-        audio = audio.astype(np.float64)
         val_sum = 0.0
         for val in audio:
             val_sum += val * val
         val_sum /= len(audio)
         if val_sum > self.on_threshold:
+            self.last_time_on = time.time()
             self.input_on = True
         else:
-            self.input_on = False
+            if time.time() - self.last_time_on > 5.0:
+                self.input_on = False
 
     def get_last_samples(self, n):
         """
@@ -122,7 +118,7 @@ class AudioThreadWithBuffer(threading.Thread):
         Parameters: n: number of samples
         Returns: the last n samples from the buffer (as a numpy array)
         """
-        return self.audio_buffer[self.buffer_index - n:self.buffer_index]
+        return self.audio_buffer[max(self.buffer_index - n, 0):self.buffer_index]
 
     def callback(self, in_data, frame_count, time_info, flag):
         """
@@ -130,7 +126,7 @@ class AudioThreadWithBuffer(threading.Thread):
         and stores the result in the field "data".
         This function should never be called directly.
         Parameters: none user-exposed
-        Returns: new audio for PyAudio to play through speakers.
+        Returns: nothing of importance to the user
         """
         numpy_array = np.frombuffer(in_data, dtype=self.dtype)
         data = np.zeros(self.starting_chunk_size, dtype=self.dtype)
@@ -149,7 +145,6 @@ class AudioThreadWithBuffer(threading.Thread):
             # print("shifting buffer")
 
         self.audio_buffer[self.buffer_index:self.buffer_index + len(data)] = data
-        #self.audio_buffer[self.buffer_index:self.buffer_index + len(data)] = self.wav_data[self.wav_index:self.wav_index + self.CHUNK]
         self.buffer_index += len(data)
 
         #print(self.buffer_index)
@@ -163,10 +158,9 @@ class AudioThreadWithBuffer(threading.Thread):
         
         # This is where process_func in threaded_parent_with_buffer.py is called from
         # if self.wav_index + self.CHUNK <= len(self.wav_data):
-        #     self.data = self.process_func(self, data, self.wav_data[self.wav_index:self.wav_index + self.CHUNK])
-        #     self.wav_index += self.CHUNK
+        # self.data = self.process_func(self, data, self.wav_data[self.wav_index:self.wav_index + self.CHUNK])
+        #    self.wav_index += self.CHUNK
         # else:
-        #     self.wav_index = 0
-        #     self.data = self.process_func(self, data, self.wav_data[self.wav_index:self.wav_index + self.CHUNK])
-
-        return self.data, pyaudio.paContinue
+        #    self.wav_index = 0
+        # self.data = self.process_func(self, data, self.wav_data[self.wav_index:self.wav_index + self.CHUNK])
+        return None, pyaudio.paContinue
