@@ -1,0 +1,42 @@
+name: mpipe
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - bzip2=1.0.8=h620ffc9_4
+  - ca-certificates=2023.08.22=hca03da5_0
+  - libffi=3.4.4=hca03da5_0
+  - ncurses=6.4=h313beb8_0
+  - openssl=3.0.11=h1a28f6b_2
+  - pip=23.3=py310hca03da5_0
+  - python=3.10.13=hb885b13_0
+  - readline=8.2=h1a28f6b_0
+  - setuptools=68.0.0=py310hca03da5_0
+  - sqlite=3.41.2=h80987f9_0
+  - tk=8.6.12=hb8d0fd4_0
+  - tzdata=2023c=h04d1e81_0
+  - wheel=0.41.2=py310hca03da5_0
+  - xz=5.4.2=h80987f9_0
+  - zlib=1.2.13=h5a0b063_0
+  - pip:
+      - absl-py==2.0.0
+      - attrs==23.1.0
+      - cffi==1.16.0
+      - contourpy==1.1.1
+      - cycler==0.12.1
+      - flatbuffers==23.5.26
+      - fonttools==4.43.1
+      - kiwisolver==1.4.5
+      - matplotlib==3.8.0
+      - mediapipe==0.10.0
+      - numpy==1.26.1
+      - opencv-contrib-python==4.8.1.78
+      - opencv-python==4.8.1.78
+      - packaging==23.2
+      - pillow==10.1.0
+      - protobuf==3.20.3
+      - pycparser==2.21
+      - pyparsing==3.1.1
+      - python-dateutil==2.8.2
+      - six==1.16.0
+      - sounddevice==0.4.6
