@@ -81,6 +81,7 @@ class AudioThreadWithBufferPorted(threading.Thread):
                                   frames_per_buffer=self.CHUNK,
                                   )
         while not self.stop_request:
+            #continue
             time.sleep(1.0)
         self.stop()
 
@@ -141,6 +142,7 @@ class AudioThreadWithBufferPorted(threading.Thread):
             # self.buffer_index = 0
             self.audio_buffer[:self.buffer_size - len(data)] = self.audio_buffer[len(data):self.buffer_size]
             self.buffer_index -= len(data)
+            # print("shifting buffer")
 
         self.audio_buffer[self.buffer_index:self.buffer_index + len(data)] = data
         self.buffer_index += len(data)
@@ -150,10 +152,10 @@ class AudioThreadWithBufferPorted(threading.Thread):
         #print("Added data")
         # self.get_last_samples(self.pred_length * self.RATE)
         #if self.input_on:
-        #self.data = self.process_func(*self.args_before, self.get_last_samples(self.pred_length * self.RATE),
-        #                              *self.args_after)
-        self.data = self.process_func(*self.args_before, data, *self.args_after)
-
+        # self.data = self.process_func(*self.args_before, self.get_last_samples(self.pred_length * self.RATE),
+        #                               *self.args_after)
+        self.data = self.process_func(*self.args_before, data, *self.args_after) #this seems to work better?
+        
         # This is where process_func in threaded_parent_with_buffer.py is called from
         # if self.wav_index + self.CHUNK <= len(self.wav_data):
         # self.data = self.process_func(self, data, self.wav_data[self.wav_index:self.wav_index + self.CHUNK])
