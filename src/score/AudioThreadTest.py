@@ -9,7 +9,7 @@ import pyaudio
 from librosa import *
 import matplotlib.pyplot as plt
 import math
-import crepe
+# import crepe
 
 from music21 import *
 import numpy
@@ -43,6 +43,13 @@ contents will be organized into functions once we achieve desired results.
 
 '''
 def main():
+    # for testing compare
+    df = pd.read_csv("out.csv")
+    testing = AudioAnalysis(df, "cscale.xml")
+   
+    testing.generate_overlay_score()
+
+    return
     
     #Create and start PyAudio thread
     my_thread = AudioThreadWithBufferPorted('my thread', rate=44100, starting_chunk_size=1024, process_func=test)
@@ -70,8 +77,8 @@ def main():
     #maybe see what vibrato looks like?
     #try recording with actual mic.
     
-    print('buffer calculation')
-    calculate(in_buffer, False) #This one fails (means in_buffer is changing still)
+    # print('buffer calculation')
+    # calculate(in_buffer, False) #This one fails (means in_buffer is changing still)
     
     #my_buffer is built by appending data each time
     print('my_buffer calculation')
@@ -144,11 +151,12 @@ def calculate(buffer, rms_graph=False):
     
     my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
     df = pd.DataFrame(data=my_dict)
+    df.to_csv("out.csv")
     print(df)
     
-    # testing = AudioAnalysis(df, "C:\\Users\\brian\\Desktop\\VIP\\Evaluator-code\\src\\score\\twinkle.musicxml")
+    testing = AudioAnalysis(df, "cscale.xml")
    
-    # testing.generate_overlay_score()
+    testing.generate_overlay_score()
 
 '''
 Calculate the Note corresponding to the frequency 
