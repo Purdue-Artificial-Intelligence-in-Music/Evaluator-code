@@ -134,6 +134,7 @@ class AudioAnalysis:
             input_notes.append(math.nan)
             note_status.append(False)
             input_durations.append(math.nan)
+            beat_status.append(math.nan)
         new_df.insert(3, "Played Notes", input_notes)
         new_df.insert(4, "Note Status", note_status)
         new_df.insert(5, "Input Duration", input_durations)
