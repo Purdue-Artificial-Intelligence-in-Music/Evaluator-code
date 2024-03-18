@@ -9,13 +9,15 @@ import pyaudio
 from librosa import *
 import matplotlib.pyplot as plt
 import math
+import re
+import time
 # import crepe
 
 from music21 import *
 import numpy
 import pandas as pd
 
-from parsing.generate_new_score import AudioAnalysis
+from generate_new_score import AudioAnalysis
 
 '''
 callback function calls this and passes the most recent parts of the buffer
@@ -44,12 +46,32 @@ contents will be organized into functions once we achieve desired results.
 '''
 def main():
     # for testing compare
-    df = pd.read_csv("out.csv")
-    testing = AudioAnalysis(df, "cscale.xml")
-   
-    testing.generate_overlay_score()
+    # df = pd.read_csv("out.csv")
+    # testing = AudioAnalysis(df, "cscale.xml")
 
-    return
+    # offs = []
+    # for i in range (len(df['Note Name'])):
+    #     str = df['Note Name'][i]
+    #     note = str
+    #     offset = 0
+    #     if (str != "rest"):
+    #         note, offset = [x for x in re.split('([A-G][#-]?[0-9]+)([-+][0-9]+)', str) if x]
+    #         if offset[0] == '+':
+    #             offset = int(offset[1:])
+    #         else:
+    #             offset = int(offset)
+    #         df.loc[i, 'Note Name'] = note
+    #         offs.append(offset)
+    #     else:
+    #         df.drop(i, inplace=True)
+        
+    # df.insert(5, "Cents", offs)
+
+    # print(df)
+   
+    # testing.generate_overlay_score()
+
+    # return
     
     #Create and start PyAudio thread
     my_thread = AudioThreadWithBufferPorted('my thread', rate=44100, starting_chunk_size=1024, process_func=test)
@@ -58,10 +80,11 @@ def main():
         my_thread.start()
         print("Start thread")
         while True:
-            print(my_thread.input_on)
+            # print(my_thread.input_on)
+            print("listening")
             time.sleep(1.5)
             #only let thread run for time seconds
-            timer = 15
+            timer = 20
             
             if time.time() - start > timer:
                 break
@@ -89,6 +112,7 @@ Copied code from main()
 
 ''' 
 def calculate(buffer, rms_graph=False):
+    start = time.time()
     # print("in calculate buffer (before librosa): ", buffer)
     #Librosa calculations
     numpy_array = np.frombuffer(buffer, dtype=np.float64)
@@ -150,13 +174,45 @@ def calculate(buffer, rms_graph=False):
     # df.to_csv("out.csv")
     
     my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
+    note_names = list(my_dict['Note Name'])
+    note_names = [note.replace('♯', '#') for note in note_names]
+    my_dict['Note Name'] = note_names
     df = pd.DataFrame(data=my_dict)
-    df.to_csv("out.csv")
-    print(df)
     
-    testing = AudioAnalysis(df, "cscale.xml")
+
+    df.to_csv("out.csv")
+    # print(df)
+
+    offs = []
+    for i in range (len(df['Note Name'])):
+        note_str = df['Note Name'][i]
+        note = note_str
+        offset = 0
+        if (note_str != "rest"):
+            print(note_str)
+            note, offset = [x for x in re.split('([A-G][#-]?[0-9]+)([-+][0-9]+)', note_str) if x]
+            if offset[0] == '+':
+                offset = int(offset[1:])
+            else:
+                offset = int(offset)
+            df.loc[i, 'Note Name'] = note
+            offs.append(offset)
+        else:
+            df.drop(i, inplace=True)
+        
+    df.insert(4, "Cents", offs)
+ 
+    print(df)
+
+    end = time.time()
+    
+    testing = AudioAnalysis(df, 'cscale.xml')
    
     testing.generate_overlay_score()
+
+    end2 = time.time()
+
+    print("Calculation took " + str(end - start) + " seconds. Comparison took " + str(end2 - end) + " seconds.\n")
 
 '''
 Calculate the Note corresponding to the frequency 
@@ -202,5 +258,4 @@ def graph_rms(rms, color="green"):
 
 if __name__ == "__main__":
     main()
-    
     
