@@ -17,7 +17,7 @@ from music21 import *
 import numpy
 import pandas as pd
 
-from generate_new_score import AudioAnalysis
+from parsing.generate_new_score import AudioAnalysis
 
 '''
 callback function calls this and passes the most recent parts of the buffer
@@ -84,7 +84,7 @@ def main():
             print("listening")
             time.sleep(1.5)
             #only let thread run for time seconds
-            timer = 20
+            timer = 10
             
             if time.time() - start > timer:
                 break
@@ -105,7 +105,11 @@ def main():
     
     #my_buffer is built by appending data each time
     print('my_buffer calculation')
+    begin = time.time()
     calculate(my_buffer, False)
+    ending = time.time()
+    
+    print("Calculations took", ending - begin, "seconds")
     
 '''
 Copied code from main()
@@ -127,7 +131,7 @@ def calculate(buffer, rms_graph=False):
         f0 = np.nan_to_num(f0, nan=0, posinf=10000, neginf=-10000)
         
     #get the time each entry is recorded    
-    times = times_like(f0)
+    times = times_like(f0, sr=44100)
     
     notes = note_names_from_freqs(f0, 0) #C2 is the lowest note on a Cello (62 Hz)
     
@@ -204,15 +208,15 @@ def calculate(buffer, rms_graph=False):
  
     print(df)
 
-    end = time.time()
+    # end = time.time()
     
-    testing = AudioAnalysis(df, 'cscale.xml')
+    # testing = AudioAnalysis(df, "C:\\Users\\brian\\Desktop\\VIP\\Evaluator-code\\src\\score\\cscale.xml")
    
-    testing.generate_overlay_score()
+    # testing.generate_overlay_score()
 
-    end2 = time.time()
+    # end2 = time.time()
 
-    print("Calculation took " + str(end - start) + " seconds. Comparison took " + str(end2 - end) + " seconds.\n")
+    # print("Calculation took " + str(end - start) + " seconds. Comparison took " + str(end2 - end) + " seconds.\n")
 
 '''
 Calculate the Note corresponding to the frequency 
