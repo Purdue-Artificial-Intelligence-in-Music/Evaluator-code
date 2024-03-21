@@ -1,4 +1,4 @@
-from AudioThreadWithBufferPorted import *
+from audio.recording.AudioThread import *
 
 # import matplotlib.pyplot as plt
 import math
