@@ -4,7 +4,7 @@ Using PyAudio and Librosa. Using rms to calculate when a new note or rest occurs
 
 '''
 
-from AudioThreadWithBufferPorted import *
+from audio.recording.AudioThread import *
 import pyaudio
 from librosa import *
 import matplotlib.pyplot as plt
