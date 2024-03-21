@@ -1,0 +1,85 @@
+#This is a program that uses our dataset from Roboflow to train a model to detect the bow and strings of
+#images of a Cello with Oriented Bounding Boxes. It was written on Colab, though replicating it on a local
+#machine should be easy.
+
+#For Colab: Can be omitted if on local machine
+
+#check if we have GPU access
+!nvidia-smi 
+
+import os
+HOME = os.getcwd()
+print(HOME)
+
+#install YOLOv8
+!pip install ultralytics -q
+
+import ultralytics
+ultralytics.checks()
+
+#get YOLO
+from ultralytics import YOLO
+from IPython.display import display, Image
+
+!mkdir {HOME}/datasets
+%cd {HOME}/datasets
+
+!pip install roboflow
+
+from roboflow import Roboflow
+rf = Roboflow(api_key="FTKwkQA4P2JVSSgR7Oxt")
+project = rf.workspace("purdue-aim-kjlvm").project("aim-evaluator")
+dataset = project.version(2).download("yolov8-obb")
+
+
+#import our roboflow dataset and then train the model for 100 epochs
+import yaml
+
+with open(f'{dataset.location}/data.yaml', 'r') as file:
+    data = yaml.safe_load(file)
+
+data['path'] = dataset.location
+
+with open(f'{dataset.location}/data.yaml', 'w') as file:
+    yaml.dump(data, file, sort_keys=False)
+
+#Train model
+
+from ultralytics import YOLO
+model = YOLO('yolov8n-obb.pt')
+
+results = model.train(data=f"{dataset.location}/data.yaml", epochs=100, imgsz=640)
+
+#Now we test it on random image from our dataset
+model = YOLO('runs/obb/train/weights/best.pt')
+
+import os
+import random
+
+#select random image from our dataset
+random_file = random.choice(os.listdir(f"{dataset.location}/test/images"))
+file_name = os.path.join(f"{dataset.location}/test/images", random_file)
+
+#test our model by running it on the file
+results = model(file_name)
+
+print(results[0])
+
+# Visualizing our results (testing)
+# This prints out a random image from our dataset with the bow and strings being detected 
+# and enclosed in a tight bounding box 
+
+# !pip install supervision -q
+
+import supervision as sv
+import cv2
+
+detections = sv.Detections.from_ultralytics(results[0])
+
+oriented_box_annotator = sv.OrientedBoxAnnotator()
+annotated_frame = oriented_box_annotator.annotate(
+    scene=cv2.imread(file_name),
+    detections=detections
+)
+
+sv.plot_image(image=annotated_frame, size=(16, 16))
