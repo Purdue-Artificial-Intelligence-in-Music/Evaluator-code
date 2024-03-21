@@ -4,7 +4,7 @@ Using PyAudio and Librosa. Using rms to calculate when a new note or rest occurs
 
 '''
 
-from audio.recording.AudioThread import *
+from AudioThread import *
 import pyaudio
 from librosa import *
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ from music21 import *
 import numpy
 import pandas as pd
 
-from parsing.generate_new_score import AudioAnalysis
+from generate_new_score import AudioAnalysis
 
 '''
 callback function calls this and passes the most recent parts of the buffer
