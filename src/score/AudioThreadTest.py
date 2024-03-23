@@ -45,33 +45,6 @@ contents will be organized into functions once we achieve desired results.
 
 '''
 def main():
-    # for testing compare
-    # df = pd.read_csv("out.csv")
-    # testing = AudioAnalysis(df, "cscale.xml")
-
-    # offs = []
-    # for i in range (len(df['Note Name'])):
-    #     str = df['Note Name'][i]
-    #     note = str
-    #     offset = 0
-    #     if (str != "rest"):
-    #         note, offset = [x for x in re.split('([A-G][#-]?[0-9]+)([-+][0-9]+)', str) if x]
-    #         if offset[0] == '+':
-    #             offset = int(offset[1:])
-    #         else:
-    #             offset = int(offset)
-    #         df.loc[i, 'Note Name'] = note
-    #         offs.append(offset)
-    #     else:
-    #         df.drop(i, inplace=True)
-        
-    # df.insert(5, "Cents", offs)
-
-    # print(df)
-   
-    # testing.generate_overlay_score()
-
-    # return
     
     #Create and start PyAudio thread
     my_thread = AudioThreadWithBufferPorted('my thread', rate=44100, starting_chunk_size=1024, process_func=test)
@@ -80,7 +53,6 @@ def main():
         my_thread.start()
         print("Start thread")
         while True:
-            # print(my_thread.input_on)
             print("listening")
             time.sleep(1.5)
             #only let thread run for time seconds
@@ -115,16 +87,24 @@ def main():
 Copied code from main()
 
 ''' 
-def calculate(buffer, rms_graph=False):
+def calculate(buffer, rms_graph=False, fast=True):
     start = time.time()
     # print("in calculate buffer (before librosa): ", buffer)
     #Librosa calculations
     numpy_array = np.frombuffer(buffer, dtype=np.float64)
-    f0, voiced_flag, voiced_probs = pyin(y=buffer,
-                                             fmin=note_to_hz('A0'),
-                                             fmax=note_to_hz('C7'), sr=44100)
-    #out = get_duration(y=buffer, sr=44100)
-    # print("after librosa buffer:", buffer)
+    if fast:
+        f0 = yin(y=buffer,
+            fmin=note_to_hz('A0'),
+            fmax=note_to_hz('C7'), sr=44100)
+        
+    else:
+        f0, voiced_flag, voiced_probs = pyin(y=buffer,
+                                                fmin=note_to_hz('A0'),
+                                                fmax=note_to_hz('C7'), sr=44100)
+    
+    end_librosa = time.time()
+    
+    print("Librosa took", end_librosa - start, "seconds")
 
     #replace NaN with 0s
     if (len(f0) > 0):
@@ -139,10 +119,8 @@ def calculate(buffer, rms_graph=False):
 
     #The points in the array where a new note begins
     onset_frames = onset.onset_detect(y=buffer, sr=44100)
-    # tempo, beats = beat.beat_track(y=buffer, sr=44100)
     print('onset_frames:', onset_frames)
-    # print('tempo:', tempo)
-    # print('beats:', beats)
+    
     print("buffer: ", buffer)
     #Notes based on onsets
     onset_freqs = []
