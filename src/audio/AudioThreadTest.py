@@ -4,18 +4,20 @@ Using PyAudio and Librosa. Using rms to calculate when a new note or rest occurs
 
 '''
 
-from AudioThread import *
+from AudioThreadWithBufferPorted import *
 import pyaudio
 from librosa import *
 import matplotlib.pyplot as plt
 import math
+import re
+import time
 # import crepe
 
 from music21 import *
 import numpy
 import pandas as pd
 
-from generate_new_score import AudioAnalysis
+from parsing.generate_new_score import AudioAnalysis
 
 '''
 callback function calls this and passes the most recent parts of the buffer
@@ -43,13 +45,6 @@ contents will be organized into functions once we achieve desired results.
 
 '''
 def main():
-    # for testing compare
-    df = pd.read_csv("out.csv")
-    testing = AudioAnalysis(df, "cscale.xml")
-   
-    testing.generate_overlay_score()
-
-    return
     
     #Create and start PyAudio thread
     my_thread = AudioThreadWithBufferPorted('my thread', rate=44100, starting_chunk_size=1024, process_func=test)
@@ -58,10 +53,10 @@ def main():
         my_thread.start()
         print("Start thread")
         while True:
-            print(my_thread.input_on)
+            print("listening")
             time.sleep(1.5)
             #only let thread run for time seconds
-            timer = 15
+            timer = 10
             
             if time.time() - start > timer:
                 break
@@ -82,28 +77,41 @@ def main():
     
     #my_buffer is built by appending data each time
     print('my_buffer calculation')
+    begin = time.time()
     calculate(my_buffer, False)
+    ending = time.time()
+    
+    print("Calculations took", ending - begin, "seconds")
     
 '''
 Copied code from main()
 
 ''' 
-def calculate(buffer, rms_graph=False):
+def calculate(buffer, rms_graph=False, fast=True):
+    start = time.time()
     # print("in calculate buffer (before librosa): ", buffer)
     #Librosa calculations
     numpy_array = np.frombuffer(buffer, dtype=np.float64)
-    f0, voiced_flag, voiced_probs = pyin(y=buffer,
-                                             fmin=note_to_hz('A0'),
-                                             fmax=note_to_hz('C7'), sr=44100)
-    #out = get_duration(y=buffer, sr=44100)
-    # print("after librosa buffer:", buffer)
+    if fast:
+        f0 = yin(y=buffer,
+            fmin=note_to_hz('A0'),
+            fmax=note_to_hz('C7'), sr=44100)
+        
+    else:
+        f0, voiced_flag, voiced_probs = pyin(y=buffer,
+                                                fmin=note_to_hz('A0'),
+                                                fmax=note_to_hz('C7'), sr=44100)
+    
+    end_librosa = time.time()
+    
+    print("Librosa took", end_librosa - start, "seconds")
 
     #replace NaN with 0s
     if (len(f0) > 0):
         f0 = np.nan_to_num(f0, nan=0, posinf=10000, neginf=-10000)
         
     #get the time each entry is recorded    
-    times = times_like(f0)
+    times = times_like(f0, sr=44100)
     
     notes = note_names_from_freqs(f0, 0) #C2 is the lowest note on a Cello (62 Hz)
     
@@ -111,10 +119,8 @@ def calculate(buffer, rms_graph=False):
 
     #The points in the array where a new note begins
     onset_frames = onset.onset_detect(y=buffer, sr=44100)
-    # tempo, beats = beat.beat_track(y=buffer, sr=44100)
     print('onset_frames:', onset_frames)
-    # print('tempo:', tempo)
-    # print('beats:', beats)
+    
     print("buffer: ", buffer)
     #Notes based on onsets
     onset_freqs = []
@@ -150,13 +156,45 @@ def calculate(buffer, rms_graph=False):
     # df.to_csv("out.csv")
     
     my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
+    note_names = list(my_dict['Note Name'])
+    note_names = [note.replace('♯', '#') for note in note_names]
+    my_dict['Note Name'] = note_names
     df = pd.DataFrame(data=my_dict)
-    df.to_csv("out.csv")
-    print(df)
     
-    testing = AudioAnalysis(df, "cscale.xml")
+
+    df.to_csv("out.csv")
+    # print(df)
+
+    offs = []
+    for i in range (len(df['Note Name'])):
+        note_str = df['Note Name'][i]
+        note = note_str
+        offset = 0
+        if (note_str != "rest"):
+            print(note_str)
+            note, offset = [x for x in re.split('([A-G][#-]?[0-9]+)([-+][0-9]+)', note_str) if x]
+            if offset[0] == '+':
+                offset = int(offset[1:])
+            else:
+                offset = int(offset)
+            df.loc[i, 'Note Name'] = note
+            offs.append(offset)
+        else:
+            df.drop(i, inplace=True)
+        
+    df.insert(4, "Cents", offs)
+ 
+    print(df)
+
+    # end = time.time()
+    
+    # testing = AudioAnalysis(df, "C:\\Users\\brian\\Desktop\\VIP\\Evaluator-code\\src\\score\\cscale.xml")
    
-    testing.generate_overlay_score()
+    # testing.generate_overlay_score()
+
+    # end2 = time.time()
+
+    # print("Calculation took " + str(end - start) + " seconds. Comparison took " + str(end2 - end) + " seconds.\n")
 
 '''
 Calculate the Note corresponding to the frequency 
@@ -202,5 +240,4 @@ def graph_rms(rms, color="green"):
 
 if __name__ == "__main__":
     main()
-    
     
