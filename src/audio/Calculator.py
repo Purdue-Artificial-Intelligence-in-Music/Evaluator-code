@@ -7,6 +7,15 @@ import time
 from music21 import *
 import numpy as np
 import pandas as pd
+from scipy.signal import butter, lfilter
+
+def butter_bandpass(lowcut, highcut, fs, order=5):
+    return butter(order, [lowcut, highcut], fs=fs, btype='band')
+
+def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
+    b, a = butter_bandpass(lowcut, highcut, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
 
 '''
     This class takes in an audio buffer as input and generates a dataframe
@@ -33,6 +42,11 @@ class Calculator:
         if from_file != "":
             y, sr = load(from_file)
             buffer = y
+        
+        # filter
+        buffer = butter_bandpass_filter(buffer, 200, 2500, fs=sr)
+
+
         if fast:
             f0 = yin(y=buffer,
                 fmin=note_to_hz('A0'),
