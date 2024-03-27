@@ -337,7 +337,7 @@ class AudioAnalysis:
                     incorrect_note.style.color = 'red'
                     combined_chord = music21.chord.Chord([correct_note, incorrect_note])
                     new_score.append(combined_chord)
-
+            # match 
         # for i in range(len(note_status)):
         #     if input_notes[i] == 'nan':
         #         continue
@@ -371,11 +371,11 @@ class AudioAnalysis:
         #         incorrect_note.style.color = 'orange'
         #         new_score.append(incorrect_note)
         #     print(beat_status[i])
-        # new_score.show('musicxml')
+        new_score.show('musicxml')
         new_score.write('mxl', 'josh_demo.mxl') # changed for demo
         
         
 if __name__ == '__main__':
-    df = pd.read_csv('test_in.csv')
+    df = pd.read_csv('scale.csv')
     a = AudioAnalysis(df, 'cscale.xml')
-    a.compare_dataframe_by_time()
+    print(a.compare_dataframe_by_time())
