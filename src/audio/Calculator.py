@@ -27,10 +27,12 @@ class Calculator:
     :return: the pandas dataframe
     
     '''
-    def calculate(self, buffer, fast=True, create_file=False, out_file="", verbose=True, rms_graph=False):
+    def calculate(self, buffer, fast=True, create_file=False, out_file="", verbose=True, rms_graph=False, from_file = ""):
         start = time.time()
         #Librosa calculations
-        numpy_array = np.frombuffer(buffer, dtype=np.float64)
+        if from_file != "":
+            y, sr = load(from_file)
+            buffer = y
         if fast:
             f0 = yin(y=buffer,
                 fmin=note_to_hz('A0'),
@@ -54,7 +56,12 @@ class Calculator:
         times = times_like(f0, sr=44100)
                 
         #The points in the array where a new note begins
-        onset_frames = onset.onset_detect(y=buffer, sr=44100)
+        onset_env = onset.onset_strength(y=buffer, sr=44100,
+                                         hop_length=512)
+        
+        print("length", len(onset_env))
+        onset_frames = util.peak_pick(onset_env, pre_max=3, post_max=3, pre_avg=3, post_avg=5, delta=0.5, wait=10)
+        #onset_frames = onset.onset_detect(y=buffer, sr=44100, hop_length=512)
         
         #Notes based on onsets
         onset_freqs = []
@@ -86,7 +93,7 @@ class Calculator:
         
         if rms_graph:
             rms = feature.rms(y=buffer)
-            _graph_rms(rms[0])
+            self._graph_rms(rms[0])
         
         my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
         note_names = list(my_dict['Note Name'])
@@ -114,7 +121,7 @@ class Calculator:
         df.insert(4, "Cents", offs)
     
         if create_file:
-            df.to_csv("out.csv")
+            df.to_csv(out_file)
             
         if verbose:
             end_calc = time.time()
