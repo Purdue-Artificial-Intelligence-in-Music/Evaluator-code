@@ -36,15 +36,15 @@ class Calculator:
     :return: the pandas dataframe
     
     '''
-    def calculate(self, buffer, fast=True, create_file=False, out_file="", verbose=True, rms_graph=False, from_file = ""):
+    def calculate(self, buffer, fast=True, onsets = True, create_file=False, out_file="", verbose=True, rms_graph=False, from_file = ""):
         start = time.time()
         #Librosa calculations
+        sr = 44100
         if from_file != "":
             y, sr = load(from_file)
             buffer = y
         
-        # filter
-        buffer = butter_bandpass_filter(buffer, 200, 2500, fs=sr)
+        
 
 
         if fast:
@@ -58,6 +58,9 @@ class Calculator:
                                                     fmax=note_to_hz('C7'), sr=44100)
         
         
+        # filter
+        #f0 = butter_bandpass_filter(f0, 200, 600, fs=sr)
+        
         if verbose:
             end_librosa = time.time()
             print("Librosa took", end_librosa - start, "seconds")
@@ -68,7 +71,7 @@ class Calculator:
             
         #get the time each entry is recorded    
         times = times_like(f0, sr=44100)
-                
+        
         #The points in the array where a new note begins
         onset_env = onset.onset_strength(y=buffer, sr=44100,
                                          hop_length=512)
@@ -93,9 +96,8 @@ class Calculator:
             onset_freqs.append(freq)
             onset_times.append(time_pos)
         
-        notes = self._note_names_from_freqs(f0, 0)
         onset_notes = self._note_names_from_freqs(onset_freqs, 0)
-        print(notes)
+        notes = self._note_names_from_freqs(f0, 0)
         print(onset_notes)
         
         #Calculate durations:
@@ -107,8 +109,11 @@ class Calculator:
         if rms_graph:
             rms = feature.rms(y=buffer)
             self._graph_rms(rms[0])
-        
-        my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
+        if onsets:
+            my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
+            
+        else:
+            my_dict = {'Note Name': notes, 'Frequency': f0, 'Times': times}
         note_names = list(my_dict['Note Name'])
         note_names = [note.replace('♯', '#') for note in note_names] #Solves weird character issue
         my_dict['Note Name'] = note_names
@@ -130,8 +135,10 @@ class Calculator:
                 offs.append(offset)
             else:
                 offs.append(0) #offset (cents) of 0
-            
-        df.insert(4, "Cents", offs)
+        if onsets: 
+            df.insert(4, "Cents", offs)
+        else:
+            df.insert(3, "Cents", offs)
     
         if create_file:
             df.to_csv(out_file)
