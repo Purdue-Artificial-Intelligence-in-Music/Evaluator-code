@@ -156,7 +156,10 @@ class AudioAnalysis:
 
                 # Check frequency
                 if correct_note['Note Name'] == played_note['Note Name']:
-                    if abs(played_cents) > AudioAnalysis.CENT_TOLERANCE and played_cents < 0:
+                    if correct_note['Note Name'] == 'rest':
+                        note_status_dict['Intonation'] = "Rest"
+                        note_status.append("Rest")
+                    elif abs(played_cents) > AudioAnalysis.CENT_TOLERANCE and played_cents < 0:
                         note_status_dict['Intonation'] = "Flat"
                         note_status.append("Flat")
                     elif abs(played_cents) > AudioAnalysis.CENT_TOLERANCE and played_cents > 0:
@@ -164,12 +167,15 @@ class AudioAnalysis:
                         note_status.append("Sharp")
 
                     else:
-                        note_status_dict['Intonation'] = "Correct"
+                        note_status_dict['Intonation'] = 'Correct'
                         # note_status.append("Correct")
                         # pass statements here for now in case we want to explicitly say each thing done correctly
                 else:
                     note_status_dict['Intonation'] = "Wrong"
                     note_status.append("Wrong Note")
+                
+                note_status_dict['Played Note'] = played_note['Note Name']
+                note_status_dict['Expected Note'] = correct_note['Note Name']
 
                 # Check length (short/long)
                 if abs(played_length - score_length) > AudioAnalysis.BEAT_TOLERANCE and played_length > score_length: # What does beat tolerance mean? It's measured in seconds not beats here
@@ -232,6 +238,7 @@ class AudioAnalysis:
         # new_df.insert(5, "Input Duration", input_durations)
         # new_df.insert(6, "Beat Status", beat_status)
         # return new_df
+        print(played_notes_df)
         return played_notes_df
 
     def compare_dataframe(self) -> pd.DataFrame:
@@ -289,48 +296,81 @@ class AudioAnalysis:
         Takes information from a DataFrame that shows differences between expected and played notes and generates
         a new score from it. Notes with incorrect intonation are displayed together, and the wrong note is colored in red. 
         """
-        df = self.compare_dataframe()
+        df = self.compare_dataframe_by_time()
         new_score = stream.Stream()
-        correct_notes = df['Note Name']
-        note_status = df["Note Status"]
-        input_notes = df['Played Notes']
-        note_type = df['Note Type']
-        beat_status = df["Beat Status"]
+        played_notes = list(df['Played Note'])
+        intonation = list(df['Intonation'])
+        expected_notes = list(df['Expected Note'])
+        # correct_notes = df['Note Name']
+        # note_status = df["Note Status"]
+        # input_notes = df['Played Notes']
+        # note_type = df['Note Type']
+        # beat_status = df["Beat Status"]
         time_signature = self.score.getTimeSignatures()[0].ratioString
         new_score.append(meter.TimeSignature(time_signature))
-        for i in range(len(note_status)):
-            if input_notes[i] == 'nan':
-                continue
-            if (correct_notes[i] == 'rest'):
-                rest = music21.note.Rest()
-                rest.duration.type = note_type[i]
-                new_score.append(rest)
-                continue
-            if (note_type[i] == 'zero'):
-                continue
-            if note_status[i] == "Correct":
-                new_note = music21.note.Note(str(correct_notes[i]))
-                new_note.duration.type = str(note_type[i])
-                new_score.append(new_note)
-            elif note_status[i] == "Wrong":
-                correct_note = music21.note.Note(str(correct_notes[i]))
-                incorrect_note = music21.note.Note(str(input_notes[i]))
-                correct_note.duration.type = str(note_type[i])
-                incorrect_note.duration.type = str(note_type[i])
-                incorrect_note.style.color = 'red'
-                combined_chord = music21.chord.Chord([correct_note, incorrect_note])
-                new_score.append(combined_chord)
-            elif note_status[i] == "Flat":
-                incorrect_note = music21.note.Note(str(input_notes[i]))
-                incorrect_note.duration.type = str(note_type[i])
-                incorrect_note.style.color = 'blue'
-                new_score.append(incorrect_note)
-            elif note_status[i] == "Sharp":
-                incorrect_note = music21.note.Note(str(input_notes[i]))
-                incorrect_note.duration.type = str(note_type[i])
-                incorrect_note.style.color = 'orange'
-                new_score.append(incorrect_note)
-            print(beat_status[i])
+        for i in range(len(played_notes)):
+            note_type = self.correct_df.iloc[i]['Note Type']
+            match intonation[i]:
+                case "Rest":
+                    rest = music21.note.Rest()
+                    rest.duration.type = note_type
+                    new_score.append(rest)
+                case "Flat":
+                    new_note = music21.note.Note(str(played_notes[i]))
+                    new_note.duration.type = str(note_type)
+                    new_note.style.color = 'blue'
+                    new_score.append(new_note)
+                case "Sharp":
+                    new_note = music21.note.Note(str(played_notes[i]))
+                    new_note.duration.type = str(note_type)
+                    new_note.style.color = 'orange'
+                    new_score.append(new_note)
+                case "Correct":
+                    new_note = music21.note.Note(str(played_notes[i]))
+                    new_note.duration.type = str(note_type)
+                    new_score.append(new_note)
+                case "Wrong":
+                    correct_note = music21.note.Note(str(expected_notes[i]))
+                    incorrect_note = music21.note.Note(str(played_notes[i]))
+                    correct_note.duration.type = str(note_type)
+                    incorrect_note.duration.type = str(note_type)
+                    incorrect_note.style.color = 'red'
+                    combined_chord = music21.chord.Chord([correct_note, incorrect_note])
+                    new_score.append(combined_chord)
+
+        # for i in range(len(note_status)):
+        #     if input_notes[i] == 'nan':
+        #         continue
+        #     if (correct_notes[i] == 'rest'):
+        #         rest = music21.note.Rest()
+        #         rest.duration.type = note_type[i]
+        #         new_score.append(rest)
+        #         continue
+        #     if (note_type[i] == 'zero'):
+        #         continue
+        #     if note_status[i] == "Correct":
+        #         new_note = music21.note.Note(str(correct_notes[i]))
+        #         new_note.duration.type = str(note_type[i])
+        #         new_score.append(new_note)
+        #     elif note_status[i] == "Wrong":
+        #         correct_note = music21.note.Note(str(correct_notes[i]))
+        #         incorrect_note = music21.note.Note(str(input_notes[i]))
+        #         correct_note.duration.type = str(note_type[i])
+        #         incorrect_note.duration.type = str(note_type[i])
+        #         incorrect_note.style.color = 'red'
+        #         combined_chord = music21.chord.Chord([correct_note, incorrect_note])
+        #         new_score.append(combined_chord)
+        #     elif note_status[i] == "Flat":
+        #         incorrect_note = music21.note.Note(str(input_notes[i]))
+        #         incorrect_note.duration.type = str(note_type[i])
+        #         incorrect_note.style.color = 'blue'
+        #         new_score.append(incorrect_note)
+        #     elif note_status[i] == "Sharp":
+        #         incorrect_note = music21.note.Note(str(input_notes[i]))
+        #         incorrect_note.duration.type = str(note_type[i])
+        #         incorrect_note.style.color = 'orange'
+        #         new_score.append(incorrect_note)
+        #     print(beat_status[i])
         # new_score.show('musicxml')
         new_score.write('mxl', 'josh_demo.mxl') # changed for demo
         

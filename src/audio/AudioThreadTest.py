@@ -4,7 +4,7 @@ Using PyAudio and Librosa. Using rms to calculate when a new note or rest occurs
 
 '''
 
-from AudioThreadWithBufferPorted import *
+from AudioThread import AudioThreadWithBufferPorted
 import pyaudio
 from librosa import *
 import matplotlib.pyplot as plt
@@ -14,10 +14,10 @@ import time
 # import crepe
 
 from music21 import *
-import numpy
+import numpy as np
 import pandas as pd
 
-from parsing.generate_new_score import AudioAnalysis
+from generate_new_score import AudioAnalysis
 
 '''
 callback function calls this and passes the most recent parts of the buffer
@@ -155,7 +155,7 @@ def calculate(buffer, rms_graph=False, fast=True):
     # print(df)
     # df.to_csv("out.csv")
     
-    my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
+    my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Start Time': onset_times, 'Duration': durs}
     note_names = list(my_dict['Note Name'])
     note_names = [note.replace('♯', '#') for note in note_names]
     my_dict['Note Name'] = note_names
