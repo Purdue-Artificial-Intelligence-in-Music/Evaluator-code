@@ -73,7 +73,10 @@ class Calculator:
             onset_freqs.append(freq)
             onset_times.append(time_pos)
         
+        notes = self._note_names_from_freqs(f0, 0)
         onset_notes = self._note_names_from_freqs(onset_freqs, 0)
+        print(notes)
+        print(onset_notes)
         
         #Calculate durations:
         

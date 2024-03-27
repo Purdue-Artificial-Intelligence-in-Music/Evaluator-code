@@ -3,13 +3,13 @@ from Listener import Listener
 from Calculator import Calculator
 
 def main():
-    print("main")
     listener = Listener()
-    buffer = listener.listen(duration=5)
-    print(buffer, len(buffer))
+    buffer = listener.listen(duration=10)
     calculator = Calculator()
-    df = calculator.calculate(buffer)
-    print(df)
+    df = calculator.calculate(buffer, fast = False)
+    
+    #NOTE Right now, yin is converting a rest to a C7!!!!
+    #Fix that. C7 is just the lowest possible note.
 
 if __name__ == "__main__":
     main()
