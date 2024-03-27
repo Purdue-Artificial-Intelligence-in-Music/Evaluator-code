@@ -14,7 +14,7 @@ import time
 # import crepe
 
 from music21 import *
-import numpy
+import numpy as np
 import pandas as pd
 
 from generate_new_score import AudioAnalysis
@@ -147,7 +147,7 @@ def calculate(buffer, rms_graph=False, fast=True):
     # print(df)
     # df.to_csv("out.csv")
     
-    my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
+    my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Start Time': onset_times, 'Duration': durs}
     note_names = list(my_dict['Note Name'])
     note_names = [note.replace('♯', '#') for note in note_names]
     my_dict['Note Name'] = note_names
