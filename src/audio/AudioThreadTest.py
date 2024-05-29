@@ -4,7 +4,7 @@ Using PyAudio and Librosa. Using rms to calculate when a new note or rest occurs
 
 '''
 
-from AudioThreadWithBufferPorted import *
+from AudioThread import *
 import pyaudio
 from librosa import *
 import matplotlib.pyplot as plt
@@ -14,10 +14,10 @@ import time
 # import crepe
 
 from music21 import *
-import numpy
+import numpy as np
 import pandas as pd
 
-from parsing.generate_new_score import AudioAnalysis
+from generate_new_score import AudioAnalysis
 
 '''
 callback function calls this and passes the most recent parts of the buffer
@@ -65,7 +65,6 @@ def main():
         my_thread.stop_request = True
     in_buffer = my_thread.audio_buffer
     print('stopped')
-    my_thread.stop_request = True
     my_thread.stop() #manually stopping it is also causing the same problems??
     
     #calculate duration for each note
@@ -83,13 +82,9 @@ def main():
     
     print("Calculations took", ending - begin, "seconds")
     
-'''
-Copied code from main()
 
-''' 
 def calculate(buffer, rms_graph=False, fast=True):
     start = time.time()
-    # print("in calculate buffer (before librosa): ", buffer)
     #Librosa calculations
     numpy_array = np.frombuffer(buffer, dtype=np.float64)
     if fast:
@@ -113,20 +108,17 @@ def calculate(buffer, rms_graph=False, fast=True):
     #get the time each entry is recorded    
     times = times_like(f0, sr=44100)
     
-    notes = note_names_from_freqs(f0, 0) #C2 is the lowest note on a Cello (62 Hz)
+    # notes = note_names_from_freqs(f0, 0) #C2 is the lowest note on a Cello (62 Hz)
     
-    print("buffer: before onset ", buffer)
-
     #The points in the array where a new note begins
     onset_frames = onset.onset_detect(y=buffer, sr=44100)
-    print('onset_frames:', onset_frames)
     
-    print("buffer: ", buffer)
     #Notes based on onsets
     onset_freqs = []
     onset_notes = []
     onset_times = []
-    for my_onset in onset_frames: #note sure about the +3 here. But possibly onset is the note right before the switch
+    for my_onset in onset_frames: 
+        #not sure about the +3 here. But possibly onset is the note right before the switch
         #Adding 3 because frequency at onset isn't accurate
         #Definitely need something better
         if not my_onset + 3 >= len(f0):
@@ -155,7 +147,7 @@ def calculate(buffer, rms_graph=False, fast=True):
     # print(df)
     # df.to_csv("out.csv")
     
-    my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Times': onset_times, 'Duration': durs}
+    my_dict = {'Note Name': onset_notes, 'Frequency': onset_freqs, 'Start Time': onset_times, 'Duration': durs}
     note_names = list(my_dict['Note Name'])
     note_names = [note.replace('♯', '#') for note in note_names]
     my_dict['Note Name'] = note_names
