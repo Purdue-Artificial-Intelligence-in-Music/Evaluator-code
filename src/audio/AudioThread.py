@@ -91,6 +91,7 @@ class AudioThreadWithBufferPorted(threading.Thread):
         Parameters: nothing
         Returns: nothing
         """
+        self.stop_request = True #In case you call stop()
         self.stream.stop_stream()
         self.stream.close()
         self.p.terminate()
