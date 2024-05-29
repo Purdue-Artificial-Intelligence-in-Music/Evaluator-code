@@ -2,9 +2,8 @@
 #images of a Cello with Oriented Bounding Boxes. It was written on Colab, though replicating it on a local
 #machine should be easy.
 
-#For Colab: Can be omitted if on local machine
 
-#check if we have GPU access
+#check if we have GPU access (For Colab: Can be omitted if on local machine)
 !nvidia-smi 
 
 import os
@@ -26,13 +25,14 @@ from IPython.display import display, Image
 
 !pip install roboflow
 
+#Importing our dataset using our API key
 from roboflow import Roboflow
 rf = Roboflow(api_key="FTKwkQA4P2JVSSgR7Oxt")
 project = rf.workspace("purdue-aim-kjlvm").project("aim-evaluator")
 dataset = project.version(2).download("yolov8-obb")
 
 
-#import our roboflow dataset and then train the model for 100 epochs
+#Train the model on our dataset for 100 epochs
 import yaml
 
 with open(f'{dataset.location}/data.yaml', 'r') as file:
