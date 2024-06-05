@@ -163,8 +163,9 @@ def main():
     """
     with PoseLandmarker.create_from_options(pose_options) as pose_landmarker:
         with HandLandmarker.create_from_options(hand_options) as hand_landmarker:
+            video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Body leaning back 1.mp4'
             # get video capture
-            video_capture = cv2.VideoCapture(0)
+            video_capture = cv2.VideoCapture(video_file_path)
             frame_count = 0
             while True:
                 # get next frame
