@@ -171,7 +171,6 @@ def main():
                 # get next frame
                 ret, frame = video_capture.read()
                 frame_count += 1
-                frame = cv2.flip(frame, 1)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
                 hand_landmarker.detect_async(mp_image, frame_count)
                 pose_landmarker.detect_async(mp_image, frame_count)
