@@ -10,6 +10,10 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 import os
+import supervision as sv
+import ultralytics
+from ultralytics import YOLO
+from IPython.display import display, Image
 
 # DEFINE CONSTANTS
 # Must download
@@ -17,6 +21,8 @@ import os
 hand_task_file = os.path.dirname(os.path.realpath(__file__)) + '/../../../models/hand_landmarker.task'
 # https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
 body_task_file = os.path.dirname(os.path.realpath(__file__))  + '/../../../models/pose_landmarker.task'
+
+verbose = 0
 
 # Base option setup
 BaseOptions = mp.tasks.BaseOptions
@@ -133,7 +139,7 @@ def handle_result_pose(result: PoseLandmarkerResult, output_image: mp.Image, tim
 
 hand_options = HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=hand_task_file),
-    num_hands=4,
+    num_hands=2,
     running_mode=VisionRunningMode.LIVE_STREAM,
     result_callback=handle_result_hand)
 pose_options = PoseLandmarkerOptions(
@@ -144,7 +150,7 @@ pose_options = PoseLandmarkerOptions(
 )
 
 
-def get_position(lm: NormalizedLandmark, width: int, height: int) -> (int, int):
+def get_position(lm: NormalizedLandmark, width: int, height: int) -> tuple[int, int]:
     """
     Maps a landmark to a pixel
     :param lm the landmark to use (with x,y in [0,1])
@@ -161,19 +167,33 @@ def main():
     """
     Main function that sets up video feed, runs model, and displays livestream
     """
+    model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/best.pt')  # Path to your model file
+    
     with PoseLandmarker.create_from_options(pose_options) as pose_landmarker:
         with HandLandmarker.create_from_options(hand_options) as hand_landmarker:
-            video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Body leaning back 1.mp4'
+            video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Flamenco for cello solo.mp4'
             # get video capture
             video_capture = cv2.VideoCapture(video_file_path)
             frame_count = 0
+
+            # save as video
+            writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(640,480)) # algo makes a frame every ~80ms = 12.5 fps
+
             while True:
                 # get next frame
                 ret, frame = video_capture.read()
                 frame_count += 1
+
+                # frame = cv2.flip(frame, 1)
+
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
                 hand_landmarker.detect_async(mp_image, frame_count)
                 pose_landmarker.detect_async(mp_image, frame_count)
+
+                # yolov8 prediction
+                results = model(frame)
+                detections = sv.Detections.from_ultralytics(results[0])
+
                 # display the frame
                 frame = np.copy(frame)
                 height = len(frame)
@@ -194,7 +214,7 @@ def main():
                     result = current_pose_result[0]
                     for cur in result.pose_landmarks:
                         landmarks = [get_position(x, width, height) for x in cur]
-                        for lm in landmarks:
+                        for lm in landmarks[11:15] + landmarks[23:29]: # excludes the face and hand pose landmarks
                             frame = cv2.circle(frame, lm, radius=10, color=(255, 0, 0), thickness=-1)
 
                 if len(current_hand_result) != 0:
@@ -227,23 +247,35 @@ def main():
                             b = landmarks[iB]
                             frame = cv2.line(frame, a, b, color=(0, 255, 255), thickness=1)
                         # get straightness params (basic analytics)
-                        for name in lines:
-                            points = lines[name]
-                            yPos += dy
-                            s = straightness(points, landmarks)
-                            output = "Finger {} straightness: {:.2f}".format(name, s)
-                            frame = cv2.putText(
-                                frame,
-                                output,
-                                (10, yPos),
-                                cv2.QT_FONT_NORMAL,
-                                dy / 50,
-                                (255, 0, 0),
-                                1,
-                                cv2.LINE_AA,
-                            )
+                        # if (verbose):
+                        #     for name in lines:
+                        #         points = lines[name]
+                        #         yPos += dy
+                        #         s = straightness(points, landmarks)
+                        #         output = "Finger {} straightness: {:.2f}".format(name, s)
+                        #         frame = cv2.putText(
+                        #             frame,
+                        #             output,
+                        #             (10, yPos),
+                        #             cv2.QT_FONT_NORMAL,
+                        #             dy / 50,
+                        #             (255, 0, 0),
+                        #             1,
+                        #             cv2.LINE_AA,
+                        #         )
                         yPos += dy
 
+                # add bounding boxes
+                oriented_box_annotator = sv.OrientedBoxAnnotator()
+                annotated_frame = oriented_box_annotator.annotate(
+                    scene=frame,
+                    detections=detections
+)
+
+                # sv.plot_image(image=frame, size=(16, 16))
+                # cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
+                # cv2.resizeWindow('frame', 2560,1440)
+                writer.write(frame)
                 cv2.imshow('frame', frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
