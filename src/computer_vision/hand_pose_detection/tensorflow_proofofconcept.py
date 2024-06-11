@@ -1,7 +1,7 @@
 # env setup commands:
     # create conda env and activate
     # conda install -c conda-forge python=3.10 pip numpy opencv
-    # pip install mediapipe
+    # pip install -r requirements.txt
 
 
 # import libraries
