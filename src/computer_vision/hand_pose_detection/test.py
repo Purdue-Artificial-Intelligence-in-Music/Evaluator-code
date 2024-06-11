@@ -1,6 +1,8 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
+
 import os
 import supervision as sv
 import ultralytics
@@ -13,7 +15,7 @@ mp_hands = mp.solutions.hands
 
 model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/best.pt')  # Path to your model file
 # For webcam input:
-video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Wrong bow hold.mp4'
+video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
 cap = cv2.VideoCapture(video_file_path)
 with mp_hands.Hands(
     model_complexity=0,
