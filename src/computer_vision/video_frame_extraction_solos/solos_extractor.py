@@ -5,7 +5,7 @@
 #pip install pytube
 import cv2
 import os
-from pytube import YouTube
+# from pytube import YouTube
 import random
 
 
@@ -250,67 +250,75 @@ def extract_frames_from_video(video_path, output_folder, frame_per_second,
     # Release the video capture object
     vidcap.release()
 
-def main(output_path):
-    """Starts whole proces of extract frames from a list of videos 
-    with options of how frames should be extracted in terms of number 
-    of frames and dimension of frames.
-    
-    Args:
-      output_path: folder path for video frames to be exported and 
-      stored into as JPGs.
-
-    Returns:
-      No return.
-    """
-
-    # List of unique Youtube IDs that will be used to search and download the 
-    # videos
-    yt_ids = [
-        "3TR7YwNESt0", "GkT1NLMY7xQ", "b28_gkUgqoE", "GMyL9JTfDps", 
-        "iNef2eekeK0", "QPfE-FqhQq4", "P--7W1h4khQ", "N7te_FRdSgk", 
-        "0jSLgzeFmao", "IpCafmoaImc", "PR1Pzaqew9w", "SPh_q2n3JYM", 
-        "ww9_f6hxYKo", "REhp68K-6mw", "l9ufvevHbkE", "TiqUpTAwWgY", 
-        "CNDZfj3BaqA", "voJaSCe8UyM", "UWRZ4gi3HAM", "5IwWfy2RhQE", 
-        "VEaJzYRrrD8", "nAtHjkKGr4A", "MKsYR-9ZD9M", "07kcsRHipyw", 
-        "Q0OfnLEpty4", "6--mQjcImjM", "3PrFqTav5Ow", "WSheIMbyC5w", 
-        "uIqbE0Ylh9o", "ebMlp9Kc_bY", "OvXAT3_GGec", "LDq9sFUjwQk", 
-        "J_nJYlZHpuw", "wXq_IU_vvrI", "Z1rRodHDapI", "6GEkwyK_tns", 
-        "s92f3CW9IdQ", "MHhK6jG6U2I", "vI-A3KJSBpk", "ZNs5igA6tZQ", 
-        "JxhUFn5CT6A", "iXnGftY7k_k", "6XJCvBBQu78", "BvrGLXMvc_o", 
-        "t81IJJVi-Us", "7nzwswUUDto", "-ZMb-QiqDJY", "zGiFcVKafQM", 
-        "hC7XPGO45hk", "VdFnyZWJAgo", "eRpbaoIOJjI", "dfPeeHyfpP8", 
-        "2C7_o5mfE6k", "dKBVWebVakI", "gRy76nNP6CQ", "mGQLXRTl3Z0", 
-        "PDJ_QZAbGi4", "w7Kh0LscP3U", "1u3yHICR_BU", "sBZJCnxdmPc", 
-        "yC8ovVGeUfA", "DpvxiC0osbA", "MNB8H2p9Kk0", "5sXcGZ60NpI", 
-        "kG3CrRcMgMk", "dTmuOKUPsYI", "RDnLgY2-abc", "WotHO4X1kak", 
-        "I0LedcEaPL0", "7WeXhVxpTAw", "JW9-YhFMYSE", "8PXQeH0g6jI", 
-        "wHfhjkI2L9M", "4UI2fPRaxpg", "7_8yPpCjK_w", "aLTH6DVXAcU", 
-        "KtsdeqrcO2U", "iuvaHDIGP5U", "mmJim2h-byQ", "FR1UZKD238Y", 
-        "42ULINLSfrE", "A2d2DHxV4l0", "4jxmrdkyjCc", "09iOwYycY6w", 
-        "AT97pTC97tY", "j9Re7hWGh3Y", "Zz9nwbi9oqA", "j4CwTQmRxiY", 
-        "vWytPM5Wawk", "WSvQ7_N1y08", "llpPao0uM7U", "-qRn8UyHogA", 
-        "MbuRvmZy3Yw", "MaYRimw-mx8", "Ng8QfKTk1KA", "seWlG50y-so", 
-        "fLH9GyDbUjU", "bw2Etrk6cHg", "fJ7yh1E9S-k", "1X2l_1za1g0", 
-        "DsQX--nVPJQ", "qxiDk7x6gkM", "BJW31sWO5cE", "CrBCIFZImKE", 
-        "3qHdCTe0mIs", "4-TAbbQmCtg", "qtIrc7YUEvo", "A2KrKTMSoEU", 
-        "Jsu5p6iAApI", "xFlBZMiVMT0", "qtVf-KkpX1w", "DEmhfGTWt8g", 
-        "PCicM6i59_I", "poCw2CCrfzA", "7Z96EdnfzoQ", "Yi9Xdiq579o", 
-        "qzl9w7gME50", "Vp2lSAv__wE", "VlIcqDWmPkw", "gtr9N_qdHag", 
-        "rifOR2Q0cRk", "bhxNofWXTEA", "aHiqoSUV5MA", "DB3kIKJPdUA", 
-        "RV4Ob2Y9hvQ", "BObT8M5Mnus", "bNLswbcgbF4", "stgIDZN6e5Q", 
-        "eWTR-puxJyo", "Y1ZO2qfr0ko", "D_a1o8biIAk", "PpcSlOZY3Aw", 
-        "heFoLuid8-Y", "JQOC7Za4Pbw"
-    ]
-    #Iterates through yt_ids where frames will be extracted from into jpgs
-    for i in range(0, len(yt_ids)):
-        print(f"Video {i}")
-
-        # Function that begins extracting frame process
-        extract_frames(yt_ids[i], "/content/SoloCelloFramesSetter", True, True)
-
+def main(video_path, output_path):
+    extract_frames(video_path, output_path, True, True)
 
 if __name__ == "__main__":
+    video_path = "/video_dataset/Right elbow too high.mp4"
+    output_path = "/posture_video_dataset"
+    main(video_path, output_path)
+
+# def main(output_path):
+#     """Starts whole proces of extract frames from a list of videos 
+#     with options of how frames should be extracted in terms of number 
+#     of frames and dimension of frames.
     
-    #Creates folder path for video frames to be exported and stored in as JPGs
-    output_path = "/content/SoloCelloFramesSetter"
-    main(output_path)
+#     Args:
+#       output_path: folder path for video frames to be exported and 
+#       stored into as JPGs.
+
+#     Returns:
+#       No return.
+#     """
+
+#     # List of unique Youtube IDs that will be used to search and download the 
+#     # videos
+#     yt_ids = [
+#         "3TR7YwNESt0", "GkT1NLMY7xQ", "b28_gkUgqoE", "GMyL9JTfDps", 
+#         "iNef2eekeK0", "QPfE-FqhQq4", "P--7W1h4khQ", "N7te_FRdSgk", 
+#         "0jSLgzeFmao", "IpCafmoaImc", "PR1Pzaqew9w", "SPh_q2n3JYM", 
+#         "ww9_f6hxYKo", "REhp68K-6mw", "l9ufvevHbkE", "TiqUpTAwWgY", 
+#         "CNDZfj3BaqA", "voJaSCe8UyM", "UWRZ4gi3HAM", "5IwWfy2RhQE", 
+#         "VEaJzYRrrD8", "nAtHjkKGr4A", "MKsYR-9ZD9M", "07kcsRHipyw", 
+#         "Q0OfnLEpty4", "6--mQjcImjM", "3PrFqTav5Ow", "WSheIMbyC5w", 
+#         "uIqbE0Ylh9o", "ebMlp9Kc_bY", "OvXAT3_GGec", "LDq9sFUjwQk", 
+#         "J_nJYlZHpuw", "wXq_IU_vvrI", "Z1rRodHDapI", "6GEkwyK_tns", 
+#         "s92f3CW9IdQ", "MHhK6jG6U2I", "vI-A3KJSBpk", "ZNs5igA6tZQ", 
+#         "JxhUFn5CT6A", "iXnGftY7k_k", "6XJCvBBQu78", "BvrGLXMvc_o", 
+#         "t81IJJVi-Us", "7nzwswUUDto", "-ZMb-QiqDJY", "zGiFcVKafQM", 
+#         "hC7XPGO45hk", "VdFnyZWJAgo", "eRpbaoIOJjI", "dfPeeHyfpP8", 
+#         "2C7_o5mfE6k", "dKBVWebVakI", "gRy76nNP6CQ", "mGQLXRTl3Z0", 
+#         "PDJ_QZAbGi4", "w7Kh0LscP3U", "1u3yHICR_BU", "sBZJCnxdmPc", 
+#         "yC8ovVGeUfA", "DpvxiC0osbA", "MNB8H2p9Kk0", "5sXcGZ60NpI", 
+#         "kG3CrRcMgMk", "dTmuOKUPsYI", "RDnLgY2-abc", "WotHO4X1kak", 
+#         "I0LedcEaPL0", "7WeXhVxpTAw", "JW9-YhFMYSE", "8PXQeH0g6jI", 
+#         "wHfhjkI2L9M", "4UI2fPRaxpg", "7_8yPpCjK_w", "aLTH6DVXAcU", 
+#         "KtsdeqrcO2U", "iuvaHDIGP5U", "mmJim2h-byQ", "FR1UZKD238Y", 
+#         "42ULINLSfrE", "A2d2DHxV4l0", "4jxmrdkyjCc", "09iOwYycY6w", 
+#         "AT97pTC97tY", "j9Re7hWGh3Y", "Zz9nwbi9oqA", "j4CwTQmRxiY", 
+#         "vWytPM5Wawk", "WSvQ7_N1y08", "llpPao0uM7U", "-qRn8UyHogA", 
+#         "MbuRvmZy3Yw", "MaYRimw-mx8", "Ng8QfKTk1KA", "seWlG50y-so", 
+#         "fLH9GyDbUjU", "bw2Etrk6cHg", "fJ7yh1E9S-k", "1X2l_1za1g0", 
+#         "DsQX--nVPJQ", "qxiDk7x6gkM", "BJW31sWO5cE", "CrBCIFZImKE", 
+#         "3qHdCTe0mIs", "4-TAbbQmCtg", "qtIrc7YUEvo", "A2KrKTMSoEU", 
+#         "Jsu5p6iAApI", "xFlBZMiVMT0", "qtVf-KkpX1w", "DEmhfGTWt8g", 
+#         "PCicM6i59_I", "poCw2CCrfzA", "7Z96EdnfzoQ", "Yi9Xdiq579o", 
+#         "qzl9w7gME50", "Vp2lSAv__wE", "VlIcqDWmPkw", "gtr9N_qdHag", 
+#         "rifOR2Q0cRk", "bhxNofWXTEA", "aHiqoSUV5MA", "DB3kIKJPdUA", 
+#         "RV4Ob2Y9hvQ", "BObT8M5Mnus", "bNLswbcgbF4", "stgIDZN6e5Q", 
+#         "eWTR-puxJyo", "Y1ZO2qfr0ko", "D_a1o8biIAk", "PpcSlOZY3Aw", 
+#         "heFoLuid8-Y", "JQOC7Za4Pbw"
+#     ]
+#     #Iterates through yt_ids where frames will be extracted from into jpgs
+#     for i in range(0, len(yt_ids)):
+#         print(f"Video {i}")
+
+#         # Function that begins extracting frame process
+#         extract_frames(yt_ids[i], "/content/SoloCelloFramesSetter", True, True)
+
+
+# if __name__ == "__main__":
+    
+#     #Creates folder path for video frames to be exported and stored in as JPGs
+#     output_path = "/content/SoloCelloFramesSetter"
+#     main(output_path)
