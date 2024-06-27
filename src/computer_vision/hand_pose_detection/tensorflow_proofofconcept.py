@@ -167,11 +167,11 @@ def main():
     """
     Main function that sets up video feed, runs model, and displays livestream
     """
-    model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/best.pt')  # Path to your model file
+    model = YOLO('best-2 (1).pt')  # Path to your model file
     
     with PoseLandmarker.create_from_options(pose_options) as pose_landmarker:
         with HandLandmarker.create_from_options(hand_options) as hand_landmarker:
-            video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Wrong bow hold.mp4'
+            video_file_path = 'Too much pronation (1).mp4'
             # get video capture
             video_capture = cv2.VideoCapture(video_file_path)
             frame_count = 0
