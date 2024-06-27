@@ -13,7 +13,20 @@ mp_drawing_styles = mp.solutions.drawing_styles
 mp_hands = mp.solutions.hands
 finger_coords = {}
 
+def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
+    dim = None
+    (h, w) = image.shape[:2]
 
+    if width is None and height is None:
+        return image
+    if width is None:
+        r = height / float(h)
+        dim = (int(w * r), height)
+    else:
+        r = width / float(w)
+        dim = (width, int(h * r))
+
+    return cv2.resize(image, dim, interpolation=inter)
 def store_finger_node_coords(id: int, cx: float, cy: float):
   ''' Function takes in a node id, the x and y position of the node.
   
@@ -24,9 +37,10 @@ def store_finger_node_coords(id: int, cx: float, cy: float):
     finger_coords[id] = []
   finger_coords[id].append((cx, cy))
 
-model = YOLO('best.pt')  # Path to your model file
+model = YOLO('best-2 1.pt')  # Path to your model file
 # For webcam input:
-video_file_path = 'Too much pronation (1).mp4'
+# model.overlap = 80
+video_file_path = 'Vertigo for Solo Cello - Cicely Parnas.mp4'
 cap = cv2.VideoCapture(video_file_path)
 with mp_hands.Hands(
     model_complexity=0,
@@ -63,28 +77,29 @@ with mp_hands.Hands(
           store_finger_node_coords(id, cx, cy)
           # print("id:", ids, " x:", cx, " y:", cy)
           # print("id type: ", type(ids), " x type: ", type(cx), " y type: ", type(cy))
-          # print (ids, cx, cy)
+          print (ids, cx, cy)
         mp_drawing.draw_landmarks(
             image,
             hand_landmarks,
             mp_hands.HAND_CONNECTIONS,
             mp_drawing_styles.get_default_hand_landmarks_style(),
             mp_drawing_styles.get_default_hand_connections_style())
-    
-    # add bounding boxes
+
     oriented_box_annotator = sv.OrientedBoxAnnotator()
     annotated_frame = oriented_box_annotator.annotate(
         scene=image,
         detections=detections
     )
+
     # print("Annotated Frame: ", annotated_frame)
     # Flip the image horizontally for a selfie-view display.
     # cv2.namedWindow('Mediapipe Hands', cv2.WINDOW_NORMAL)
 
+    image = ResizeWithAspectRatio(image, height=800)
     cv2.imshow('MediaPipe Hands', image)
     if cv2.waitKey(5) & 0xFF == 27:
       break
 cap.release()
 cv2.destroyAllWindows()
 # print("Hand node Values: ", hand_node_positions)
-print(finger_coords)
+# print(finger_coords)
