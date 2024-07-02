@@ -9,6 +9,7 @@ import ultralytics
 from ultralytics import YOLO
 from IPython.display import display, Image
 mp_drawing = mp.solutions.drawing_utils
+mp_pose = mp.solutions.pose
 mp_drawing_styles = mp.solutions.drawing_styles
 mp_hands = mp.solutions.hands
 finger_coords = {}
@@ -36,16 +37,18 @@ def store_finger_node_coords(id: int, cx: float, cy: float):
   if id not in finger_coords:
     finger_coords[id] = []
   finger_coords[id].append((cx, cy))
-
-model = YOLO('best-2 1.pt')  # Path to your model file
+model = YOLO('C:/Users/shiva/OneDrive/Documents/GitHub\Evaluator-code/src/computer_vision/hand_pose_detection/best-2 1.pt')  # Path to your model file
 # For webcam input:
 # model.overlap = 80
-video_file_path = 'Vertigo for Solo Cello - Cicely Parnas.mp4'
+video_file_path = 'src/computer_vision/hand_pose_detection/Too much pronation (1).mp4'
 cap = cv2.VideoCapture(video_file_path)
 with mp_hands.Hands(
     model_complexity=0,
     min_detection_confidence=0.5,
-    min_tracking_confidence=0.5) as hands:
+    min_tracking_confidence=0.5) as hands, mp_pose.Pose(
+    model_complexity=0,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5) as pose:
   while cap.isOpened():
     success, image = cap.read()
     if not success:
@@ -58,6 +61,7 @@ with mp_hands.Hands(
     image.flags.writeable = False
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = hands.process(image)
+    pose_results = pose.process(image)
     hand_node_positions = []
     # yolov8 prediction
     YOLOresults = model(image)
@@ -84,6 +88,12 @@ with mp_hands.Hands(
             mp_hands.HAND_CONNECTIONS,
             mp_drawing_styles.get_default_hand_landmarks_style(),
             mp_drawing_styles.get_default_hand_connections_style())
+        
+        mp_drawing.draw_landmarks(
+            image,
+            pose_results.pose_landmarks,
+            None,
+            mp_drawing.DrawingSpec(color=(255,0,0), thickness=2, circle_radius=4))
 
     oriented_box_annotator = sv.OrientedBoxAnnotator()
     annotated_frame = oriented_box_annotator.annotate(
