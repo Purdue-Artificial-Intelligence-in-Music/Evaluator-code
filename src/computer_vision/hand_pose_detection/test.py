@@ -103,7 +103,7 @@ with mp_hands.Hands(
             image,
             landmark_subset,
             None,
-            mp_drawing.DrawingSpec(color=(255,0,0), thickness=2, circle_radius=8))
+            mp_drawing.DrawingSpec(color=(255,0,0), thickness=10, circle_radius=6))
         
 
         landmark_subset = landmark_pb2.NormalizedLandmarkList(
@@ -113,7 +113,7 @@ with mp_hands.Hands(
             image,
             landmark_subset,
             None,
-            mp_drawing.DrawingSpec(color=(255,0,0), thickness=2, circle_radius=8))
+            mp_drawing.DrawingSpec(color=(255,0,0), thickness=10, circle_radius=6))
 
     oriented_box_annotator = sv.OrientedBoxAnnotator()
     annotated_frame = oriented_box_annotator.annotate(
