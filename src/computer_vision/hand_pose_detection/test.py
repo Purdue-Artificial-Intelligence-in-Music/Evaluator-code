@@ -2,16 +2,14 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
+from mediapipe.framework.formats import landmark_pb2
 
 import os
 import supervision as sv
 import ultralytics
 from ultralytics import YOLO
 from IPython.display import display, Image
-mp_drawing = mp.solutions.drawing_utils
-mp_drawing_styles = mp.solutions.drawing_styles
-mp_hands = mp.solutions.hands
-finger_coords = {}
+
 
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     dim = None
@@ -28,6 +26,9 @@ def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
 
     return cv2.resize(image, dim, interpolation=inter)
 def store_finger_node_coords(id: int, cx: float, cy: float):
+  finger_coords = {}
+
+
   ''' Function takes in a node id, the x and y position of the node.
   
     Stores the position in a list of positions with each index representing a frame
@@ -36,16 +37,25 @@ def store_finger_node_coords(id: int, cx: float, cy: float):
   if id not in finger_coords:
     finger_coords[id] = []
   finger_coords[id].append((cx, cy))
-
 model = YOLO('best-2 1.pt')  # Path to your model file
 # For webcam input:
 # model.overlap = 80
-video_file_path = 'Vertigo for Solo Cello - Cicely Parnas.mp4'
+video_file_path = 'Too much pronation (1).mp4'
 cap = cv2.VideoCapture(video_file_path)
+
+mp_drawing = mp.solutions.drawing_utils
+mp_pose = mp.solutions.pose
+mp_drawing_styles = mp.solutions.drawing_styles
+mp_hands = mp.solutions.hands
+
 with mp_hands.Hands(
     model_complexity=0,
     min_detection_confidence=0.5,
-    min_tracking_confidence=0.5) as hands:
+    min_tracking_confidence=0.5) as hands, mp_pose.Pose(
+    model_complexity=0,
+    min_detection_confidence=0.4,
+    min_tracking_confidence=0.6) as pose:
+  
   while cap.isOpened():
     success, image = cap.read()
     if not success:
@@ -58,6 +68,7 @@ with mp_hands.Hands(
     image.flags.writeable = False
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = hands.process(image)
+    pose_results = pose.process(image)
     hand_node_positions = []
     # yolov8 prediction
     YOLOresults = model(image)
@@ -84,6 +95,25 @@ with mp_hands.Hands(
             mp_hands.HAND_CONNECTIONS,
             mp_drawing_styles.get_default_hand_landmarks_style(),
             mp_drawing_styles.get_default_hand_connections_style())
+        
+        landmark_subset = landmark_pb2.NormalizedLandmarkList(
+          landmark = pose_results.pose_landmarks.landmark[11:15]
+        )
+        mp_drawing.draw_landmarks(
+            image,
+            landmark_subset,
+            None,
+            mp_drawing.DrawingSpec(color=(255,0,0), thickness=10, circle_radius=6))
+        
+
+        landmark_subset = landmark_pb2.NormalizedLandmarkList(
+          landmark = pose_results.pose_landmarks.landmark[23:29]
+        )
+        mp_drawing.draw_landmarks(
+            image,
+            landmark_subset,
+            None,
+            mp_drawing.DrawingSpec(color=(255,0,0), thickness=10, circle_radius=6))
 
     oriented_box_annotator = sv.OrientedBoxAnnotator()
     annotated_frame = oriented_box_annotator.annotate(
