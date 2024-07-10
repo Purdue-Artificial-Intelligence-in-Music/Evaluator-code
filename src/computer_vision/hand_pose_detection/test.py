@@ -76,17 +76,29 @@ with mp_hands.Hands(
         #   print("Box 1:", obb.xyxyxyxy)
         #   print("Box 2:", (obb.xyxyxyxy)[0])
         text = ""
-        for i in range(len(result.obb.xyxyxyxy)):
-          coords = result.obb.xyxyxyxy[i]  # Accessing xyxyxyxy property to get the coordinates
-          # text = text + "\n" + f"Box {i+1}: ({coords})"
-          coords_str = ", ".join(map(str, coords))
-          text += f"Box {i + 1}: ({coords_str})\n"
-          print(f"Box {i + 1} coordinates:")
-          print(coords)
-        max_text_width = 100  # Adjust based on your image and font size
-        wrapped_text = wrap_text(text, max_text_width)
-        bottom_left_corner = (20, image.shape[0] - 30)
-        cv2.putText(image, text,  bottom_left_corner, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        # for i in range(len(result.obb.xyxyxyxy)):
+        #   coords = result.obb.xyxyxyxy[i]  # Accessing xyxyxyxy property to get the coordinates
+        #   # text = text + "\n" + f"Box {i+1}: ({coords})"
+        #   coords_str = ", ".join(map(str, coords))
+        #   text += f"Box {i + 1}: ({coords_str})\n"
+        #   print(f"Box {i + 1} coordinates:")
+        #   print(coords)
+        # max_text_width = 100  # Adjust based on your image and font size
+        # wrapped_text = wrap_text(text, max_text_width)
+        
+        if (len(result.obb.xyxyxyxy) > 0):
+          coord_box_one = result.obb.xyxyxyxy[0]
+          text_one = f"Bow OBB coords: ({coord_box_one})"
+          print("Bow OBB coords:", coord_box_one)
+          bottom_left_corner = (20, image.shape[0] - 30)
+          cv2.putText(image, text_one,  bottom_left_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (98, 0, 158), 4)
+        if (len(result.obb.xyxyxyxy) >= 2):
+          coord_box_two = result.obb.xyxyxyxy[1]
+          # TA (Target Area)
+          text_two = f"TA OBB coords: ({coord_box_two})"
+          print("TA OBB coords", coord_box_two)
+          top_right_corner = (20, image.shape[1] + 100)
+          cv2.putText(image, text_two, top_right_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
 
 
     # for result in YOLOresults:
