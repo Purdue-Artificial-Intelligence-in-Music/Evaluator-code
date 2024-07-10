@@ -10,11 +10,16 @@ import ultralytics
 from ultralytics import YOLO
 from IPython.display import display, Image
 
+def wrap_text(text, max_width):
+  import textwrap
+  wrapper = textwrap.TextWrapper(width=max_width)
+  wrapped_text = wrapper.fill(text)
+  return wrapped_text
 
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     dim = None
     (h, w) = image.shape[:2]
-
+ 
     if width is None and height is None:
         return image
     if width is None:
@@ -23,7 +28,7 @@ def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     else:
         r = width / float(w)
         dim = (width, int(h * r))
-
+ 
     return cv2.resize(image, dim, interpolation=inter)
 def store_finger_node_coords(id: int, cx: float, cy: float):
   finger_coords = {}
@@ -55,14 +60,14 @@ with mp_hands.Hands(
     model_complexity=0,
     min_detection_confidence=0.4,
     min_tracking_confidence=0.6) as pose:
-  
+
   while cap.isOpened():
     success, image = cap.read()
     if not success:
       print("Ignoring empty camera frame.")
       # If loading a video, use 'break' instead of 'continue'.
       break
-
+ 
     # To improve performance, optionally mark the image as not writeable to
     # pass by reference.
     image.flags.writeable = False
@@ -72,7 +77,73 @@ with mp_hands.Hands(
     hand_node_positions = []
     # yolov8 prediction
     YOLOresults = model(image)
+    for result in YOLOresults:
+        obb = result.obb
+        # if obb is not None:
+        #   coords = obb.xyxyxyxy
+        #   print("Box 1:", obb.xyxyxyxy)
+        #   print("Box 2:", (obb.xyxyxyxy)[0])
+        text = ""
+        # for i in range(len(result.obb.xyxyxyxy)):
+        #   coords = result.obb.xyxyxyxy[i]  # Accessing xyxyxyxy property to get the coordinates
+        #   # text = text + "\n" + f"Box {i+1}: ({coords})"
+        #   coords_str = ", ".join(map(str, coords))
+        #   text += f"Box {i + 1}: ({coords_str})\n"
+        #   print(f"Box {i + 1} coordinates:")
+        #   print(coords)
+        # max_text_width = 100  # Adjust based on your image and font size
+        # wrapped_text = wrap_text(text, max_text_width)
+        
+        if (len(result.obb.xyxyxyxy) > 0):
+          coord_box_one = result.obb.xyxyxyxy[0]
+          text_one = f"Bow OBB coords: ({coord_box_one})"
+          print("Bow OBB coords:", coord_box_one)
+          bottom_left_corner = (20, image.shape[0] - 30)
+          cv2.putText(image, text_one,  bottom_left_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (98, 0, 158), 4)
+        if (len(result.obb.xyxyxyxy) >= 2):
+          coord_box_two = result.obb.xyxyxyxy[1]
+          # TA (Target Area)
+          text_two = f"TA OBB coords: ({coord_box_two})"
+          print("TA OBB coords", coord_box_two)
+          top_right_corner = (20, image.shape[1] + 100)
+          cv2.putText(image, text_two, top_right_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+
+
+    # for result in YOLOresults:
+    #   if result.obb:
+    #     obb = result.obb
+    #     for i in range(len(obb.xyxyxyxy)):
+    #       coords = obb.xyxyxyxy[i]
+    #       # Format coordinates text
+    #       text = f"Box {i + 1}: ({coords[0]}, {coords[1]}), ({coords[2]}, {coords[3]}), ({coords[4]}, {coords[5]}), ({coords[6]}, {coords[7]})"
+    #       # Draw text on the image
+    #     cv2.putText(image, text, (20, image.shape[0] - 30 - i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    #     #  print("Box 2:", obb.xyxyxyxy[1])
+    #     #  print(obb.id)
     detections = sv.Detections.from_ultralytics(YOLOresults[0])
+    # print("Detections:", detections)
+
+# Iterate over each detection
+    # count = 0
+    # for detection in detections:
+    #     count += 1
+    #     # print(f"Detection {count}: {detection}")
+    #     # print("Detection structure:", type(detection), detection)
+
+    #     # Ensure detection is iterable and extract coordinates, confidence, and class
+    #     try:
+    #         xyxy = detection[0]  # Bounding box coordinates
+    #         conf = detection[2]  # Confidence score
+    #         cls = detection[3]  # Class ID
+            
+    #         # Ensure xyxy is a list or array before converting to int
+    #         xmin, ymin, xmax, ymax = map(int, xyxy)
+    #         print(f"Bounding Box {count}: xmin={xmin}, ymin={ymin}, xmax={xmax}, ymax={ymax}")
+    #         text = f'({xmin},{ymin}),({xmax},{ymax})'
+    #         cv2.putText(image, text, (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+    #     except Exception as e:
+    #         print(f"Error processing detection {count}: {e}")
     # Draw the hand annotations on the image.
     image.flags.writeable = True
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
@@ -83,19 +154,25 @@ with mp_hands.Hands(
         for ids, landmrk in enumerate(hand_landmarks.landmark):
           # print(ids, landmrk)
           cx, cy = landmrk.x * image_width, landmrk.y*image_height
-
+ 
           # calls function to store position of nodes
           store_finger_node_coords(id, cx, cy)
           # print("id:", ids, " x:", cx, " y:", cy)
           # print("id type: ", type(ids), " x type: ", type(cx), " y type: ", type(cy))
-          print (ids, cx, cy)
+          # print (ids, cx, cy)
         mp_drawing.draw_landmarks(
             image,
             hand_landmarks,
             mp_hands.HAND_CONNECTIONS,
             mp_drawing_styles.get_default_hand_landmarks_style(),
             mp_drawing_styles.get_default_hand_connections_style())
-        
+
+        mp_drawing.draw_landmarks(
+            image,
+            pose_results.pose_landmarks,
+            None,
+            mp_drawing.DrawingSpec(color=(255,0,0), thickness=2, circle_radius=4))
+
         landmark_subset = landmark_pb2.NormalizedLandmarkList(
           landmark = pose_results.pose_landmarks.landmark[11:15]
         )
@@ -120,11 +197,11 @@ with mp_hands.Hands(
         scene=image,
         detections=detections
     )
-
-    # print("Annotated Frame: ", annotated_frame)
+ 
+    #print("Annotated Frame: ", annotated_frame)
     # Flip the image horizontally for a selfie-view display.
     # cv2.namedWindow('Mediapipe Hands', cv2.WINDOW_NORMAL)
-
+ 
     image = ResizeWithAspectRatio(image, height=800)
     cv2.imshow('MediaPipe Hands', image)
     if cv2.waitKey(5) & 0xFF == 27:
