@@ -167,12 +167,6 @@ with mp_hands.Hands(
             mp_drawing_styles.get_default_hand_landmarks_style(),
             mp_drawing_styles.get_default_hand_connections_style())
 
-        mp_drawing.draw_landmarks(
-            image,
-            pose_results.pose_landmarks,
-            None,
-            mp_drawing.DrawingSpec(color=(255,0,0), thickness=2, circle_radius=4))
-
         landmark_subset = landmark_pb2.NormalizedLandmarkList(
           landmark = pose_results.pose_landmarks.landmark[11:15]
         )
