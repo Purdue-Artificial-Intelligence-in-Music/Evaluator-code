@@ -79,12 +79,12 @@ def store_finger_node_coords(id: int, cx: float, cy: float):
   if id not in finger_coords:
     finger_coords[id] = []
   finger_coords[id].append((cx, cy))
+
 model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/best-2 1.pt')  # Path to your model file
 # For webcam input:
 # model.overlap = 80
 video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Too much pronation (1).mp4'
 cap = cv2.VideoCapture(video_file_path)
-
 
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
