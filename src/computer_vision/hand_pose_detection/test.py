@@ -90,6 +90,8 @@ def main():
   video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Too much pronation (1).mp4'
   cap = cv2.VideoCapture(video_file_path)
 
+  frame_count = 0
+
   mp_drawing = mp.solutions.drawing_utils
   mp_pose = mp.solutions.pose
   mp_drawing_styles = mp.solutions.drawing_styles
@@ -107,6 +109,7 @@ def main():
     writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(640,480)) # algo makes a frame every ~80ms = 12.5 fps
     while cap.isOpened():
       success, image = cap.read()
+      frame_count += 1
       #if not success:
         #print("Ignoring empty camera frame.")
         # If loading a video, use 'break' instead of 'continue'.
@@ -231,6 +234,16 @@ def main():
       # cv2.namedWindow('Mediapipe Hands', cv2.WINDOW_NORMAL)
   
       image = ResizeWithAspectRatio(image, height=800)
+      image = cv2.putText(
+                    image,
+                    "Frame {}".format(frame_count),
+                    (10, 50),
+                    cv2.QT_FONT_NORMAL,
+                    1,
+                    (0, 0, 255),
+                    1,
+                    cv2.LINE_AA
+                )
       writer.write(image)
       cv2.imshow('MediaPipe Hands', image)
       #if cv2.waitKey(5) & 0xFF == 27:
@@ -241,6 +254,6 @@ def main():
   cv2.destroyAllWindows()
   # print("Hand node Values: ", hand_node_positions)
   # print(finger_coords)
-  
+
 if __name__ == "__main__":
     main()
