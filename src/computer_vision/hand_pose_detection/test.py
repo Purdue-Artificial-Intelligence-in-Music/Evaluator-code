@@ -10,8 +10,6 @@ import ultralytics
 from ultralytics import YOLO
 from IPython.display import display, Image
 
-import threading 
-
 # option setup for gesture recognizer
 BaseOptions = mp.tasks.BaseOptions
 GestureRecognizer = mp.tasks.vision.GestureRecognizer
@@ -25,8 +23,6 @@ mp_hands = mp.solutions.hands
 
 # gesture model path (set path to gesture_recognizer_custom.task)
 gesture_model = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/gesture_recognizer_custom.task'
-
-lock = threading.Lock()
 
 class Point2D:
     def __init__(self, x=0, y=0):
@@ -99,15 +95,19 @@ def store_finger_node_coords(id: int, cx: float, cy: float):
     finger_coords[id] = []
   finger_coords[id].append((cx, cy))
 
-def put_gestures(frame, current_gestures):
-  lock.acquire()
-  # gestures = current_gestures
-  lock.release()
+def put_gestures(frame, current_gestures, current_handedness, current_score):
   y_pos = 50
+  """
   for hand_gesture_name in current_gestures:
     # show the prediction on the frame
     cv2.putText(frame, hand_gesture_name, (700, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, cv2.LINE_AA)
     print(hand_gesture_name)
+    y_pos += 50
+  """
+  for x in range(len(current_gestures)):
+    txt = current_handedness[x] + ": " + current_gestures[x] + " " + str(current_score[x])
+    cv2.putText(frame, txt, (700, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, cv2.LINE_AA)
+    print(txt)
     y_pos += 50
 
 def main():
@@ -122,7 +122,7 @@ def main():
   # model.overlap = 80
 
   #input file
-  video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Too much pronation (1).mp4'
+  video_file_path = '/Users/felixlu/Downloads/_Adolphus Hailstork Sonata for Solo Cello the 1st movement.mp4'
   cap = cv2.VideoCapture(video_file_path)
 
   frame_count = 0
@@ -153,6 +153,8 @@ def main():
       pose_results = pose.process(image)
       hand_node_positions = []
       current_gestures = []
+      current_handedness = []
+      current_score = []
 
       # recognize gestures
       mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
@@ -164,11 +166,19 @@ def main():
         print("Recognized gestures:")
         for single_hand_gesture_data in gesture_recognition_result.gestures:
           gesture_name = single_hand_gesture_data[0].category_name
-          # print(gesture_name)
           current_gestures.append(gesture_name)
 
+        for single_hand_handedness_data in gesture_recognition_result.handedness:
+          hand_name = single_hand_handedness_data[0].category_name
+          current_handedness.append(hand_name)
+
+        for single_hand_score_data in gesture_recognition_result.gestures:
+          score = single_hand_score_data[0].score
+          current_score.append(round(score, 2))
+
+
       # display classified gesture name
-      put_gestures(image, current_gestures)
+      put_gestures(image, current_gestures, current_handedness, current_score)
 
       #display classified gesture name
       # class_info =  str(getattr(gesture_recognition_result, 'gestures'))
