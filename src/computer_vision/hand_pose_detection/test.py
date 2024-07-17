@@ -3,10 +3,49 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from mediapipe.framework.formats import landmark_pb2
+
+import os
 import supervision as sv
 import ultralytics
 from ultralytics import YOLO
 import torch
+
+class Point2D:
+    def __init__(self, x=0, y=0):
+        self.x = x
+        self.y = y
+
+    def __repr__(self):
+        return f"Point2D({self.x}, {self.y})"
+
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+
+    def distance_to(self, other):
+        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
+
+    def move(self, dx, dy):
+        self.x += dx
+        self.y += dy
+
+    def as_tuple(self):
+        return (self.x, self.y)
+    
+    def find_point_p1(A, B, ratio=0.7):
+        """
+        Finds the coordinates of point P1 that is `ratio` distance from A to B.
+        
+        Parameters:
+        A (Point2D): Point A
+        B (Point2D): Point B
+        ratio (float): Ratio of the distance from A to B where P1 should be (default is 0.7)
+        
+        Returns:
+        Point2D: Coordinates of point P1
+        """
+        Px = A.x + ratio * (B.x - A.x)
+        Py = A.y + ratio * (B.y - A.y)
+        return Point2D(Px, Py)
 
 # Function to resize image with aspect ratio
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
