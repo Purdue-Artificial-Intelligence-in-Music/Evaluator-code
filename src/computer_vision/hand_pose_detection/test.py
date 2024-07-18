@@ -122,7 +122,7 @@ def main():
   # model.overlap = 80
 
   #input file
-  video_file_path = '/Users/felixlu/Downloads/_Adolphus Hailstork Sonata for Solo Cello the 1st movement.mp4'
+  video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
   cap = cv2.VideoCapture(video_file_path)
 
   frame_count = 0
