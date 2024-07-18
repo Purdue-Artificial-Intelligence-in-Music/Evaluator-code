@@ -8,18 +8,13 @@ import os
 import supervision as sv
 import ultralytics
 from ultralytics import YOLO
-from IPython.display import display, Image
+import torch
 
 # option setup for gesture recognizer
 BaseOptions = mp.tasks.BaseOptions
 GestureRecognizer = mp.tasks.vision.GestureRecognizer
 GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
-
-mp_drawing = mp.solutions.drawing_utils
-mp_pose = mp.solutions.pose
-mp_drawing_styles = mp.solutions.drawing_styles
-mp_hands = mp.solutions.hands
 
 # gesture model path (set path to gesture_recognizer_custom.task)
 gesture_model = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/gesture_recognizer_custom.task'
@@ -61,11 +56,10 @@ class Point2D:
         Py = A.y + ratio * (B.y - A.y)
         return Point2D(Px, Py)
 
-
+# Function to resize image with aspect ratio
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     dim = None
     (h, w) = image.shape[:2]
- 
     if width is None and height is None:
         return image
     if width is None:
@@ -74,36 +68,14 @@ def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     else:
         r = width / float(w)
         dim = (width, int(h * r))
- 
     return cv2.resize(image, dim, interpolation=inter)
 
-def store_finger_node_coords(id: int, cx: float, cy: float):
-  finger_coords = {}
+# Function to store finger node coordinates
+def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict):
+    if id not in finger_coords:
+        finger_coords[id] = []
+    finger_coords[id].append((cx, cy))
 
-
-  ''' Function takes in a node id, the x and y position of the node.
-  
-    Stores the position in a list of positions with each index representing a frame
-    from the video. The list for each node is acquired by using a dictionary with the id
-    as a key.'''
-  if id not in finger_coords:
-    finger_coords[id] = []
-  finger_coords[id].append((cx, cy))
-
-def put_gestures(frame, current_gestures, current_handedness, current_score):
-  y_pos = 50
-  """
-  for hand_gesture_name in current_gestures:
-    # show the prediction on the frame
-    cv2.putText(frame, hand_gesture_name, (700, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, cv2.LINE_AA)
-    print(hand_gesture_name)
-    y_pos += 50
-  """
-  for x in range(len(current_gestures)):
-    txt = current_handedness[x] + ": " + current_gestures[x] + " " + str(current_score[x])
-    cv2.putText(frame, txt, (700, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, cv2.LINE_AA)
-    print(txt)
-    y_pos += 50
 
 def main():
   num_hands = 2
@@ -122,6 +94,18 @@ def main():
 
   frame_count = 0
 
+  mp_drawing = mp.solutions.drawing_utils
+  mp_pose = mp.solutions.pose
+  mp_drawing_styles = mp.solutions.drawing_styles
+  mp_hands = mp.solutions.hands
+
+  finger_coords = {}
+
+  # Initialize video writer
+  output_file = 'outputthree.mp4'
+  fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+  writer = cv2.VideoWriter(output_file, fourcc, 12.5, (640, 480))
+
   with mp_hands.Hands(
       model_complexity=0,
       max_num_hands=num_hands,
@@ -135,10 +119,8 @@ def main():
     writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(640,480)) # algo makes a frame every ~80ms = 12.5 fps
     while cap.isOpened():
       success, image = cap.read()
-      #if not success:
-        #print("Ignoring empty camera frame.")
-        # If loading a video, use 'break' instead of 'continue'.
-        #break
+      if not success:
+        break
   
       # To improve performance, optionally mark the image as not writeable to
       # pass by reference.
@@ -171,150 +153,153 @@ def main():
           score = single_hand_score_data[0].score
           current_score.append(round(score, 2))
 
-
       # display classified gesture name
-      put_gestures(image, current_gestures, current_handedness, current_score)
+      y_pos = image.shape[0] - 70
+      for x in range(len(current_gestures)):
+        txt = current_handedness[x] + ": " + current_gestures[x] + " " + str(current_score[x])
+        cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, cv2.LINE_AA)
+        print(txt)
+        y_pos += 50
 
-      #display classified gesture name
-      # class_info =  str(getattr(gesture_recognition_result, 'gestures'))
-      # print(class_info)
-      # cv2.putText(image, class_info, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, cv2.LINE_AA)
-
-      # yolov8 prediction
       YOLOresults = model(image)
       for result in YOLOresults:
-          obb = result.obb
-          # if obb is not None:
-          #   coords = obb.xyxyxyxy
-          #   print("Box 1:", obb.xyxyxyxy)
-          #   print("Box 2:", (obb.xyxyxyxy)[0])
-          text = ""
-          # for i in range(len(result.obb.xyxyxyxy)):
-          #   coords = result.obb.xyxyxyxy[i]  # Accessing xyxyxyxy property to get the coordinates
-          #   # text = text + "\n" + f"Box {i+1}: ({coords})"
-          #   coords_str = ", ".join(map(str, coords))
-          #   text += f"Box {i + 1}: ({coords_str})\n"
-          #   print(f"Box {i + 1} coordinates:")
-          #   print(coords)
-          # max_text_width = 100  # Adjust based on your image and font size
-          # wrapped_text = wrap_text(text, max_text_width)
-          
-          if (len(result.obb.xyxyxyxy) > 0):
-            coord_box_one = result.obb.xyxyxyxy[0]
-            text_one = f"Bow OBB coords: ({coord_box_one})"
-            # print("Bow OBB coords:", coord_box_one)
-            bottom_left_corner = (20, image.shape[0] - 30)
-            cv2.putText(image, text_one,  bottom_left_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (98, 0, 158), 4)
-          if (len(result.obb.xyxyxyxy) >= 2):
-            coord_box_two = result.obb.xyxyxyxy[1]
-            # TA (Target Area)
-            text_two = f"TA OBB coords: ({coord_box_two})"
-            # print("TA OBB coords", coord_box_two)
-            top_right_corner = (20, image.shape[1] + 100)
-            cv2.putText(image, text_two, top_right_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+        if len(result.obb.xyxyxyxy) > 0:
+          coord_box_one = result.obb.xyxyxyxy[0]
+          round_coord_box_one = torch.round(coord_box_one)
 
+          box_one_coordinate_1 = round_coord_box_one[0]  # First coordinate (x1, y1)
+          box_two_coordinate_2 = round_coord_box_one[1]   # Second coordinate (x2, y2)
+          box_three_coordinate_3 = round_coord_box_one[2]   # Third coordinate (x3, y3)
+          box_four_coordinate_4 = round_coord_box_one[3]   # Fourth coordinate (x4, y4)
+          # print("coord box one", round_coord_box_one)
+          # print("first coord = ", coord_box_one)
+          # text_one = f"Bow OBB coords: ({round_coord_box_one})"
+          # bottom_left_corner = (20, image.shape[0] - 30)
+          # cv2.putText(image, text_one, bottom_left_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (98, 0, 158), 4)
+          x1, y1 = box_one_coordinate_1[0].item(), box_one_coordinate_1[1].item()
+          x2, y2 = box_two_coordinate_2[0].item(), box_two_coordinate_2[1].item()
+          x3, y3 = box_three_coordinate_3[0].item(), box_three_coordinate_3[1].item()
+          x4, y4 = box_four_coordinate_4[0].item(), box_four_coordinate_4[1].item()
 
-      # for result in YOLOresults:
-      #   if result.obb:
-      #     obb = result.obb
-      #     for i in range(len(obb.xyxyxyxy)):
-      #       coords = obb.xyxyxyxy[i]
-      #       # Format coordinates text
-      #       text = f"Box {i + 1}: ({coords[0]}, {coords[1]}), ({coords[2]}, {coords[3]}), ({coords[4]}, {coords[5]}), ({coords[6]}, {coords[7]})"
-      #       # Draw text on the image
-      #     cv2.putText(image, text, (20, image.shape[0] - 30 - i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-      #     #  print("Box 2:", obb.xyxyxyxy[1])
-      #     #  print(obb.id)
+          # Print rounded coordinates
+          print("coord box one", round_coord_box_one)
+          print("first coord = ", coord_box_one)
+
+          # Prepare text
+          text_one = "Box OBB Coords:"
+          text_coord1 = f"Coord 1: ({x1}, {y1})"
+          text_coord2 = f"Coord 2: ({x2}, {y2})"
+          text_coord3 = f"Coord 3: ({x3}, {y3})"
+          text_coord4 = f"Coord 4: ({x4}, {y4})"
+
+          # Define bottom left corners for each text line
+          bottom_left_corner_text_one = (20, image.shape[0] - 140)  # Adjusted to move higher
+          bottom_left_corner_coord1 = (20, image.shape[0] - 110)   # Adjusted to move higher
+          bottom_left_corner_coord2 = (20, image.shape[0] - 80)    # Adjusted to move higher
+          bottom_left_corner_coord3 = (20, image.shape[0] - 50)    # Adjusted to move higher
+          bottom_left_corner_coord4 = (20, image.shape[0] - 20)    # Adjusted to move higher
+
+          # Put text on image for box one
+          cv2.putText(image, text_one, bottom_left_corner_text_one, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
+          cv2.putText(image, text_coord1, bottom_left_corner_coord1, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
+          cv2.putText(image, text_coord2, bottom_left_corner_coord2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
+          cv2.putText(image, text_coord3, bottom_left_corner_coord3, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
+          cv2.putText(image, text_coord4, bottom_left_corner_coord4, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
+
+        if len(result.obb.xyxyxyxy) >= 2:
+          coord_box_two = result.obb.xyxyxyxy[1]
+          round_coord_box_two = torch.round(coord_box_two)
+          # text_two = f"TA OBB coords: ({coord_box_two})"
+          # top_right_corner = (20, image.shape[1] + 100)
+          # cv2.putText(image, text_two, top_right_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+          box_two_coordinate_1 = round_coord_box_two[0]  # First coordinate (x1, y1)
+          box_two_coordinate_2 = round_coord_box_two[1]  # Second coordinate (x2, y2)
+          box_two_coordinate_3 = round_coord_box_two[2]  # Third coordinate (x3, y3)
+          box_two_coordinate_4 = round_coord_box_two[3]  # Fourth coordinate (x4, y4)
+
+          # Extract individual points for box two
+          x1_2, y1_2 = box_two_coordinate_1[0].item(), box_two_coordinate_1[1].item()
+          x2_2, y2_2 = box_two_coordinate_2[0].item(), box_two_coordinate_2[1].item()
+          x3_2, y3_2 = box_two_coordinate_3[0].item(), box_two_coordinate_3[1].item()
+          x4_2, y4_2 = box_two_coordinate_4[0].item(), box_two_coordinate_4[1].item()
+
+          # Prepare text for box one
+          text_two = "TA OBB Coords:"
+          text_coord1_2 = f"Coord 1: ({x1_2}, {y1_2})"
+          text_coord2_2 = f"Coord 2: ({x2_2}, {y2_2})"
+          text_coord3_2 = f"Coord 3: ({x3_2}, {y3_2})"
+          text_coord4_2 = f"Coord 4: ({x4_2}, {y4_2})"
+          text_offset = 30  # spacing between lines
+          top_right_corner_text_two = (image.shape[1] - 550, text_offset + 20) # Adjusted to move down and left
+          top_right_corner_coord1_2 = (image.shape[1] - 550, text_offset * 2 + 20) # Adjusted to move down and left
+          top_right_corner_coord2_2 = (image.shape[1] - 550, text_offset * 3 + 20) # Adjusted to move down and left
+          top_right_corner_coord3_2 = (image.shape[1] - 550, text_offset * 4 + 20) # Adjusted to move down and left
+          top_right_corner_coord4_2 = (image.shape[1] - 550, text_offset * 5 + 20) # Adjusted to move down and left
+
+          # Put text on image for box two
+          cv2.putText(image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+          cv2.putText(image, text_coord1_2, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+          cv2.putText(image, text_coord2_2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+          cv2.putText(image, text_coord3_2, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+          cv2.putText(image, text_coord4_2, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+
       detections = sv.Detections.from_ultralytics(YOLOresults[0])
-      # print("Detections:", detections)
 
-  # Iterate over each detection
-      # count = 0
-      # for detection in detections:
-      #     count += 1
-      #     # print(f"Detection {count}: {detection}")
-      #     # print("Detection structure:", type(detection), detection)
-
-      #     # Ensure detection is iterable and extract coordinates, confidence, and class
-      #     try:
-      #         xyxy = detection[0]  # Bounding box coordinates
-      #         conf = detection[2]  # Confidence score
-      #         cls = detection[3]  # Class ID
-              
-      #         # Ensure xyxy is a list or array before converting to int
-      #         xmin, ymin, xmax, ymax = map(int, xyxy)
-      #         print(f"Bounding Box {count}: xmin={xmin}, ymin={ymin}, xmax={xmax}, ymax={ymax}")
-      #         text = f'({xmin},{ymin}),({xmax},{ymax})'
-      #         cv2.putText(image, text, (xmin, ymin - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-      #     except Exception as e:
-      #         print(f"Error processing detection {count}: {e}")
-      # Draw the hand annotations on the image.
       image.flags.writeable = True
       image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
       image_height, image_width, _ = image.shape
+
       if results.multi_hand_landmarks:
+          for hand_landmarks in results.multi_hand_landmarks:
+              for ids, landmrk in enumerate(hand_landmarks.landmark):
+                  cx, cy = landmrk.x * image_width, landmrk.y * image_height
+                  store_finger_node_coords(ids, cx, cy, finger_coords)
+              mp_drawing.draw_landmarks(
+                  image,
+                  hand_landmarks,
+                  mp_hands.HAND_CONNECTIONS,
+                  mp_drawing_styles.get_default_hand_landmarks_style(),
+                  mp_drawing_styles.get_default_hand_connections_style())
 
-        for hand_landmarks in results.multi_hand_landmarks:
-         
-          node_positions = []
-          for ids, landmrk in enumerate(hand_landmarks.landmark):
-            # print(ids, landmrk)
-            cx, cy = landmrk.x * image_width, landmrk.y*image_height
-  
-            # calls function to store position of nodes
-            store_finger_node_coords(id, cx, cy)
-            # print("id:", ids, " x:", cx, " y:", cy)
-            # print("id type: ", type(ids), " x type: ", type(cx), " y type: ", type(cy))
-            # print (ids, cx, cy)
-         
-          mp_drawing.draw_landmarks(
-              image,
-              hand_landmarks,
-              mp_hands.HAND_CONNECTIONS,
-              mp_drawing_styles.get_default_hand_landmarks_style(),
-              mp_drawing_styles.get_default_hand_connections_style())
-
-          landmark_subset = landmark_pb2.NormalizedLandmarkList(
-            landmark = pose_results.pose_landmarks.landmark[11:15]
-          )
-          mp_drawing.draw_landmarks(
-              image,
-              landmark_subset,
-              None,
-              mp_drawing.DrawingSpec(color=(255,0,0), thickness=10, circle_radius=6))
+              landmark_subset = landmark_pb2.NormalizedLandmarkList(
+                  landmark=pose_results.pose_landmarks.landmark[11:15]
+              )
+              mp_drawing.draw_landmarks(
+                  image,
+                  landmark_subset,
+                  None,
+                  mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=10, circle_radius=6))
 
       oriented_box_annotator = sv.OrientedBoxAnnotator()
       annotated_frame = oriented_box_annotator.annotate(
           scene=image,
           detections=detections
       )
-  
-      #print("Annotated Frame: ", annotated_frame)
-      # Flip the image horizontally for a selfie-view display.
-      # cv2.namedWindow('Mediapipe Hands', cv2.WINDOW_NORMAL)
-  
+
       image = ResizeWithAspectRatio(image, height=800)
       image = cv2.putText(
-                    image,
-                    "Frame {}".format(frame_count),
-                    (10, 50),
-                    cv2.QT_FONT_NORMAL,
-                    1,
-                    (0, 0, 255),
-                    1,
-                    cv2.LINE_AA
-                )
-      writer.write(image)
+          image,
+          "Frame {}".format(frame_count),
+          (10, 50),
+          cv2.QT_FONT_NORMAL,
+          1,
+          (0, 0, 255),
+          1,
+          cv2.LINE_AA
+      )
+      
+      # Resize to original dimension before writing
+      resized_frame = cv2.resize(image, (640, 480))
+
+      writer.write(resized_frame)
       cv2.imshow('MediaPipe Hands', image)
-      #if cv2.waitKey(5) & 0xFF == 27:
-        #break
+
       if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-  cap.release()
-  cv2.destroyAllWindows()
-  # print("Hand node Values: ", hand_node_positions)
-  # print(finger_coords)
+          break
+
+    cap.release()
+    writer.release()
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
