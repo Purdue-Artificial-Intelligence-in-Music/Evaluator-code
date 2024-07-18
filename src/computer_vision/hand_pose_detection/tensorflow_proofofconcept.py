@@ -167,7 +167,7 @@ def main():
     """
     Main function that sets up video feed, runs model, and displays livestream
     """
-    model = YOLO('best-2 (1).pt')  # Path to your model file
+    model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4')  # Path to your model file
     
     with PoseLandmarker.create_from_options(pose_options) as pose_landmarker:
         with HandLandmarker.create_from_options(hand_options) as hand_landmarker:

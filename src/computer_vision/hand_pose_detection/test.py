@@ -61,11 +61,6 @@ class Point2D:
         Py = A.y + ratio * (B.y - A.y)
         return Point2D(Px, Py)
 
-def wrap_text(text, max_width):
-  import textwrap
-  wrapper = textwrap.TextWrapper(width=max_width)
-  wrapped_text = wrapper.fill(text)
-  return wrapped_text
 
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     dim = None
@@ -261,7 +256,7 @@ def main():
       if results.multi_hand_landmarks:
 
         for hand_landmarks in results.multi_hand_landmarks:
-          """
+         
           node_positions = []
           for ids, landmrk in enumerate(hand_landmarks.landmark):
             # print(ids, landmrk)
@@ -272,7 +267,7 @@ def main():
             # print("id:", ids, " x:", cx, " y:", cy)
             # print("id type: ", type(ids), " x type: ", type(cx), " y type: ", type(cy))
             # print (ids, cx, cy)
-          """
+         
           mp_drawing.draw_landmarks(
               image,
               hand_landmarks,
@@ -322,4 +317,4 @@ def main():
   # print(finger_coords)
 
 if __name__ == "__main__":
-  main()
+    main()
