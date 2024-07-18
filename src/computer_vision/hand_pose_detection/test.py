@@ -78,12 +78,6 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
 
 
 def main():
-  num_hands = 2
-  gesture_options = GestureRecognizerOptions(
-    base_options=BaseOptions(model_asset_path=gesture_model),
-    running_mode=VisionRunningMode.VIDEO,
-    num_hands = num_hands)
-
   model = YOLO('/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/best-2 1.pt')  # Path to your model file
   # For webcam input:
   # model.overlap = 80
@@ -105,6 +99,13 @@ def main():
   output_file = 'outputthree.mp4'
   fourcc = cv2.VideoWriter_fourcc(*'mp4v')
   writer = cv2.VideoWriter(output_file, fourcc, 12.5, (640, 480))
+
+  #setup gesture options
+  num_hands = 2
+  gesture_options = GestureRecognizerOptions(
+    base_options=BaseOptions(model_asset_path=gesture_model),
+    running_mode=VisionRunningMode.VIDEO,
+    num_hands = num_hands)
 
   with mp_hands.Hands(
       model_complexity=0,
@@ -129,6 +130,8 @@ def main():
       results = hands.process(image)
       pose_results = pose.process(image)
       hand_node_positions = []
+
+      # gesture classification data arrays
       current_gestures = []
       current_handedness = []
       current_score = []
@@ -138,7 +141,7 @@ def main():
       gesture_recognition_result = recognizer.recognize_for_video(mp_image, frame_count)
       frame_count += 1
 
-
+      # obtain neccesary data into array for display (using array because there are two hands)
       if gesture_recognition_result is not None and any(gesture_recognition_result.gestures):
         print("Recognized gestures:")
         for single_hand_gesture_data in gesture_recognition_result.gestures:
@@ -153,7 +156,7 @@ def main():
           score = single_hand_score_data[0].score
           current_score.append(round(score, 2))
 
-      # display classified gesture name
+      # display classified gesture data on frames
       y_pos = image.shape[0] - 70
       for x in range(len(current_gestures)):
         txt = current_handedness[x] + ": " + current_gestures[x] + " " + str(current_score[x])
