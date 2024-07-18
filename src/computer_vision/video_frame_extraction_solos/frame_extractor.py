@@ -134,7 +134,7 @@ def extract_frames_from_video(video_path, output_folder, frame_per_second, image
     success, image = vidcap.read()
 
     total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-    random_frame_list = generate_unique_random_list(1, total_frames, 76)
+    random_frame_list = generate_unique_random_list(1, total_frames, 100)
 
     if frame_per_second:
         fps = vidcap.get(cv2.CAP_PROP_FPS)
@@ -145,11 +145,14 @@ def extract_frames_from_video(video_path, output_folder, frame_per_second, image
 
             if success:
                 frame_filename = os.path.join(output_folder, f"frame_{frame_number}.jpg")
+                """
                 if image_crop_check:
                     image = crop_to_square(image, dimension_x, dimension_y)
                     if image is None:
                         print(f"Error: Failed to crop frame {frame_number}")
                         continue
+                
+                """
                 cv2.imwrite(frame_filename, image)
                 print(f"Frame {frame_number} extracted")
             else:
@@ -179,8 +182,8 @@ def main(video_path, output_path):
     extract_frames(video_path, output_path, True, True)
 
 if __name__ == "__main__":
-    video_path = "20240614_164214.mp4"
-    output_path = "posture_video_dataset"
+    video_path = "/Users/felixlu/Downloads/HYS Cello Sample Audition (480p60).mp4"
+    output_path = "/Users/felixlu/Desktop/Evaluator_Videos"
     main(video_path, output_path)
 
 # import shutil
