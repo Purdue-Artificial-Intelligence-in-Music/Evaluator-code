@@ -160,7 +160,7 @@ def main():
       y_pos = image.shape[0] - 70
       for x in range(len(current_gestures)):
         txt = current_handedness[x] + ": " + current_gestures[x] + " " + str(current_score[x])
-        cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2, cv2.LINE_AA)
+        cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (173,216,230), 2, cv2.LINE_AA)
         print(txt)
         y_pos += 50
 
