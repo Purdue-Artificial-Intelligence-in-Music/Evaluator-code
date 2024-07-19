@@ -10,6 +10,8 @@ import ultralytics
 from ultralytics import YOLO
 import torch
 
+# Gesture model for hands
+
 # option setup for gesture recognizer
 BaseOptions = mp.tasks.BaseOptions
 GestureRecognizer = mp.tasks.vision.GestureRecognizer
@@ -17,7 +19,9 @@ GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # gesture model path (set path to gesture_recognizer_custom.task)
-gesture_model = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/gesture_recognizer_custom.task'
+gesture_model = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/gesture_recognizer_custom.task'
+
+# A class that stores methods/data for 2d points on the screen
 
 class Point2D:
     def __init__(self, x=0, y=0):
@@ -78,15 +82,20 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
 
 
 def main():
-  model = YOLO('/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/best-2 1.pt')  # Path to your model file
+  # YOLOv8 model trained from Roboflow dataset
+  # Used for bow and target area oriented bounding boxes
+  model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/best-2 1.pt')  # Path to your model file
+  
   # For webcam input:
   # model.overlap = 80
 
-  #input file
-  video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
-  cap = cv2.VideoCapture(video_file_path)
+  #input video file
+  video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
+  cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
   frame_count = 0
+  output_frame_length = 960
+  output_frame_width = 720
 
   mp_drawing = mp.solutions.drawing_utils
   mp_pose = mp.solutions.pose
@@ -96,9 +105,10 @@ def main():
   finger_coords = {}
 
   # Initialize video writer
-  output_file = 'outputthree.mp4'
+  output_file = 'output.mp4' 
   fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-  writer = cv2.VideoWriter(output_file, fourcc, 12.5, (640, 480))
+  # saves output video to output_file
+  writer = cv2.VideoWriter(output_file, fourcc, 12.5, (output_frame_length, output_frame_width))
 
   #setup gesture options
   num_hands = 2
@@ -117,7 +127,7 @@ def main():
       min_tracking_confidence=0.6) as pose, GestureRecognizer.create_from_options(gesture_options) as recognizer:
 
 
-    writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(640,480)) # algo makes a frame every ~80ms = 12.5 fps
+    writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(output_frame_length,output_frame_width)) # algo makes a frame every ~80ms = 12.5 fps
     while cap.isOpened():
       success, image = cap.read()
       if not success:
@@ -174,11 +184,7 @@ def main():
           box_two_coordinate_2 = round_coord_box_one[1]   # Second coordinate (x2, y2)
           box_three_coordinate_3 = round_coord_box_one[2]   # Third coordinate (x3, y3)
           box_four_coordinate_4 = round_coord_box_one[3]   # Fourth coordinate (x4, y4)
-          # print("coord box one", round_coord_box_one)
-          # print("first coord = ", coord_box_one)
-          # text_one = f"Bow OBB coords: ({round_coord_box_one})"
-          # bottom_left_corner = (20, image.shape[0] - 30)
-          # cv2.putText(image, text_one, bottom_left_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (98, 0, 158), 4)
+
           x1, y1 = box_one_coordinate_1[0].item(), box_one_coordinate_1[1].item()
           x2, y2 = box_two_coordinate_2[0].item(), box_two_coordinate_2[1].item()
           x3, y3 = box_three_coordinate_3[0].item(), box_three_coordinate_3[1].item()
@@ -189,7 +195,7 @@ def main():
           print("first coord = ", coord_box_one)
 
           # Prepare text
-          text_one = "Box OBB Coords:"
+          text_one = "Bow OBB Coords:"
           text_coord1 = f"Coord 1: ({x1}, {y1})"
           text_coord2 = f"Coord 2: ({x2}, {y2})"
           text_coord3 = f"Coord 3: ({x3}, {y3})"
@@ -212,9 +218,7 @@ def main():
         if len(result.obb.xyxyxyxy) >= 2:
           coord_box_two = result.obb.xyxyxyxy[1]
           round_coord_box_two = torch.round(coord_box_two)
-          # text_two = f"TA OBB coords: ({coord_box_two})"
-          # top_right_corner = (20, image.shape[1] + 100)
-          # cv2.putText(image, text_two, top_right_corner, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+
           box_two_coordinate_1 = round_coord_box_two[0]  # First coordinate (x1, y1)
           box_two_coordinate_2 = round_coord_box_two[1]  # Second coordinate (x2, y2)
           box_two_coordinate_3 = round_coord_box_two[2]  # Third coordinate (x3, y3)
@@ -291,8 +295,8 @@ def main():
           cv2.LINE_AA
       )
       
-      # Resize to original dimension before writing
-      resized_frame = cv2.resize(image, (640, 480))
+      # Resize to specified output dimensions before writing
+      resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
       writer.write(resized_frame)
       cv2.imshow('MediaPipe Hands', image)
