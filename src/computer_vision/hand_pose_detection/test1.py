@@ -101,10 +101,10 @@ def get_position(lm: NormalizedLandmark, width: int, height: int) -> tuple[int, 
     y = int(height * lm.y)
     return x, y
 
-model = YOLO('/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/best-2 1.pt')  # Path to your model file
+model = YOLO('best-2 1.pt')  # Path to your model file
 # For webcam input:
 # model.overlap = 80
-video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Too much pronation (1).mp4'
+video_file_path = 'Too much pronation (1).mp4'
 cap = cv2.VideoCapture(video_file_path)
 with mp_hands.Hands(
     model_complexity=0,
