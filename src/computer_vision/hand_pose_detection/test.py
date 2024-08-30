@@ -84,7 +84,7 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
 def main():
   # YOLOv8 model trained from Roboflow dataset
   # Used for bow and target area oriented bounding boxes
-  model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/best-2 1.pt')  # Path to your model file
+  model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt')  # Path to your model file
   
   # For webcam input:
   # model.overlap = 80
@@ -113,7 +113,7 @@ def main():
   #setup gesture options
   num_hands = 2
   gesture_options = GestureRecognizerOptions(
-    base_options=BaseOptions(model_asset_path=gesture_model),
+    base_options=BaseOptions(model_asset_buffer=open(gesture_model, "rb").read()),
     running_mode=VisionRunningMode.VIDEO,
     num_hands = num_hands)
 
