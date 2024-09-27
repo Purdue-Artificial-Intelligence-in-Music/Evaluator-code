@@ -19,7 +19,7 @@ GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # gesture model path (set path to gesture_recognizer_custom.task)
-gesture_model = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/gesture_recognizer_custom.task'
+gesture_model = 'gesture_recognizer_custom.task'
 
 # A class that stores methods/data for 2d points on the screen
 
@@ -80,17 +80,50 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
         finger_coords[id] = []
     finger_coords[id].append((cx, cy))
 
-
+def find_intersection(p1, p2, p3, p4):
+    # Line 1: passing through p1 and p2
+    A1 = p2[1] - p1[1]  # y2 - y1
+    B1 = p1[0] - p2[0]  # x1 - x2
+    C1 = A1 * p1[0] + B1 * p1[1]
+ 
+    # Line 2: passing through p3 and p4
+    A2 = p4[1] - p3[1]  # y4 - y3
+    B2 = p3[0] - p4[0]  # x3 - x4
+    C2 = A2 * p3[0] + B2 * p3[1]
+ 
+    # Determinant of the system
+    det = A1 * B2 - A2 * B1
+ 
+    if det == 0:
+        # Lines are parallel (no intersection)
+        return None
+    else:
+        # Lines intersect, solving for x and y
+        x = (B2 * C1 - B1 * C2) / det
+        y = (A1 * C2 - A2 * C1) / det
+        return (x, y)
+ 
+# Example usage:
+p1 = (1, 1)
+p2 = (4, 4)
+p3 = (3, 3)
+p4 = (6, 6)
+ 
+intersection = find_intersection(p1, p2, p3, p4)
+if intersection:
+    print("Intersection point:", intersection)
+else:
+    print("No intersection (lines are parallel).")
 def main():
   # YOLOv8 model trained from Roboflow dataset
   # Used for bow and target area oriented bounding boxes
-  model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt')  # Path to your model file
+  model = YOLO('bow_target.pt')  # Path to your model file
   
   # For webcam input:
   # model.overlap = 80
 
   #input video file
-  video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
+  video_file_path = 'Vertigo for Solo Cello - Cicely Parnas.mp4'
   cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
   frame_count = 0
@@ -176,85 +209,121 @@ def main():
 
       YOLOresults = model(image)
       for result in YOLOresults:
+        if intersection:
+            print("Intersection point:", intersection)
+        else:
+            print("No intersection (lines are parallel).")
         if len(result.obb.xyxyxyxy) > 0:
           coord_box_one = result.obb.xyxyxyxy[0]
           round_coord_box_one = torch.round(coord_box_one)
 
-          box_one_coordinate_1 = round_coord_box_one[0]  # First coordinate (x1, y1)
-          box_two_coordinate_2 = round_coord_box_one[1]   # Second coordinate (x2, y2)
-          box_three_coordinate_3 = round_coord_box_one[2]   # Third coordinate (x3, y3)
-          box_four_coordinate_4 = round_coord_box_one[3]   # Fourth coordinate (x4, y4)
+          box_str_coordinate_1 = round_coord_box_one[0]  # First coordinate (x1, y1)
+          box_str_coordinate_2 = round_coord_box_one[1]   # Second coordinate (x2, y2)
+          box_str_coordinate_3 = round_coord_box_one[2]   # Third coordinate (x3, y3)
+          box_str_coordinate_4 = round_coord_box_one[3]   # Fourth coordinate (x4, y4)
 
-          x1, y1 = box_one_coordinate_1[0].item(), box_one_coordinate_1[1].item()
-          x2, y2 = box_two_coordinate_2[0].item(), box_two_coordinate_2[1].item()
-          x3, y3 = box_three_coordinate_3[0].item(), box_three_coordinate_3[1].item()
-          x4, y4 = box_four_coordinate_4[0].item(), box_four_coordinate_4[1].item()
+          #create Point2D objects for each box coordinate
+          box_str_point_one = Point2D(box_str_coordinate_1[0].item(), box_str_coordinate_1[1].item())
+          box_str_point_two = Point2D(box_str_coordinate_2[0].item(), box_str_coordinate_2[1].item())
+          box_str_point_three = Point2D(box_str_coordinate_3[0].item(), box_str_coordinate_3[1].item())
+          box_str_point_four = Point2D(box_str_coordinate_4[0].item(), box_str_coordinate_4[1].item())
 
           # Print rounded coordinates
-          print("coord box one", round_coord_box_one)
-          print("first coord = ", coord_box_one)
+          # print("coord box one", round_coord_box_one)
+          # print("first coord = ", coord_box_one)
 
           # Prepare text
-          text_one = "Bow OBB Coords:"
-          text_coord1 = f"Coord 1: ({x1}, {y1})"
-          text_coord2 = f"Coord 2: ({x2}, {y2})"
-          text_coord3 = f"Coord 3: ({x3}, {y3})"
-          text_coord4 = f"Coord 4: ({x4}, {y4})"
+          text_one = "String OBB Coords:"
+          text_coord1 = f"Coord 1: ({box_str_point_one.x}, {box_str_point_one.y})"
+          text_coord2 = f"Coord 2: ({box_str_point_two.x}, {box_str_point_two.y})"
+          text_coord3 = f"Coord 3: ({box_str_point_three.x}, {box_str_point_three.y})"
+          text_coord4 = f"Coord 4: ({box_str_point_four.x}, {box_str_point_four.y})"
+
+          # Define the color and size of the dot
+          radius = 5           # Radius of the dot
+          thickness = -1       # Thickness -1 fills the circle, creating a dot
+
+          #SHOWING DOTS
+          cv2.circle(image, (int(box_str_point_one.x), int(box_str_point_one.y)), radius, (255, 255, 255), thickness)
+          cv2.circle(image, (int(box_str_point_two.x), int(box_str_point_two.y)), radius, (255, 255, 255), thickness)
+          cv2.circle(image, (int(box_str_point_three.x), int(box_str_point_three.y)), radius, (255, 255, 255), thickness)
+          cv2.circle(image, (int(box_str_point_four.x), int(box_str_point_four.y)), radius, (255, 255, 255), thickness)
 
           # Define bottom left corners for each text line
-          bottom_left_corner_text_one = (20, image.shape[0] - 140)  # Adjusted to move higher
-          bottom_left_corner_coord1 = (20, image.shape[0] - 110)   # Adjusted to move higher
-          bottom_left_corner_coord2 = (20, image.shape[0] - 80)    # Adjusted to move higher
-          bottom_left_corner_coord3 = (20, image.shape[0] - 50)    # Adjusted to move higher
-          bottom_left_corner_coord4 = (20, image.shape[0] - 20)    # Adjusted to move higher
-
+          bottom_left_corner_text_one = (image.shape[1] - 370, 35 * 6 + 20)  # Adjusted to move higher
+          bottom_left_corner_coord1 = (image.shape[1] - 370, 35 * 7 + 15)   # Adjusted to move higher
+          bottom_left_corner_coord2 = (image.shape[1] - 370, 35 * 8 + 10)    # Adjusted to move higher
+          bottom_left_corner_coord3 = (image.shape[1] - 370, 35 * 9 + 5)    # Adjusted to move higher
+          bottom_left_corner_coord4 = (image.shape[1] - 370, 35 * 10 + 0)    # Adjusted to move higher
           # Put text on image for box one
-          cv2.putText(image, text_one, bottom_left_corner_text_one, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
-          cv2.putText(image, text_coord1, bottom_left_corner_coord1, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
-          cv2.putText(image, text_coord2, bottom_left_corner_coord2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
-          cv2.putText(image, text_coord3, bottom_left_corner_coord3, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
-          cv2.putText(image, text_coord4, bottom_left_corner_coord4, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (48, 198, 26), 4)
+          cv2.putText(image, text_one, bottom_left_corner_text_one, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+          cv2.putText(image, text_coord1, bottom_left_corner_coord1, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+          cv2.putText(image, text_coord2, bottom_left_corner_coord2, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+          cv2.putText(image, text_coord3, bottom_left_corner_coord3, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+          cv2.putText(image, text_coord4, bottom_left_corner_coord4, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+        
+          # CALCULATING P1
+          #pointOne = Point2D.find_point_p1(leftCoordOne, rightCoordTwo, ratio=0.7)
+
 
         if len(result.obb.xyxyxyxy) >= 2:
           coord_box_two = result.obb.xyxyxyxy[1]
           round_coord_box_two = torch.round(coord_box_two)
 
-          box_two_coordinate_1 = round_coord_box_two[0]  # First coordinate (x1, y1)
-          box_two_coordinate_2 = round_coord_box_two[1]  # Second coordinate (x2, y2)
-          box_two_coordinate_3 = round_coord_box_two[2]  # Third coordinate (x3, y3)
-          box_two_coordinate_4 = round_coord_box_two[3]  # Fourth coordinate (x4, y4)
+          box_bow_coordinate_1 = round_coord_box_two[0]  # First coordinate (x1, y1)
+          box_bow_coordinate_2 = round_coord_box_two[1]  # Second coordinate (x2, y2)
+          box_bow_coordinate_3 = round_coord_box_two[2]  # Third coordinate (x3, y3)
+          box_bow_coordinate_4 = round_coord_box_two[3]  # Fourth coordinate (x4, y4)
 
-          # Extract individual points for box two
-          x1_2, y1_2 = box_two_coordinate_1[0].item(), box_two_coordinate_1[1].item()
-          x2_2, y2_2 = box_two_coordinate_2[0].item(), box_two_coordinate_2[1].item()
-          x3_2, y3_2 = box_two_coordinate_3[0].item(), box_two_coordinate_3[1].item()
-          x4_2, y4_2 = box_two_coordinate_4[0].item(), box_two_coordinate_4[1].item()
+          # Define the color and size of the dot
+          radius = 5           # Radius of the dot
+          thickness = -1       # Thickness -1 fills the circle, creating a dot
+          # Add the dot to the image at the specified coordinates
+          box_bow_coord_one = Point2D(box_bow_coordinate_1[0].item(), box_bow_coordinate_1[1].item())
+          box_bow_coord_two = Point2D(box_bow_coordinate_2[0].item(), box_bow_coordinate_2[1].item())
+          box_bow_coord_three = Point2D(box_bow_coordinate_3[0].item(), box_bow_coordinate_3[1].item())
+          box_bow_coord_four = Point2D(box_bow_coordinate_4[0].item(), box_bow_coordinate_4[1].item())
+          # SHOWING DOTS
+          cv2.circle(image, (int(box_bow_coord_one.x), int(box_bow_coord_one.y)), radius, (0,0,0), thickness)
+          cv2.circle(image, (int(box_bow_coord_two.x), int(box_bow_coord_two.y)), radius, (0,0,256), thickness)
+          cv2.circle(image, (int(box_bow_coord_three.x), int(box_bow_coord_three.y)), radius, (0,256,0), thickness)
+          cv2.circle(image, (int(box_bow_coord_four.x), int(box_bow_coord_four.y)), radius, (256,0,0), thickness)
 
           # Prepare text for box one
-          text_two = "TA OBB Coords:"
-          text_coord1_2 = f"Coord 1: ({x1_2}, {y1_2})"
-          text_coord2_2 = f"Coord 2: ({x2_2}, {y2_2})"
-          text_coord3_2 = f"Coord 3: ({x3_2}, {y3_2})"
-          text_coord4_2 = f"Coord 4: ({x4_2}, {y4_2})"
-          text_offset = 30  # spacing between lines
-          top_right_corner_text_two = (image.shape[1] - 550, text_offset + 20) # Adjusted to move down and left
-          top_right_corner_coord1_2 = (image.shape[1] - 550, text_offset * 2 + 20) # Adjusted to move down and left
-          top_right_corner_coord2_2 = (image.shape[1] - 550, text_offset * 3 + 20) # Adjusted to move down and left
-          top_right_corner_coord3_2 = (image.shape[1] - 550, text_offset * 4 + 20) # Adjusted to move down and left
-          top_right_corner_coord4_2 = (image.shape[1] - 550, text_offset * 5 + 20) # Adjusted to move down and left
+          text_coord1 = f"Coord 1: ({box_bow_coord_one.x}, {box_bow_coord_one.y})"
+          text_coord2 = f"Coord 2: ({box_bow_coord_two.x}, {box_bow_coord_two.y})"
+          text_coord3 = f"Coord 3: ({box_bow_coord_three.x}, {box_bow_coord_three.y})"
+          text_coord4 = f"Coord 4: ({box_bow_coord_four.x}, {box_bow_coord_four.y})"
+
+          text_offset = 35  # increased spacing between lines
+          top_right_corner_text_two = (image.shape[1] - 370, text_offset + 20) # Adjusted to move down and left
+          top_right_corner_coord1_2 = (image.shape[1] - 370, text_offset * 2 + 15) # Adjusted to move down and left
+          top_right_corner_coord2_2 = (image.shape[1] - 370, text_offset * 3 + 10) # Adjusted to move down and left
+          top_right_corner_coord3_2 = (image.shape[1] - 370, text_offset * 4 + 5) # Adjusted to move down and left
+          top_right_corner_coord4_2 = (image.shape[1] - 370, text_offset * 5 + 0) # Adjusted to move down and left
 
           # Put text on image for box two
-          cv2.putText(image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
-          cv2.putText(image, text_coord1_2, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
-          cv2.putText(image, text_coord2_2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
-          cv2.putText(image, text_coord3_2, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
-          cv2.putText(image, text_coord4_2, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 0, 0), 4)
+          text_two = "Bow OBB Coords:"
+          cv2.putText(image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+          cv2.putText(image, text_coord1, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+          cv2.putText(image, text_coord2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+          cv2.putText(image, text_coord3, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+          cv2.putText(image, text_coord4, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+
+          # CALCULATING Mid Points
+          P1 = Point2D.find_point_p1(box_bow_coord_one, box_bow_coord_three)
+          P2 = Point2D.find_point_p1(box_bow_coord_four, box_bow_coord_two)
+
 
       detections = sv.Detections.from_ultralytics(YOLOresults[0])
 
       image.flags.writeable = True
       image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
       image_height, image_width, _ = image.shape
+      
+
+      # Show the image (optional)
+    #   cv2.imshow('Image with Dot', image)
 
       if results.multi_hand_landmarks:
           for hand_landmarks in results.multi_hand_landmarks:
