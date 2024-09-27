@@ -10,14 +10,14 @@ import ultralytics
 from ultralytics import YOLO
 import torch
 
+from datetime import datetime
+
 # option setup for gesture recognizer
 BaseOptions = mp.tasks.BaseOptions
 GestureRecognizer = mp.tasks.vision.GestureRecognizer
 GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
-# gesture model path (set path to gesture_recognizer_custom.task)
-gesture_model = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/v2_model.task'
 
 class Point2D:
     def __init__(self, x=0, y=0):
@@ -83,11 +83,15 @@ def main():
   # model.overlap = 80
 
   #input file
-  #video_file_path = '/Users/felixlu/Downloads/Supination.mp4'
-  #video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
-  video_file_path = '/Users/felixlu/Downloads/20240718_164536.mp4'
-
-
+  # video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/20240718_164536 (1).mp4'
+  # video_file_path = '//Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
+  # video_file_path = 'src/computer_vision/hand_pose_detection/MicrosoftTeams-video (1).mp4'
+  video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Too much pronation (1).mp4'
+  
+  # gesture model path (set path to gesture_recognizer_custom.task)
+  # gesture_model = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/v3_gesture_model(no blurry).task'
+  gesture_model = 'src/computer_vision/hand_pose_detection/3_category.task'
+  
   cap = cv2.VideoCapture(video_file_path)
 
   frame_count = 0
@@ -123,6 +127,16 @@ def main():
 
 
     writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(640,480)) # algo makes a frame every ~80ms = 12.5 fps
+
+    num_none = 0
+    num_supination = 0
+    num_correct = 0
+    display_gesture = "none"
+
+
+    desired_fps = 30 
+    frame_delay = int(1000 / desired_fps)
+
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -146,6 +160,19 @@ def main():
         gesture_recognition_result = recognizer.recognize_for_video(mp_image, frame_count)
         frame_count += 1
 
+        # update gesture classifcation every 15 frames
+        if (frame_count % 30 == 0):
+            if max(num_correct, num_none, num_supination) == num_supination:
+                display_gesture = "supination"
+            elif max(num_correct, num_none, num_supination) == num_correct:
+                display_gesture = "correct"
+            else:
+                display_gesture = "none"
+            num_none = 0
+            num_supination = 0
+            num_correct = 0
+
+
         # obtain neccesary data into array for display (using array because there are two hands)
         if gesture_recognition_result is not None and any(gesture_recognition_result.gestures):
             print("Recognized gestures:")
@@ -162,20 +189,26 @@ def main():
                 current_score.append(round(score, 2))
 
 
-        # display classified gesture data on frames
         y_pos = image.shape[0] - 70
         for x in range(len(current_gestures)):
             if current_handedness[x] != "Left":
-                txt = current_handedness[x] + ": " + current_gestures[x] + " " + str(current_score[x])
+                # increment number of none/supination for past 10 frames
                 if current_gestures[x] == "supination":
+                    num_supination += 1
+                elif current_gestures[x] == "correct":
+                    num_correct += 1
+                else:
+                    num_none += 1
+        
+                # display classified gesture data on frames
+                txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
+                if (display_gesture == "supination"):
                     cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (218,10,3), 2, cv2.LINE_AA)
                     print(txt)
-                    break
                 else:
                     cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (37,245,252), 2, cv2.LINE_AA)
                     print(txt)
-                    break
-        #y_pos += 50
+
 
         YOLOresults = model(image)
         for result in YOLOresults:
@@ -313,7 +346,7 @@ def main():
         writer.write(resized_frame)
         cv2.imshow('MediaPipe Hands', image)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(frame_delay) & 0xFF == ord('q'):
             break
 
     cap.release()
