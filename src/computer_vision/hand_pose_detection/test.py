@@ -10,7 +10,7 @@ import ultralytics
 from ultralytics import YOLO
 import torch
 
-from datetime import datetime
+from collections import defaultdict
 
 # option setup for gesture recognizer
 BaseOptions = mp.tasks.BaseOptions
@@ -160,7 +160,7 @@ def main():
         gesture_recognition_result = recognizer.recognize_for_video(mp_image, frame_count)
         frame_count += 1
 
-        # update gesture classifcation every 15 frames
+        # update gesture classification every 15 frames
         if (frame_count % 30 == 0):
             if max(num_correct, num_none, num_supination) == num_supination:
                 display_gesture = "supination"
@@ -176,38 +176,70 @@ def main():
         # obtain neccesary data into array for display (using array because there are two hands)
         if gesture_recognition_result is not None and any(gesture_recognition_result.gestures):
             print("Recognized gestures:")
-            for single_hand_gesture_data in gesture_recognition_result.gestures:
+            for i, single_hand_gesture_data in enumerate(gesture_recognition_result.gestures):
+                # Append gesture name
                 gesture_name = single_hand_gesture_data[0].category_name
                 current_gestures.append(gesture_name)
 
-            for single_hand_handedness_data in gesture_recognition_result.handedness:
-                hand_name = single_hand_handedness_data[0].category_name
+                # Append hand name from handedness data
+                hand_name = gesture_recognition_result.handedness[i][0].category_name
                 current_handedness.append(hand_name)
 
-            for single_hand_score_data in gesture_recognition_result.gestures:
-                score = single_hand_score_data[0].score
+                # Append score
+                score = single_hand_gesture_data[0].score
                 current_score.append(round(score, 2))
 
 
-        y_pos = image.shape[0] - 70
-        for x in range(len(current_gestures)):
-            if current_handedness[x] != "Left":
-                # increment number of none/supination for past 10 frames
-                if current_gestures[x] == "supination":
-                    num_supination += 1
-                elif current_gestures[x] == "correct":
-                    num_correct += 1
-                else:
-                    num_none += 1
+        # y_pos = image.shape[0] - 70
+        # for x in range(len(current_gestures)):
+        #     if current_handedness[x] != "Left":
+        #         # increment number of none/supination for past 10 frames
+        #         if current_gestures[x] == "supination":
+        #             num_supination += 1
+        #         elif current_gestures[x] == "correct":
+        #             num_correct += 1
+        #         else:
+        #             num_none += 1
         
-                # display classified gesture data on frames
-                txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
-                if (display_gesture == "supination"):
-                    cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (218,10,3), 2, cv2.LINE_AA)
-                    print(txt)
-                else:
-                    cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (37,245,252), 2, cv2.LINE_AA)
-                    print(txt)
+        #         # display classified gesture data on frames
+        #         txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
+        #         if (display_gesture == "supination"):
+        #             cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (218,10,3), 2, cv2.LINE_AA)
+        #             print(txt)
+        #         else:
+        #             cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, (37,245,252), 2, cv2.LINE_AA)
+        #             print(txt)
+
+
+
+        y_pos = image.shape[0] - 70
+        color_dict = {
+            "supination": (218, 10, 3),
+            "default": (37, 245, 252)
+        }
+
+        gesture_counter = defaultdict(int)
+
+        for x, handedness in enumerate(current_handedness):
+            if handedness == "Left":
+                continue
+            
+            gesture = current_gestures[x]
+            score = current_score[x]
+
+            # Increment counters based on gesture
+            gesture_counter[gesture if gesture in ["supination", "correct"] else "none"] += 1
+
+            # Prepare display text
+            txt = f"{handedness}: {gesture} {score}"
+            
+            # Select color based on gesture
+            color = color_dict.get(gesture, color_dict["default"])
+            
+            # Display classified gesture data on frames
+            cv2.putText(image, txt, (image.shape[1] - 400, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2, cv2.LINE_AA)
+            
+            print(txt)
 
 
         YOLOresults = model(image)
