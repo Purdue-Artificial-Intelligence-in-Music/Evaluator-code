@@ -24,8 +24,10 @@ def calculate_angle_between_lines(A, B, C, D):
     # Calculate cosine of the angle
     cos_angle = dot_product / (magnitude1 * magnitude2)
     
-    # Handle floating point errors
-    cos_angle = min(1.0, max(-1.0, cos_angle))
+    # Handle floating point errors with the following line:
+    # cos_angle = min(1.0, max(-1.0, cos_angle))
+    if cos_angle > 1.0 or cos_angle < -1.0:
+        raise ValueError("cos(angle) is out of bounds due to numerical instability")
     
     # Calculate angle in degrees
     angle_degrees = math.degrees(math.acos(cos_angle))
