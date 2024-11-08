@@ -1,10 +1,16 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import csv
+
 from mediapipe.tasks.python.components.containers.landmark import NormalizedLandmark
 from mediapipe.framework.formats import landmark_pb2
 
+import copy
+import itertools
+
 import os
+import sys
 import supervision as sv
 import ultralytics
 from ultralytics import YOLO
@@ -12,7 +18,30 @@ import torch
 
 from datetime import datetime
 
-# Gesture model for hands
+base_directory = os.path.dirname(__file__)
+
+# Calculate the correct path to the model directory
+model_directory = os.path.join(base_directory, 'model', 'keypoint_classifier')
+model_file = os.path.join(model_directory, 'keypoint_classifier.tflite')
+
+# Ensure the model file exists
+if not os.path.exists(model_file):
+    raise FileNotFoundError(f"Model file not found: {model_file}")
+
+# Add the model_directory to sys.path
+if model_directory not in sys.path:
+    sys.path.append(model_directory)
+
+from model import KeyPointClassifier
+
+# Calculate the path to the 'computer_vision/utils' directory
+utils_directory = os.path.join(base_directory, 'computer_vision', 'utils')
+
+# Add the utils_directory to sys.path if it's not already included
+if utils_directory not in sys.path:
+    sys.path.append(utils_directory)
+
+from utils import CvFpsCalc
 
 # option setup for gesture recognizer
 BaseOptions = mp.tasks.BaseOptions
@@ -21,7 +50,7 @@ GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # gesture model path (set path to gesture_recognizer_custom.task)
-gesture_model = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/3_category.task'
+# gesture_model = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/3_category.task'
 
 # A class that stores methods/data for 2d points on the screen
 
@@ -120,17 +149,290 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
         finger_coords[id] = []
     finger_coords[id].append((cx, cy))
 
+def calc_bounding_rect(image, landmarks):
+    image_width, image_height = image.shape[1], image.shape[0]
+
+    landmark_array = np.empty((0, 2), int)
+
+    for _, landmark in enumerate(landmarks.landmark):
+        landmark_x = min(int(landmark.x * image_width), image_width - 1)
+        landmark_y = min(int(landmark.y * image_height), image_height - 1)
+
+        landmark_point = [np.array((landmark_x, landmark_y))]
+
+        landmark_array = np.append(landmark_array, landmark_point, axis=0)
+
+    x, y, w, h = cv2.boundingRect(landmark_array)
+
+    return [x, y, x + w, y + h]
+
+def calc_landmark_list(image, landmarks):
+    image_width, image_height = image.shape[1], image.shape[0]
+
+    landmark_point = []
+
+    # Keypoint
+    for _, landmark in enumerate(landmarks.landmark):
+        landmark_x = min(int(landmark.x * image_width), image_width - 1)
+        landmark_y = min(int(landmark.y * image_height), image_height - 1)
+        # landmark_z = landmark.z
+
+        landmark_point.append([landmark_x, landmark_y])
+
+    return landmark_point
+
+def pre_process_landmark(landmark_list):
+    temp_landmark_list = copy.deepcopy(landmark_list)
+
+    # Convert to relative coordinates
+    base_x, base_y = 0, 0
+    for index, landmark_point in enumerate(temp_landmark_list):
+        if index == 0:
+            base_x, base_y = landmark_point[0], landmark_point[1]
+
+        temp_landmark_list[index][0] = temp_landmark_list[index][0] - base_x
+        temp_landmark_list[index][1] = temp_landmark_list[index][1] - base_y
+
+    # Convert to a one-dimensional list
+    temp_landmark_list = list(
+        itertools.chain.from_iterable(temp_landmark_list))
+
+    # Normalization
+    max_value = max(list(map(abs, temp_landmark_list)))
+
+    def normalize_(n):
+        return n / max_value
+
+    temp_landmark_list = list(map(normalize_, temp_landmark_list))
+
+    return temp_landmark_list
+
+def draw_bounding_rect(use_brect, image, brect):
+    if use_brect:
+        # Outer rectangle
+        cv2.rectangle(image, (brect[0], brect[1]), (brect[2], brect[3]),
+                     (0, 0, 0), 1)
+
+    return image
+
+def draw_info_text(image, brect, handedness, hand_sign_text):
+    cv2.rectangle(image, (brect[0], brect[1]), (brect[2], brect[1] - 22),
+                 (0, 0, 0), -1)
+
+    info_text = handedness.classification[0].label[0:]
+    #
+    if hand_sign_text != "":
+        info_text = info_text + ':' + hand_sign_text
+    cv2.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+
+    return image
+
+def draw_info(image, fps):
+    cv2.putText(image, "FPS: " + str(fps), (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+               1.0, (0, 0, 0), 4, cv2.LINE_AA)
+    cv2.putText(image, "FPS: " + str(fps), (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+               1.0, (255, 255, 255), 2, cv2.LINE_AA)
+
+    return image
+
+def draw_landmarks(image, landmark_point):
+    if len(landmark_point) > 0:
+        # Thumb
+        cv2.line(image, tuple(landmark_point[2]), tuple(landmark_point[3]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[2]), tuple(landmark_point[3]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[3]), tuple(landmark_point[4]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[3]), tuple(landmark_point[4]),
+                (255, 255, 255), 2)
+
+        # Index finger
+        cv2.line(image, tuple(landmark_point[5]), tuple(landmark_point[6]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[5]), tuple(landmark_point[6]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[6]), tuple(landmark_point[7]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[6]), tuple(landmark_point[7]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[7]), tuple(landmark_point[8]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[7]), tuple(landmark_point[8]),
+                (255, 255, 255), 2)
+
+        # Middle finger
+        cv2.line(image, tuple(landmark_point[9]), tuple(landmark_point[10]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[9]), tuple(landmark_point[10]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[10]), tuple(landmark_point[11]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[10]), tuple(landmark_point[11]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[11]), tuple(landmark_point[12]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[11]), tuple(landmark_point[12]),
+                (255, 255, 255), 2)
+
+        # Ring finger
+        cv2.line(image, tuple(landmark_point[13]), tuple(landmark_point[14]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[13]), tuple(landmark_point[14]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[14]), tuple(landmark_point[15]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[14]), tuple(landmark_point[15]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[15]), tuple(landmark_point[16]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[15]), tuple(landmark_point[16]),
+                (255, 255, 255), 2)
+
+        # Little finger
+        cv2.line(image, tuple(landmark_point[17]), tuple(landmark_point[18]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[17]), tuple(landmark_point[18]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[18]), tuple(landmark_point[19]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[18]), tuple(landmark_point[19]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[19]), tuple(landmark_point[20]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[19]), tuple(landmark_point[20]),
+                (255, 255, 255), 2)
+
+        # Palm
+        cv2.line(image, tuple(landmark_point[0]), tuple(landmark_point[1]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[0]), tuple(landmark_point[1]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[1]), tuple(landmark_point[2]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[1]), tuple(landmark_point[2]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[2]), tuple(landmark_point[5]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[2]), tuple(landmark_point[5]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[5]), tuple(landmark_point[9]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[5]), tuple(landmark_point[9]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[9]), tuple(landmark_point[13]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[9]), tuple(landmark_point[13]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[13]), tuple(landmark_point[17]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[13]), tuple(landmark_point[17]),
+                (255, 255, 255), 2)
+        cv2.line(image, tuple(landmark_point[17]), tuple(landmark_point[0]),
+                (0, 0, 0), 6)
+        cv2.line(image, tuple(landmark_point[17]), tuple(landmark_point[0]),
+                (255, 255, 255), 2)
+
+    # Key Points
+    for index, landmark in enumerate(landmark_point):
+        if index == 0:  # 手首1
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 1:  # 手首2
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 2:  # 親指：付け根
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 3:  # 親指：第1関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 4:  # 親指：指先
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 5:  # 人差指：付け根
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 6:  # 人差指：第2関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 7:  # 人差指：第1関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 8:  # 人差指：指先
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 9:  # 中指：付け根
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 10:  # 中指：第2関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 11:  # 中指：第1関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 12:  # 中指：指先
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 13:  # 薬指：付け根
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 14:  # 薬指：第2関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 15:  # 薬指：第1関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 16:  # 薬指：指先
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+        if index == 17:  # 小指：付け根
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 18:  # 小指：第2関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 19:  # 小指：第1関節
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+        if index == 20:  # 小指：指先
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                      -1)
+            cv2.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+
+    return image
 
 def main():
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
-    model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt')  # Path to your model file
+    model = YOLO('/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt')  # Path to your model file
   
     # For webcam input:
     # model.overlap = 80
 
     #input video file
-    video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
+    video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
     cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
     frame_count = 0
@@ -152,18 +454,35 @@ def main():
 
     #setup gesture options
     num_hands = 2
-    gesture_options = GestureRecognizerOptions(
-        base_options=BaseOptions(model_asset_buffer=open(gesture_model, "rb").read()),
-        running_mode=VisionRunningMode.VIDEO,
-        num_hands = num_hands)
+    # gesture_options = GestureRecognizerOptions(
+    #     base_options=BaseOptions(model_asset_buffer=open(gesture_model, "rb").read()),
+    #     running_mode=VisionRunningMode.VIDEO,
+    #     num_hands = num_hands)
   
     num_none = 0
     num_supination = 0
     num_correct = 0
     display_gesture = "none"
+    use_brect = True
 
     desired_fps = 30 
     frame_delay = int(1000 / desired_fps)
+
+    keypoint_classifier = KeyPointClassifier(model_path=model_file)
+
+
+    relative_csv_path = 'model/keypoint_classifier/keypoint_classifier_label.csv'
+    csv_path = os.path.join(base_directory, relative_csv_path)
+
+    with open(csv_path,
+              encoding='utf-8-sig') as f:
+        keypoint_classifier_labels = csv.reader(f)
+        keypoint_classifier_labels = [
+            row[0] for row in keypoint_classifier_labels
+        ]
+
+    # FPS Measurement ########################################################
+    cvFpsCalc = CvFpsCalc(buffer_len=10)
 
     #set up hands and body
     with mp_hands.Hands(
@@ -173,82 +492,137 @@ def main():
         min_tracking_confidence=0.5) as hands, mp_pose.Pose(
         model_complexity=0,
         min_detection_confidence=0.4,
-        min_tracking_confidence=0.6) as pose, GestureRecognizer.create_from_options(gesture_options) as recognizer:
-
+        min_tracking_confidence=0.6) as pose:
     
         writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(output_frame_length,output_frame_width)) # algo makes a frame every ~80ms = 12.5 fps
         while cap.isOpened():
             success, image = cap.read()
             if not success:
                 break
+
+            fps = cvFpsCalc.get()
   
             # To improve performance, optionally mark the image as not writeable to
             # pass by reference.
             image.flags.writeable = False
+
+            image = cv2.flip(image, 1)
+            debug_image = copy.deepcopy(image)
+
+
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             results = hands.process(image)
             pose_results = pose.process(image)
-            hand_node_positions = []
+
+
+            # hand_node_positions = []
 
             # gesture classification data arrays
-            current_gestures = []
-            current_handedness = []
-            current_score = []
+            # current_gestures = []
+            # current_handedness = []
+            # current_score = []
 
             # recognize gestures
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
-            gesture_recognition_result = recognizer.recognize_for_video(mp_image, frame_count)
+            # mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
+            # gesture_recognition_result = recognizer.recognize_for_video(mp_image, frame_count)
             frame_count += 1
 
             # update gesture classifcation every 15 frames
-            if (frame_count % 30 == 0):
-                if max(num_correct, num_none, num_supination) == num_supination:
-                    display_gesture = "supination"
-                elif max(num_correct, num_none, num_supination) == num_correct:
-                    display_gesture = "correct"
-                else:
-                    display_gesture = "none"
-                num_none = 0
-                num_supination = 0
-                num_correct = 0
+            # if (frame_count % 30 == 0):
+            #     if max(num_correct, num_none, num_supination) == num_supination:
+            #         display_gesture = "supination"
+            #     elif max(num_correct, num_none, num_supination) == num_correct:
+            #         display_gesture = "correct"
+            #     else:
+            #         display_gesture = "none"
+            #     num_none = 0
+            #     num_supination = 0
+            #     num_correct = 0
             
-            # obtain neccesary data into array for display (using array because there are two hands)
-            if gesture_recognition_result is not None and any(gesture_recognition_result.gestures):
-                for single_hand_gesture_data in gesture_recognition_result.gestures:
-                    gesture_name = single_hand_gesture_data[0].category_name
-                    current_gestures.append(gesture_name)
+            # Draw hand landmarks
+            if results.multi_hand_landmarks is not None:
 
-                for single_hand_handedness_data in gesture_recognition_result.handedness:
-                    hand_name = single_hand_handedness_data[0].category_name
-                    current_handedness.append(hand_name)
+                for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
+                                                  results.multi_handedness):
+                
+                    # Bounding box calculation
+                    brect = calc_bounding_rect(debug_image, hand_landmarks)
 
-                for single_hand_score_data in gesture_recognition_result.gestures:
-                    score = single_hand_score_data[0].score
-                    current_score.append(round(score, 2))
+                    # Landmark calculation
+                    landmark_list = calc_landmark_list(debug_image, hand_landmarks)
 
-            y_pos = image.shape[0] - 70
-            for x in range(len(current_gestures)):
-                if current_handedness[x] != "Left":
-                    # increment number of none/supination for past 10 frames
-                    if current_gestures[x] == "supination":
-                        num_supination += 1
-                    elif current_gestures[x] == "correct":
-                        num_correct += 1
-                    else:
-                        num_none += 1
+                    # Conversion to relative coordinates / normalized coordinates
+                    pre_processed_landmark_list = pre_process_landmark(
+                        landmark_list)
+
+                    # Hand sign classification
+                    hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+
+                    # Draw hands
+                    debug_image = draw_bounding_rect(use_brect, debug_image, brect)
+                    debug_image = draw_landmarks(debug_image, landmark_list)
+                    debug_image = draw_info_text(
+                        debug_image,
+                        brect,
+                        handedness,
+                        keypoint_classifier_labels[hand_sign_id]
+                    )
+
+                    # Draw pose
+                    landmark_subset = landmark_pb2.NormalizedLandmarkList(
+                        landmark=pose_results.pose_landmarks.landmark[11:15]
+                    )
+                    mp_drawing.draw_landmarks(
+                        debug_image,
+                        landmark_subset,
+                        None,
+                        mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=10, circle_radius=6))
+                    mp_drawing.draw_landmarks(
+                        debug_image,
+                        landmark_subset,
+                        None,
+                        mp_drawing.DrawingSpec(color=(0, 0, 0), thickness=2, circle_radius=10))
+                    
+                    
+                    
+                    
+                
+                
+            #     for single_hand_gesture_data in gesture_recognition_result.gestures:
+            #         gesture_name = single_hand_gesture_data[0].category_name
+            #         current_gestures.append(gesture_name)
+
+            #     for single_hand_handedness_data in gesture_recognition_result.handedness:
+            #         hand_name = single_hand_handedness_data[0].category_name
+            #         current_handedness.append(hand_name)
+
+            #     for single_hand_score_data in gesture_recognition_result.gestures:
+            #         score = single_hand_score_data[0].score
+            #         current_score.append(round(score, 2))
+
+            # y_pos = image.shape[0] - 70
+            # for x in range(len(current_gestures)):
+            #     if current_handedness[x] != "Left":
+            #         # increment number of none/supination for past 10 frames
+            #         if current_gestures[x] == "supination":
+            #             num_supination += 1
+            #         elif current_gestures[x] == "correct":
+            #             num_correct += 1
+            #         else:
+            #             num_none += 1
             
-                    # display classified gesture data on frames
-                    txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
-                    if (display_gesture == "supination"):
-                        cv2.putText(image, txt, (image.shape[1] - 600, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (218,10,3), 4, cv2.LINE_AA)
-                        print(txt)
-                    else:
-                        cv2.putText(image, txt, (image.shape[1] - 650, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (37,245,252), 4, cv2.LINE_AA)
-                        print(txt)
+            #         # display classified gesture data on frames
+            #         txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
+            #         if (display_gesture == "supination"):
+            #             cv2.putText(image, txt, (image.shape[1] - 600, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (218,10,3), 4, cv2.LINE_AA)
+            #             print(txt)
+            #         else:
+            #             cv2.putText(image, txt, (image.shape[1] - 650, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (37,245,252), 4, cv2.LINE_AA)
+            #             print(txt)
 
             bow_coord_list = []
             string_coord_list =[]
-            YOLOresults = model(image)
+            YOLOresults = model(debug_image)
             for result in YOLOresults:
                 if len(result.obb.xyxyxyxy) > 0:
                     coord_box_one = result.obb.xyxyxyxy[0]
@@ -278,26 +652,26 @@ def main():
                     thickness = -1       # Thickness -1 fills the circle, creating a dot
 
                     #SHOWING DOTS
-                    cv2.circle(image, (int(box_str_point_one.x), int(box_str_point_one.y)), radius, (255, 0, 0), thickness) # bottom left
-                    cv2.circle(image, (int(box_str_point_two.x), int(box_str_point_two.y)), radius, (0, 0, 0), thickness) # bottom right
-                    cv2.circle(image, (int(box_str_point_three.x), int(box_str_point_three.y)), radius, (0, 255, 0), thickness) # top right
-                    cv2.circle(image, (int(box_str_point_four.x), int(box_str_point_four.y)), radius, (0, 0, 255), thickness) # top left
+                    cv2.circle(debug_image, (int(box_str_point_one.x), int(box_str_point_one.y)), radius, (255, 0, 0), thickness) # bottom left
+                    cv2.circle(debug_image, (int(box_str_point_two.x), int(box_str_point_two.y)), radius, (0, 0, 0), thickness) # bottom right
+                    cv2.circle(debug_image, (int(box_str_point_three.x), int(box_str_point_three.y)), radius, (0, 255, 0), thickness) # top right
+                    cv2.circle(debug_image, (int(box_str_point_four.x), int(box_str_point_four.y)), radius, (0, 0, 255), thickness) # top left
                     string_coord_list.append(box_str_point_one)
                     string_coord_list.append(box_str_point_two)
                     string_coord_list.append(box_str_point_three)
                     string_coord_list.append(box_str_point_four)
                     # Define bottom left corners for each text line
-                    bottom_left_corner_text_one = (image.shape[1] - 370, 35 * 6 + 20)  # Adjusted to move higher
-                    bottom_left_corner_coord1 = (image.shape[1] - 370, 35 * 7 + 15)   # Adjusted to move higher
-                    bottom_left_corner_coord2 = (image.shape[1] - 370, 35 * 8 + 10)    # Adjusted to move higher
-                    bottom_left_corner_coord3 = (image.shape[1] - 370, 35 * 9 + 5)    # Adjusted to move higher
-                    bottom_left_corner_coord4 = (image.shape[1] - 370, 35 * 10 + 0)    # Adjusted to move higher
+                    bottom_left_corner_text_one = (debug_image.shape[1] - 370, 35 * 6 + 20)  # Adjusted to move higher
+                    bottom_left_corner_coord1 = (debug_image.shape[1] - 370, 35 * 7 + 15)   # Adjusted to move higher
+                    bottom_left_corner_coord2 = (debug_image.shape[1] - 370, 35 * 8 + 10)    # Adjusted to move higher
+                    bottom_left_corner_coord3 = (debug_image.shape[1] - 370, 35 * 9 + 5)    # Adjusted to move higher
+                    bottom_left_corner_coord4 = (debug_image.shape[1] - 370, 35 * 10 + 0)    # Adjusted to move higher
                     # Put text on image for box one
-                    cv2.putText(image, text_one, bottom_left_corner_text_one, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
-                    cv2.putText(image, text_coord1, bottom_left_corner_coord1, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
-                    cv2.putText(image, text_coord2, bottom_left_corner_coord2, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
-                    cv2.putText(image, text_coord3, bottom_left_corner_coord3, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
-                    cv2.putText(image, text_coord4, bottom_left_corner_coord4, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+                    cv2.putText(debug_image, text_one, bottom_left_corner_text_one, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+                    cv2.putText(debug_image, text_coord1, bottom_left_corner_coord1, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+                    cv2.putText(debug_image, text_coord2, bottom_left_corner_coord2, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+                    cv2.putText(debug_image, text_coord3, bottom_left_corner_coord3, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
+                    cv2.putText(debug_image, text_coord4, bottom_left_corner_coord4, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
             
                     # CALCULATING P1
                     #pointOne = Point2D.find_point_p1(leftCoordOne, rightCoordTwo, ratio=0.7)
@@ -338,22 +712,22 @@ def main():
                     text_coord4 = f"Coord 4: ({box_bow_coord_four.x}, {box_bow_coord_four.y})"
 
                     text_offset = 35  # increased spacing between lines
-                    top_right_corner_text_two = (image.shape[1] - 370, text_offset + 20) # Adjusted to move down and left
-                    top_right_corner_coord1_2 = (image.shape[1] - 370, text_offset * 2 + 15) # Adjusted to move down and left
-                    top_right_corner_coord2_2 = (image.shape[1] - 370, text_offset * 3 + 10) # Adjusted to move down and left
-                    top_right_corner_coord3_2 = (image.shape[1] - 370, text_offset * 4 + 5) # Adjusted to move down and left
-                    top_right_corner_coord4_2 = (image.shape[1] - 370, text_offset * 5 + 0) # Adjusted to move down and left
+                    top_right_corner_text_two = (debug_image.shape[1] - 370, text_offset + 20) # Adjusted to move down and left
+                    top_right_corner_coord1_2 = (debug_image.shape[1] - 370, text_offset * 2 + 15) # Adjusted to move down and left
+                    top_right_corner_coord2_2 = (debug_image.shape[1] - 370, text_offset * 3 + 10) # Adjusted to move down and left
+                    top_right_corner_coord3_2 = (debug_image.shape[1] - 370, text_offset * 4 + 5) # Adjusted to move down and left
+                    top_right_corner_coord4_2 = (debug_image.shape[1] - 370, text_offset * 5 + 0) # Adjusted to move down and left
 
                     # Put text on image for box two
                     text_two = "Bow OBB Coords:"
-                    cv2.putText(image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord1, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord3, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord4, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+                    cv2.putText(debug_image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+                    cv2.putText(debug_image, text_coord1, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+                    cv2.putText(debug_image, text_coord2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+                    cv2.putText(debug_image, text_coord3, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+                    cv2.putText(debug_image, text_coord4, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
 
                     # Detect if bow too high or low
-                    bow_too_high = (image.shape[1] - 370, text_offset * 11 + 0) # Adjusted to move down and left
+                    bow_too_high = (debug_image.shape[1] - 370, text_offset * 11 + 0) # Adjusted to move down and left
                     if(len(bow_coord_list) == 4 and len(string_coord_list) == 4):
             
                         P1 = Point2D.find_point_p1(bow_coord_list[0], bow_coord_list[1]) # left mid point
@@ -361,60 +735,60 @@ def main():
                         int1 = Point2D.find_intersection(P1,P2,box_str_point_one,box_str_point_three)
                         int2 = Point2D.find_intersection(P1,P2,box_str_point_two,box_str_point_four)
                         if Point2D.is_above_or_below(int1, box_str_point_three, box_str_point_four) or Point2D.is_above_or_below(int2, box_str_point_three, box_str_point_four):
-                            cv2.putText(image, "Bow Too High", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
+                            cv2.putText(debug_image, "Bow Too High", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
                         else:
-                            cv2.putText(image, "Bow Correctly placed", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
+                            cv2.putText(debug_image, "Bow Correctly placed", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
 
             detections = sv.Detections.from_ultralytics(YOLOresults[0])
 
             image.flags.writeable = True
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-            image_height, image_width, _ = image.shape
+            # image_height, image_width, _ = image.shape
 
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    for ids, landmrk in enumerate(hand_landmarks.landmark):
-                        cx, cy = landmrk.x * image_width, landmrk.y * image_height
-                        store_finger_node_coords(ids, cx, cy, finger_coords)
-                    mp_drawing.draw_landmarks(
-                        image,
-                        hand_landmarks,
-                        mp_hands.HAND_CONNECTIONS,
-                        mp_drawing_styles.get_default_hand_landmarks_style(),
-                        mp_drawing_styles.get_default_hand_connections_style())
+            # if results.multi_hand_landmarks:
+            #     for hand_landmarks in results.multi_hand_landmarks:
+            #         for ids, landmrk in enumerate(hand_landmarks.landmark):
+            #             cx, cy = landmrk.x * image_width, landmrk.y * image_height
+            #             # store_finger_node_coords(ids, cx, cy, finger_coords)
+            #         mp_drawing.draw_landmarks(
+            #             image,
+            #             hand_landmarks,
+            #             mp_hands.HAND_CONNECTIONS,
+            #             mp_drawing_styles.get_default_hand_landmarks_style(),
+            #             mp_drawing_styles.get_default_hand_connections_style())
 
-                    landmark_subset = landmark_pb2.NormalizedLandmarkList(
-                        landmark=pose_results.pose_landmarks.landmark[11:15]
-                    )
-                    mp_drawing.draw_landmarks(
-                        image,
-                        landmark_subset,
-                        None,
-                        mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=10, circle_radius=6))
+            #         landmark_subset = landmark_pb2.NormalizedLandmarkList(
+            #             landmark=pose_results.pose_landmarks.landmark[11:15]
+            #         )
+            #         mp_drawing.draw_landmarks(
+            #             image,
+            #             landmark_subset,
+            #             None,
+            #             mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=10, circle_radius=6))
 
             oriented_box_annotator = sv.OrientedBoxAnnotator()
             annotated_frame = oriented_box_annotator.annotate(
-                scene=image,
+                scene=debug_image,
                 detections=detections
             )
 
             image = ResizeWithAspectRatio(image, height=800)
-            image = cv2.putText(
-                image,
-                "Frame {}".format(frame_count),
-                (10, 50),
-                cv2.QT_FONT_NORMAL,
-                1,
-                (0, 0, 255),
-                1,
-                cv2.LINE_AA
-            )
+            debug_image = cv2.putText(debug_image, "Frame {}".format(frame_count), (10, 70), cv2.FONT_HERSHEY_SIMPLEX,
+                 1, (0, 0, 0), 4, cv2.LINE_AA)
+            
+            cv2.putText(debug_image, "Frame {}".format(frame_count), (10, 70), cv2.FONT_HERSHEY_SIMPLEX,
+               1.0, (255, 255, 255), 2, cv2.LINE_AA)
+
+
+            
         
             # Resize to specified output dimensions before writing
-            resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
+            resized_frame = cv2.resize(debug_image, (output_frame_length, output_frame_width))
+
+            debug_image = draw_info(debug_image, fps)
 
             writer.write(resized_frame)
-            cv2.imshow('MediaPipe Hands', image)
+            cv2.imshow('MediaPipe Hands', debug_image)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
