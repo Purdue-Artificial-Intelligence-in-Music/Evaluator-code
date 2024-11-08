@@ -6,7 +6,10 @@
       "@/*": [
         "./*"
       ]
-    }
+    },
+    "jsx": "react",
+    "lib": ["dom", "esnext"],
+    "types": ["expo-camera"]
   },
   "include": [
     "**/*.ts",
