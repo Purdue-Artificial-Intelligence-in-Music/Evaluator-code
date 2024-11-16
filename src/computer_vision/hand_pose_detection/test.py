@@ -49,11 +49,7 @@ GestureRecognizer = mp.tasks.vision.GestureRecognizer
 GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
-# gesture model path (set path to gesture_recognizer_custom.task)
-# gesture_model = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/3_category.task'
-
 # A class that stores methods/data for 2d points on the screen
-
 class Point2D:
     def __init__(self, x=0, y=0):
         self.x = x
@@ -129,6 +125,7 @@ class Point2D:
             return True  # Current point (self) is above the line
         else:
             return False 
+
 # Function to resize image with aspect ratio
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     dim = None
@@ -432,7 +429,7 @@ def main():
     # model.overlap = 80
 
     #input video file
-    video_file_path = '/Users/felixlu/Desktop/Evaluator/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
+    video_file_path = 'src/computer_vision/hand_pose_detection/Supination1.mp4'
     cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
     frame_count = 0
@@ -444,8 +441,6 @@ def main():
     mp_drawing_styles = mp.solutions.drawing_styles
     mp_hands = mp.solutions.hands
 
-    finger_coords = {}
-
     # Initialize video writer
     output_file = 'output.mp4' 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -454,32 +449,18 @@ def main():
 
     #setup gesture options
     num_hands = 2
-    # gesture_options = GestureRecognizerOptions(
-    #     base_options=BaseOptions(model_asset_buffer=open(gesture_model, "rb").read()),
-    #     running_mode=VisionRunningMode.VIDEO,
-    #     num_hands = num_hands)
   
-    num_none = 0
-    num_supination = 0
-    num_correct = 0
-    display_gesture = "none"
     use_brect = True
 
-    desired_fps = 30 
-    frame_delay = int(1000 / desired_fps)
-
+    # instantiate gesture classifier
     keypoint_classifier = KeyPointClassifier(model_path=model_file)
-
 
     relative_csv_path = 'model/keypoint_classifier/keypoint_classifier_label.csv'
     csv_path = os.path.join(base_directory, relative_csv_path)
 
-    with open(csv_path,
-              encoding='utf-8-sig') as f:
+    with open(csv_path, encoding='utf-8-sig') as f:
         keypoint_classifier_labels = csv.reader(f)
-        keypoint_classifier_labels = [
-            row[0] for row in keypoint_classifier_labels
-        ]
+        keypoint_classifier_labels = [row[0] for row in keypoint_classifier_labels]
 
     # FPS Measurement ########################################################
     cvFpsCalc = CvFpsCalc(buffer_len=10)
@@ -499,51 +480,31 @@ def main():
             success, image = cap.read()
             if not success:
                 break
-
+            
+            # calculate FPS
             fps = cvFpsCalc.get()
   
             # To improve performance, optionally mark the image as not writeable to
             # pass by reference.
             image.flags.writeable = False
 
+            # this is actually important for some reason, flipping the image -> better classification accuracy
             image = cv2.flip(image, 1)
             debug_image = copy.deepcopy(image)
 
-
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # classify hand signs
             results = hands.process(image)
+            # classify body pose
             pose_results = pose.process(image)
 
-
-            # hand_node_positions = []
-
-            # gesture classification data arrays
-            # current_gestures = []
-            # current_handedness = []
-            # current_score = []
-
-            # recognize gestures
-            # mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
-            # gesture_recognition_result = recognizer.recognize_for_video(mp_image, frame_count)
             frame_count += 1
-
-            # update gesture classifcation every 15 frames
-            # if (frame_count % 30 == 0):
-            #     if max(num_correct, num_none, num_supination) == num_supination:
-            #         display_gesture = "supination"
-            #     elif max(num_correct, num_none, num_supination) == num_correct:
-            #         display_gesture = "correct"
-            #     else:
-            #         display_gesture = "none"
-            #     num_none = 0
-            #     num_supination = 0
-            #     num_correct = 0
             
             # Draw hand landmarks
             if results.multi_hand_landmarks is not None:
 
-                for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
-                                                  results.multi_handedness):
+                for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
                 
                     # Bounding box calculation
                     brect = calc_bounding_rect(debug_image, hand_landmarks)
@@ -552,8 +513,7 @@ def main():
                     landmark_list = calc_landmark_list(debug_image, hand_landmarks)
 
                     # Conversion to relative coordinates / normalized coordinates
-                    pre_processed_landmark_list = pre_process_landmark(
-                        landmark_list)
+                    pre_processed_landmark_list = pre_process_landmark(landmark_list)
 
                     # Hand sign classification
                     hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
@@ -572,54 +532,23 @@ def main():
                     landmark_subset = landmark_pb2.NormalizedLandmarkList(
                         landmark=pose_results.pose_landmarks.landmark[11:15]
                     )
+
+                    # circles settings
                     mp_drawing.draw_landmarks(
                         debug_image,
                         landmark_subset,
                         None,
-                        mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=10, circle_radius=6))
+                        mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=10, circle_radius=6)
+                    )
                     mp_drawing.draw_landmarks(
                         debug_image,
                         landmark_subset,
                         None,
-                        mp_drawing.DrawingSpec(color=(0, 0, 0), thickness=2, circle_radius=10))
-                    
-                    
-                    
-                    
-                
-                
-            #     for single_hand_gesture_data in gesture_recognition_result.gestures:
-            #         gesture_name = single_hand_gesture_data[0].category_name
-            #         current_gestures.append(gesture_name)
+                        mp_drawing.DrawingSpec(color=(0, 0, 0), thickness=2, circle_radius=10)
+                    )
+            # end if
 
-            #     for single_hand_handedness_data in gesture_recognition_result.handedness:
-            #         hand_name = single_hand_handedness_data[0].category_name
-            #         current_handedness.append(hand_name)
-
-            #     for single_hand_score_data in gesture_recognition_result.gestures:
-            #         score = single_hand_score_data[0].score
-            #         current_score.append(round(score, 2))
-
-            # y_pos = image.shape[0] - 70
-            # for x in range(len(current_gestures)):
-            #     if current_handedness[x] != "Left":
-            #         # increment number of none/supination for past 10 frames
-            #         if current_gestures[x] == "supination":
-            #             num_supination += 1
-            #         elif current_gestures[x] == "correct":
-            #             num_correct += 1
-            #         else:
-            #             num_none += 1
-            
-            #         # display classified gesture data on frames
-            #         txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
-            #         if (display_gesture == "supination"):
-            #             cv2.putText(image, txt, (image.shape[1] - 600, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (218,10,3), 4, cv2.LINE_AA)
-            #             print(txt)
-            #         else:
-            #             cv2.putText(image, txt, (image.shape[1] - 650, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (37,245,252), 4, cv2.LINE_AA)
-            #             print(txt)
-
+            """
             bow_coord_list = []
             string_coord_list =[]
             YOLOresults = model(debug_image)
@@ -741,36 +670,17 @@ def main():
 
             detections = sv.Detections.from_ultralytics(YOLOresults[0])
 
-            image.flags.writeable = True
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-            # image_height, image_width, _ = image.shape
-
-            # if results.multi_hand_landmarks:
-            #     for hand_landmarks in results.multi_hand_landmarks:
-            #         for ids, landmrk in enumerate(hand_landmarks.landmark):
-            #             cx, cy = landmrk.x * image_width, landmrk.y * image_height
-            #             # store_finger_node_coords(ids, cx, cy, finger_coords)
-            #         mp_drawing.draw_landmarks(
-            #             image,
-            #             hand_landmarks,
-            #             mp_hands.HAND_CONNECTIONS,
-            #             mp_drawing_styles.get_default_hand_landmarks_style(),
-            #             mp_drawing_styles.get_default_hand_connections_style())
-
-            #         landmark_subset = landmark_pb2.NormalizedLandmarkList(
-            #             landmark=pose_results.pose_landmarks.landmark[11:15]
-            #         )
-            #         mp_drawing.draw_landmarks(
-            #             image,
-            #             landmark_subset,
-            #             None,
-            #             mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=10, circle_radius=6))
-
+            # draw bounding boxes
             oriented_box_annotator = sv.OrientedBoxAnnotator()
             annotated_frame = oriented_box_annotator.annotate(
                 scene=debug_image,
                 detections=detections
             )
+
+            """
+
+            image.flags.writeable = True
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
             image = ResizeWithAspectRatio(image, height=800)
             debug_image = cv2.putText(debug_image, "Frame {}".format(frame_count), (10, 70), cv2.FONT_HERSHEY_SIMPLEX,
@@ -779,9 +689,6 @@ def main():
             cv2.putText(debug_image, "Frame {}".format(frame_count), (10, 70), cv2.FONT_HERSHEY_SIMPLEX,
                1.0, (255, 255, 255), 2, cv2.LINE_AA)
 
-
-            
-        
             # Resize to specified output dimensions before writing
             resized_frame = cv2.resize(debug_image, (output_frame_length, output_frame_width))
 
