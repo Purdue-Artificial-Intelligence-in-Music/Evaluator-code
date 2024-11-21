@@ -449,6 +449,12 @@ def main():
 
     #setup gesture options
     num_hands = 2
+
+    # do majority vote
+    num_none = 0
+    num_supination = 0
+    num_pronation = 0
+    display_gesture = "none"
   
     use_brect = True
 
@@ -500,6 +506,18 @@ def main():
             pose_results = pose.process(image)
 
             frame_count += 1
+
+            # display majority class every 15 frames
+            if (frame_count % 15 == 0):
+                if max(num_pronation, num_none, num_supination) == num_supination:
+                    display_gesture = "Supination"
+                elif max(num_pronation, num_none, num_supination) == num_pronation:
+                    display_gesture = "Pronation"
+                else:
+                    display_gesture = "Correct!"
+                num_none = 0
+                num_supination = 0
+                num_pronation = 0
             
             # Draw hand landmarks
             if results.multi_hand_landmarks is not None:
@@ -518,6 +536,13 @@ def main():
                     # Hand sign classification
                     hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
 
+                    if (keypoint_classifier_labels[hand_sign_id] == "Pronation"):
+                        num_none += 1
+                    elif (keypoint_classifier_labels[hand_sign_id] == "Supination"):
+                        num_supination += 1
+                    else:
+                        num_none += 1
+
                     # Draw hands
                     debug_image = draw_bounding_rect(use_brect, debug_image, brect)
                     debug_image = draw_landmarks(debug_image, landmark_list)
@@ -525,7 +550,7 @@ def main():
                         debug_image,
                         brect,
                         handedness,
-                        keypoint_classifier_labels[hand_sign_id]
+                        display_gesture
                     )
 
                     # Draw pose
