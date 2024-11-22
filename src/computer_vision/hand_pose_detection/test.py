@@ -225,12 +225,21 @@ def draw_info_text(image, brect, handedness, hand_sign_text):
 
     return image
 
-def draw_info(image, fps):
-    cv2.putText(image, "FPS: " + str(fps), (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+def draw_info(image, fps, mode, number):
+    cv2.putText(image, "FPS:" + str(fps), (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
                1.0, (0, 0, 0), 4, cv2.LINE_AA)
-    cv2.putText(image, "FPS: " + str(fps), (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+    cv2.putText(image, "FPS:" + str(fps), (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
                1.0, (255, 255, 255), 2, cv2.LINE_AA)
 
+    mode_string = ['Logging Key Point', 'Logging Point History']
+    if 1 <= mode <= 2:
+        cv2.putText(image, "MODE:" + mode_string[mode - 1], (10, 90),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+                   cv2.LINE_AA)
+        if 0 <= number <= 9:
+            cv2.putText(image, "NUM:" + str(number), (10, 110),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+                       cv2.LINE_AA)
     return image
 
 def draw_landmarks(image, landmark_point):
@@ -420,6 +429,31 @@ def draw_landmarks(image, landmark_point):
 
     return image
 
+def logging_csv(number, mode, landmark_list, handedness):
+    if mode == 0:
+        pass
+    if mode == 1 and (0 <= number <= 9):
+        if handedness.classification[0].label[0:] == "Right":
+            csv_path = 'src/computer_vision/hand_pose_detection/model/keypoint_classifier/keypoint.csv'
+            with open(csv_path, 'a', newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([number, *landmark_list])
+                print("Logged data")
+    return
+
+
+def select_mode(key, mode):
+    number = -1
+    if 48 <= key <= 57:  # 0 ~ 9
+        number = key - 48
+    if key == 110:  # n
+        mode = 0
+    if key == 107:  # k
+        mode = 1
+    if key == 104:  # h
+        mode = 2
+    return number, mode
+
 def main():
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
@@ -471,6 +505,8 @@ def main():
     # FPS Measurement ########################################################
     cvFpsCalc = CvFpsCalc(buffer_len=10)
 
+    mode = 0
+
     #set up hands and body
     with mp_hands.Hands(
         model_complexity=0,
@@ -486,6 +522,13 @@ def main():
             success, image = cap.read()
             if not success:
                 break
+            
+            # Process Key (ESC: end) #################################################
+            key = cv2.waitKey(10)
+            if key == 27:  # ESC
+                break
+
+            number, mode = select_mode(key, mode)
             
             # calculate FPS
             fps = cvFpsCalc.get()
@@ -532,6 +575,9 @@ def main():
 
                     # Conversion to relative coordinates / normalized coordinates
                     pre_processed_landmark_list = pre_process_landmark(landmark_list)
+
+                     # Write to the dataset file
+                    logging_csv(number, mode, pre_processed_landmark_list, handedness)
 
                     # Hand sign classification
                     hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
@@ -717,7 +763,7 @@ def main():
             # Resize to specified output dimensions before writing
             resized_frame = cv2.resize(debug_image, (output_frame_length, output_frame_width))
 
-            debug_image = draw_info(debug_image, fps)
+            debug_image = draw_info(debug_image, fps, mode, number)
 
             writer.write(resized_frame)
             cv2.imshow('MediaPipe Hands', debug_image)
