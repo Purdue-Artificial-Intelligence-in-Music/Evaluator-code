@@ -25,7 +25,6 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 gesture_model = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/3_category.task'
 
 # A class that stores methods/data for 2d points on the screen
-
 class Point2D:
     def __init__(self, x=0, y=0):
         self.x = x
@@ -105,26 +104,43 @@ class Point2D:
     @staticmethod
     def angle_between_lines(A, B, C, D):
         """
-        Calculates the angle between the line segment AB and CD.        
+        Calculates the angle (in degrees) between two line segments AB and CD.
+        Determines if the lines are approximately perpendicular.
         """
         # Vectors AB and CD
         vector_ab = (B.x - A.x, B.y - A.y)
         vector_cd = (D.x - C.x, D.y - C.y)
 
+        # Calculate dot product and magnitudes
         dot_product = vector_ab[0] * vector_cd[0] + vector_ab[1] * vector_cd[1]
-
         magnitude_ab = A.distance_to(B)
         magnitude_cd = C.distance_to(D)
-      
-       # Dot product property
-        cos_theta = dot_product / (magnitude_ab * magnitude_cd)
 
-        # Calculate arc cosine
+        if magnitude_ab == 0 or magnitude_cd == 0:
+            raise ValueError("One or both line segments have zero length.")
+
+        # Normalize the cosine value to avoid errors
+        cos_theta = max(-1.0, min(1.0, dot_product / (magnitude_ab * magnitude_cd)))
+
+        # Calculate angle in degrees
         angle_radians = math.acos(cos_theta)
         angle_degrees = math.degrees(angle_radians)
-        
+
         return angle_degrees
 
+    @staticmethod
+    def is_bow_perpendicular(bow_start, bow_end, string_start, string_end, threshold=5):
+        """
+        Determines if the bow is perpendicular to the string within a given threshold.
+        Parameters:
+        bow_start, bow_end (Point2D): Points defining the bow line.
+        string_start, string_end (Point2D): Points defining the string line.
+        threshold (float): Degree threshold to determine "perpendicularity."
+        Returns:
+        bool: True if the angle is within the threshold of 90 degrees, False otherwise.
+        """
+        angle = Point2D.angle_between_lines(bow_start, bow_end, string_start, string_end)
+        return abs(angle - 90) <= threshold
 
 # Function to resize image with aspect ratio
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
@@ -150,13 +166,13 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
 def main():
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
-    model = YOLO('/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt')  # Path to your model file
+    model = YOLO(r'src\computer_vision\hand_pose_detection\bow_target.pt')
   
     # For webcam input:
     # model.overlap = 80
 
     #input video file
-    video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
+    video_file_path = r"C:\Users\Gurte\Downloads\right elbow too high 5.mp4"
     cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
     frame_count = 0
@@ -391,8 +407,10 @@ def main():
                             cv2.putText(image, "Bow Too High", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
                         else:
                             cv2.putText(image, "Bow Correctly placed", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
+                        
                         # Evaluate correctness of bow angle based on how perpendicular bow is to fingerboard
                         angle = Point2D.angle_between_lines(bow_coord_list[0], bow_coord_list[1], box_str_point_three, box_str_point_four)
+                        
                         if angle > 75 and angle < 105:
                             cv2.putText(image, "Bow Angle Correct", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
                         else:
