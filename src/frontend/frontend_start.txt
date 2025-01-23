@@ -1,0 +1,10 @@
+need npx and npm
+
+navigate to the UI folder of the frontend directory
+    if use terminal and are in the evaluator-code directory, do cd src/frontend/UI
+
+to get it to start up, run npx expo start
+
+Will use localhost 8081. on a web browser go to http://localhost:8081
+
+All work for UI so far is in src/frontend/UI/app/index.tsx
