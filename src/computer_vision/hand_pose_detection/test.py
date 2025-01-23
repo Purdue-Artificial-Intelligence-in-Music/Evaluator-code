@@ -1,3 +1,4 @@
+import math
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -100,6 +101,31 @@ class Point2D:
             return True  # Current point (self) is above the line
         else:
             return False 
+    
+    @staticmethod
+    def angle_between_lines(A, B, C, D):
+        """
+        Calculates the angle between the line segment AB and CD.        
+        """
+        # Vectors AB and CD
+        vector_ab = (B.x - A.x, B.y - A.y)
+        vector_cd = (D.x - C.x, D.y - C.y)
+
+        dot_product = vector_ab[0] * vector_cd[0] + vector_ab[1] * vector_cd[1]
+
+        magnitude_ab = A.distance_to(B)
+        magnitude_cd = C.distance_to(D)
+      
+       # Dot product property
+        cos_theta = dot_product / (magnitude_ab * magnitude_cd)
+
+        # Calculate arc cosine
+        angle_radians = math.acos(cos_theta)
+        angle_degrees = math.degrees(angle_radians)
+        
+        return angle_degrees
+
+
 # Function to resize image with aspect ratio
 def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
     dim = None
@@ -163,7 +189,7 @@ def main():
     # model.overlap = 80
 
     #input video file
-    video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
+    video_file_path = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
     cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
     frame_count = 0
@@ -379,14 +405,15 @@ def main():
 
                     # Put text on image for box two
                     text_two = "Bow OBB Coords:"
-                    cv2.putText(image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord1, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord3, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
-                    cv2.putText(image, text_coord4, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+                    cv2.putText(image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 255, 255), 2)  # Reduced font size, previous color (73, 34, 124)
+                    cv2.putText(image, text_coord1, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 255, 255), 2)  # Reduced font size
+                    cv2.putText(image, text_coord2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 255, 255), 2)  # Reduced font size
+                    cv2.putText(image, text_coord3, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 255, 255), 2)  # Reduced font size
+                    cv2.putText(image, text_coord4, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 255, 255), 2)  # Reduced font size
 
                     # Detect if bow too high or low
                     bow_too_high = (image.shape[1] - 370, text_offset * 11 + 0) # Adjusted to move down and left
+                    bow_angle = (0, text_offset * 11 + 0) # Adjusted to move down and left
                     if(len(bow_coord_list) == 4 and len(string_coord_list) == 4):
             
                         P1 = Point2D.find_point_p1(bow_coord_list[0], bow_coord_list[1]) # left mid point
@@ -397,6 +424,12 @@ def main():
                             cv2.putText(image, "Bow Too High", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
                         else:
                             cv2.putText(image, "Bow Correctly placed", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
+                        # Evaluate correctness of bow angle based on how perpendicular bow is to fingerboard
+                        angle = Point2D.angle_between_lines(bow_coord_list[0], bow_coord_list[1], box_str_point_three, box_str_point_four)
+                        if angle > 75 and angle < 105:
+                            cv2.putText(image, "Bow Angle Correct", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
+                        else:
+                            cv2.putText(image, "Bow Not Perpendicular to Fingerboard", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
 
             detections = sv.Detections.from_ultralytics(YOLOresults[0])
 
