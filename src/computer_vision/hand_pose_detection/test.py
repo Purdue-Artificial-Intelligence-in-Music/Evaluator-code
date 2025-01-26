@@ -22,7 +22,7 @@ base_directory = os.path.dirname(__file__)
 
 # Calculate the correct path to the model directory
 model_directory = os.path.join(base_directory, 'model', 'keypoint_classifier')
-model_file = os.path.join(model_directory, 'keypoint_classifier.tflite')
+model_file = os.path.join(model_directory, 'keypoint_classifier (1).tflite')
 
 # Ensure the model file exists
 if not os.path.exists(model_file):
@@ -429,7 +429,7 @@ def draw_landmarks(image, landmark_point):
 
     return image
 
-def logging_csv(number, mode, landmark_list, handedness):
+def logging_csv(number, mode, landmark_list, handedness, frame_num):
     if mode == 0:
         pass
     if mode == 1 and (0 <= number <= 9):
@@ -438,7 +438,7 @@ def logging_csv(number, mode, landmark_list, handedness):
             with open(csv_path, 'a', newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([number, *landmark_list])
-                print("Logged data")
+                print("Logged data on frame " + str(frame_num))
     return
 
 
@@ -454,6 +454,31 @@ def select_mode(key, mode):
         mode = 2
     return number, mode
 
+def blur_edge(img, d=31):
+    h, w  = img.shape[:2]
+    img_pad = cv2.copyMakeBorder(img, d, d, d, d, cv2.BORDER_WRAP)
+    img_blur = cv2.GaussianBlur(img_pad, (2*d+1, 2*d+1), -1)[d:-d,d:-d]
+    y, x = np.indices((h, w))
+    dist = np.dstack([x, w-x-1, y, h-y-1]).min(-1)
+    w = np.minimum(np.float32(dist)/d, 1.0)
+    return img*w + img_blur*(1-w)
+
+def motion_kernel(angle, d, sz=65):
+    kern = np.ones((1, d), np.float32)
+    c, s = np.cos(angle), np.sin(angle)
+    A = np.float32([[c, -s, 0], [s, c, 0]])
+    sz2 = sz // 2
+    A[:,2] = (sz2, sz2) - np.dot(A[:,:2], ((d-1)*0.5, 0))
+    kern = cv2.warpAffine(kern, A, (sz, sz), flags=cv2.INTER_CUBIC)
+    return kern
+
+def defocus_kernel(d, sz=65):
+    kern = np.zeros((sz, sz), np.uint8)
+    cv2.circle(kern, (sz, sz), d, 255, -1, cv2.LINE_AA, shift=1)
+    kern = np.float32(kern) / 255.0
+    return kern
+
+
 def main():
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
@@ -462,8 +487,15 @@ def main():
     # For webcam input:
     # model.overlap = 80
 
+    # Initialization of deconvolution parameters
+    defocus = False  # Default to motion kernel, change as needed
+    angle = 180  # Default angle for motion blur
+    d = 22  # Default diameter
+    snr = 25  # Default SNR value
+
     #input video file
-    video_file_path = 'src/computer_vision/hand_pose_detection/Supination1.mp4'
+    # video_file_path = 'src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
+    video_file_path = 'src/computer_vision/hand_pose_detection/Supination.mp4'
     cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
     frame_count = 0
@@ -542,6 +574,41 @@ def main():
             debug_image = copy.deepcopy(image)
 
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            # # Deconvolute the image/frame
+
+            # # Convert the input image to grayscale
+            # grayscale_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            # img_float = np.float32(grayscale_image) / 255.0
+            # img_blurred = blur_edge(img_float)
+            # IMG = cv2.dft(img_blurred, flags=cv2.DFT_COMPLEX_OUTPUT)
+
+            # if defocus:
+            #     psf = defocus_kernel(d)
+            # else:
+            #     ang_rad = np.deg2rad(angle)
+            #     psf = motion_kernel(ang_rad, d)
+                
+            # psf /= psf.sum()
+            # psf_pad = np.zeros_like(img_float)
+            # kh, kw = psf.shape
+            # psf_pad[:kh, :kw] = psf
+            # PSF = cv2.dft(psf_pad, flags=cv2.DFT_COMPLEX_OUTPUT, nonzeroRows=kh)
+            # PSF2 = (PSF ** 2).sum(-1)
+            # noise = 10 ** (-0.1 * snr)
+            # iPSF = PSF / (PSF2 + noise)[..., np.newaxis]
+            # RES = cv2.mulSpectrums(IMG, iPSF, 0)
+            # res = cv2.idft(RES, flags=cv2.DFT_SCALE | cv2.DFT_REAL_OUTPUT)
+            # res = np.roll(res, -kh // 2, 0)
+            # res = np.roll(res, -kw // 2, 1)
+
+            # # Replace the input image with deconvoluted image
+            # debug_image = (res * 255).astype(np.uint8)
+
+            # # Convert back to BGR to match the original image format
+            # debug_image = cv2.cvtColor(debug_image, cv2.COLOR_GRAY2BGR)
+
+            # image = cv2.cvtColor(debug_image, cv2.COLOR_BGR2RGB)
             
             # classify hand signs
             results = hands.process(image)
@@ -577,7 +644,7 @@ def main():
                     pre_processed_landmark_list = pre_process_landmark(landmark_list)
 
                      # Write to the dataset file
-                    logging_csv(number, mode, pre_processed_landmark_list, handedness)
+                    logging_csv(number, mode, pre_processed_landmark_list, handedness, frame_count)
 
                     # Hand sign classification
                     hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
