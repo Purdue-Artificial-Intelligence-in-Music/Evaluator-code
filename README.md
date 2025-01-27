@@ -1,7 +1,7 @@
 # AIM Evaluator: Installation and Troubleshooting Guide
 
 ## Overview
-The Evaluator app, developed by the AIM (Artificial Intelligence for Musicians) group at Purdue University, uses computer vision to assist string instrument players in improving their posture and hand movements. Refer to "Evaluator_Vision_team_Installation_and_Code_Setup_Documentation.pdf" for more details.
+The Evaluator app, developed by the AIM ([Artificial Intelligence for Musicians](https://ai4musicians.org/#)) group at Purdue University, uses computer vision to assist string instrument players in improving their posture and hand movements. Refer to "Evaluator_Vision_team_Installation_and_Code_Setup_Documentation.pdf" for more details.
 
 ## Prerequisites
 
