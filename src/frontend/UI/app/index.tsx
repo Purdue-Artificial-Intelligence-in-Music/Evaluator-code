@@ -6,7 +6,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 
 export default function App() {
   const [videoUri, setVideoUri] = useState<string | null>(null);
-  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null); // Store video dimensions
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>({width: 300, height: 300}); // Store video dimensions
   const [isCameraOpen, setIsCameraOpen] = useState(false); // state to toggle camera visibility
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -42,11 +42,14 @@ export default function App() {
     if (!result.canceled) {
       // Store the selected video URI
       const selectedVideoUri = result.assets[0].uri;
-      setVideoUri(selectedVideoUri);
-
+      
       // Fetch the video dimensions from the asset metadata
       const { width, height } = result.assets[0];
       setVideoDimensions({ width, height });
+      
+      setVideoUri(selectedVideoUri);
+
+      
 
       // Close the camera when a video is selected
       setIsCameraOpen(false);
@@ -83,6 +86,7 @@ export default function App() {
     }
   }
 
+  // fix null checking for videoDimension.width and videoDimension.height null
   return (
     <View style={styles.container}>
       {/* Buttons to toggle between live camera and video selection */}
@@ -105,7 +109,7 @@ export default function App() {
           source={{ uri: videoUri }}
           shouldPlay
           resizeMode={ResizeMode.COVER}
-          style={{width: 300, height:300}}
+          style={{width: videoDimensions?.width, height: videoDimensions?.height}}
         />
       ) : (
         <Text style={styles.placeholderText}>No video selected</Text>
