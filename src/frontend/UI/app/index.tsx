@@ -74,9 +74,8 @@ export default function App() {
       console.log("Making API request...");
       console.log(`http://${ipAddress}:8000/api/hello`);
       //assuming that django is running locally as well
-      const response = await fetch(`http://${ipAddress}:8000/api/hello`, {
+      const response = await fetch(`http://localhost:8000/api/hello`, {
         method: 'GET',  
-        mode: 'no-cors',  // This will disable CORS checks -> NEED TO REMOVE
       });
       const json = await response.json();
       console.log("API Response:", json);
