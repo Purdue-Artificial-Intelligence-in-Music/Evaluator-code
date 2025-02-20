@@ -95,7 +95,7 @@ export default function App() {
       setLoading(false);
     }
   };
-
+  
   return (
     <View style={styles.container}>
       <View style={styles.buttonStyle}>
