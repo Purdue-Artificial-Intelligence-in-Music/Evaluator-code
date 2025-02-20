@@ -62,6 +62,14 @@ export default function App() {
     }
   };
 
+  const returnBack = async () => {
+
+      setIsCameraOpen(false)
+      setVideoUri(null)
+
+
+  };
+
   const fetchDataFromAPI = async () => {
     if (!ipAddress) {
       console.log("IP address not available yet.");
@@ -90,9 +98,12 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <Button title="Choose Video" onPress={pickVideo} />
-      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => setIsCameraOpen(!isCameraOpen)} />
+      <View style={styles.buttonStyle}>
+      <Button title="Choose Video" onPress={pickVideo}/>
+      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null)} } />
       <Button title="Fetch Data from API" onPress={fetchDataFromAPI} />
+      <Button title="Back" onPress={returnBack}/>
+      </View>
 
       {isCameraOpen && (
         <CameraView style={styles.camera} facing="front" />
@@ -127,9 +138,20 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFF',
+  },
+  buttonStyle: {
+
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    paddingTop: 15,
+    paddingBottom: 15,
+    backgroundColor: '#AAA',
+    width: '100%',
+
   },
   message: {
     textAlign: 'center',
