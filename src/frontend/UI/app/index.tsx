@@ -5,11 +5,13 @@ import * as ImagePicker from 'react-native-image-picker';
 import * as Network from 'expo-network';
 import { Camera, CameraView } from 'expo-camera';
 
+import RNFS from 'react-native-fs';
+
 // Define Point type for clarity
 type Point = {
   x: number;
   y: number;
-};
+};g
 
 export default function App() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -28,6 +30,7 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
   const takePicture = async () => {
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync();
+      sendImageToBackend(photo.base64);
       setPhotoUri(photo.uri);
       console.log('Photo URI:', photo.uri);
     }
@@ -36,7 +39,7 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
   return (
     <View style={styles.cameraContainer}>
       <CameraView ref={cameraRef} style={styles.camera} />
-      <Button title="Take Picture" onPress={onCameraPress} />
+      <Button title="Take Picture" onPress={takePicture} />
       {photoUri && <Text>Photo taken! URI: {photoUri}</Text>}
     </View>
   );
@@ -86,56 +89,35 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
     }
   };
 
-  // Handle camera button press
-  const onCameraPress = useCallback(() => {
-    const options: ImagePicker.CameraOptions = {
-      saveToPhotos: false,
-      mediaType: 'photo',
-      includeBase64: true,
-    };
-
-    ImagePicker.launchCamera(options, (response) => {
-      if (response.didCancel) {
-        console.log('User cancelled image picker');
-      } else if (response.errorCode) {
-        console.log('ImagePicker Error: ', response.errorCode);
-      } else {
-        setPickerResponse(response);
-        if (response.assets && response.assets[0] && response.assets[0].uri) {
-          sendImageToBackend(response.assets[0].uri);
-        } else {
-          console.error('Error: No image URI found in response.');
-        }
-      }
-    });
-  }, []);
-
   // Send captured image to backend API
-  const sendImageToBackend = async (imageUri: string) => {
-    const formData = new FormData();
-    const file = {
-      uri: imageUri,
-      type: 'image/png',
-      name: 'frame.png',
-    } as any;
-
-    formData.append('file', file);
+  const sendImageToBackend = async (imageBase64: string) => {
+    console.log(imageBase64)
+    const jsonData = {
+      "title": "Test Image",
+      "content": "This is a test image",
+      "image": imageBase64,
+    }
 
     try {
       setLoading(true);
       const response = await fetch('http://127.0.0.1:8000/api/upload/', {
         method: 'POST',
-        body: formData,
-        headers: { 'Content-Type': 'multipart/form-data' },
+        body: JSON.stringify(jsonData),
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
       if (response.ok) {
-        const pointArray: Point[] = await response.json();
-        console.log('Points:', pointArray);
+        console.log(response)
+        //const pointArray: Point[] = await response.json();
+        //console.log('Points:', pointArray);
       }
+
     } catch (error) {
       console.error('Error uploading image:', error);
       alert('Error: Failed to upload image.');
+
     } finally {
       setLoading(false);
     }
