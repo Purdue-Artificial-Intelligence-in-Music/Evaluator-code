@@ -1,22 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import { Button, View, StyleSheet, Text } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { SafeAreaView, Button, Text, StyleSheet, View } from 'react-native';
 import { ResizeMode, Video } from 'expo-av';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'react-native-image-picker';
+import * as ImagePickerExpo from 'expo-image-picker';
 import * as Network from 'expo-network';
+import { Camera, CameraView } from 'expo-camera';
+
+import RNFS from 'react-native-fs';
+
+// Define Point type for clarity
+type Point = {
+  x: number;
+  y: number;
+};
 
 export default function App() {
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
-  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>({ width: 300, height: 300 });
   const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [permission, requestPermission] = useCameraPermissions();
-  const [apiData, setApiData] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false); // Loading state for the API request
   const [ipAddress, setIpAddress] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [pickerResponse, setPickerResponse] = useState<ImagePicker.ImagePickerResponse | null>(null);
+  const [hasPermission, setHasPermission] = useState(false);  // State for camera permission
+  const cameraRef = useRef<React.RefObject<typeof Camera>>(null); // Ref to the Camera component
+
+  // CameraComponent to handle camera view
+const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) => {
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+  const takePicture = async () => {
+    if (cameraRef.current) {
+      const photo = await cameraRef.current.takePictureAsync();
+      sendImageToBackend(photo.base64);
+      setPhotoUri(photo.uri);
+      console.log('Photo URI:', photo.uri);
+    }
+  };
+
+  return (
+    <View style={styles.cameraContainer}>
+      <CameraView ref={cameraRef} style={styles.camera} />
+      <Button title="Take Picture" onPress={takePicture} />
+      {photoUri && <Text>Photo taken! URI: {photoUri}</Text>}
+    </View>
+  );
+};
 
   // Fetch IP address on mount
   useEffect(() => {
-    const fetchIp = async () => {
+    const fetchIpAddress = async () => {
       try {
         const ip = await Network.getIpAddressAsync();
         setIpAddress(ip);
@@ -24,42 +56,40 @@ export default function App() {
         console.error("Error fetching IP address:", error);
       }
     };
+    fetchIpAddress();
 
-    fetchIp();
-  }, []); // Empty dependency array means this runs only once when the app loads
+    // Request camera permission
+    const getCameraPermission = async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+    };
+    getCameraPermission();
+  }, []);
 
-  if (!permission) {
-    return <View />; // Return a blank view while permission is loading
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.message}>We need your permission to show the camera</Text>
-        <Button onPress={requestPermission} title="Grant Permission" />
-      </View>
-    );
-  }
-
+  // Function to handle video selection
   const pickVideo = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permissionResult = await Camera.requestCameraPermissionsAsync();
 
-    if (permissionResult.granted === false) {
+    if (!permissionResult.granted) {
       alert('Permission to access media library is required!');
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+    const result = await ImagePickerExpo.launchImageLibraryAsync({
+      mediaTypes: ['videos']
+
     });
 
-    if (!result.canceled) {
+    if(!result.canceled && result.assets && result.assets[0]) {
       const selectedVideoUri = result.assets[0].uri;
-      const { width, height } = result.assets[0];
+      const { width = 0, height = 0 } = result.assets[0];
       setVideoDimensions({ width, height });
-      setVideoUri(selectedVideoUri);
+      if (selectedVideoUri) {
+        setVideoUri(selectedVideoUri);
+      }
       setIsCameraOpen(false);
     }
+
   };
 
   const returnBack = async () => {
@@ -67,47 +97,53 @@ export default function App() {
       setIsCameraOpen(false)
       setVideoUri(null)
 
-
   };
-
-  const fetchDataFromAPI = async () => {
-    if (!ipAddress) {
-      console.log("IP address not available yet.");
-      alert('IP address not available yet.');
-      return;
+  // Send captured image to backend API
+  const sendImageToBackend = async (imageBase64: string) => {
+    console.log(imageBase64)
+    const jsonData = {
+      "title": "Test Image",
+      "content": "This is a test image",
+      "image": imageBase64,
     }
 
-    setLoading(true);
     try {
-      console.log("Making API request...");
-      console.log(`http://${ipAddress}:8000/api/hello`);
-      //assuming that django is running locally as well
-      const response = await fetch(`http://localhost:8000/api/hello`, {
-        method: 'GET',  
+      setLoading(true);
+      const response = await fetch('http://127.0.0.1:8000/api/upload/', {
+        method: 'POST',
+        body: JSON.stringify(jsonData),
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      const json = await response.json();
-      console.log("API Response:", json);
-      setApiData(JSON.stringify(json));
+
+      if (response.ok) {
+        console.log(response)
+        //const pointArray: Point[] = await response.json();
+        //console.log('Points:', pointArray);
+      }
+
     } catch (error) {
-      console.error("Error fetching data:", error);
-      setApiData('Failed to fetch data');
+      console.error('Error uploading image:', error);
+      alert('Error: Failed to upload image.');
+
     } finally {
       setLoading(false);
     }
   };
   
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.buttonStyle}>
       <Button title="Choose Video" onPress={pickVideo}/>
       <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null)} } />
-      <Button title="Fetch Data from API" onPress={fetchDataFromAPI} />
+      <Button title="Fetch Data from API" disabled={loading} />
       <Button title="Back" onPress={returnBack}/>
       </View>
 
-      {isCameraOpen && (
-        <CameraView style={styles.camera} facing="front" />
-      )}
+      {isCameraOpen && hasPermission && <CameraComponent cameraRef={cameraRef} />}
+      
+      <Text>IP Address: {ipAddress || 'Fetching IP...'}</Text>
 
       {videoUri ? (
         <Video
@@ -125,13 +161,7 @@ export default function App() {
           Video Dimensions: {videoDimensions.width}x{videoDimensions.height}
         </Text>
       )}
-
-      {loading ? (
-        <Text style={styles.apiDataText}>Fetching data...</Text>
-      ) : apiData ? (
-        <Text style={styles.apiDataText}>API Response: {apiData}</Text>
-      ) : null}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -153,14 +183,18 @@ const styles = StyleSheet.create({
     width: '100%',
 
   },
-  message: {
-    textAlign: 'center',
-    paddingBottom: 10,
-  },
-  camera: {
+  cameraContainer: {
     width: 300,
     height: 400,
     marginBottom: 20,
+    borderRadius: 10,
+    backgroundColor: 'lightgray',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  camera: {
+    width: '100%',
+    height: '100%',
     borderRadius: 10,
   },
   placeholderText: {
@@ -173,9 +207,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  apiDataText: {
-    marginTop: 20,
-    fontSize: 14,
-    color: 'blue',
-  },
 });
+
