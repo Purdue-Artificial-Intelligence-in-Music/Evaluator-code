@@ -11,7 +11,7 @@ import RNFS from 'react-native-fs';
 type Point = {
   x: number;
   y: number;
-};g
+};
 
 export default function App() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
