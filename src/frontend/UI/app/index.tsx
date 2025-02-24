@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SafeAreaView, Button, Text, StyleSheet, View } from 'react-native';
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePicker from 'react-native-image-picker';
+import * as ImagePickerExpo from 'expo-image-picker';
 import * as Network from 'expo-network';
 import { Camera, CameraView } from 'expo-camera';
 
-import RNFS from 'react-native-fs';
 
 // Define Point type for clarity
 type Point = {
@@ -74,11 +74,12 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
       return;
     }
 
-    const result = await ImagePicker.launchImageLibrary({
-      mediaType: 'video',
+    const result = await ImagePickerExpo.launchImageLibraryAsync({
+      mediaTypes: ['videos']
+
     });
 
-    if (!result.didCancel && result.assets && result.assets[0]) {
+    if(!result.canceled && result.assets && result.assets[0]) {
       const selectedVideoUri = result.assets[0].uri;
       const { width = 0, height = 0 } = result.assets[0];
       setVideoDimensions({ width, height });
@@ -87,8 +88,15 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
       }
       setIsCameraOpen(false);
     }
+
   };
 
+  const returnBack = async () => {
+
+      setIsCameraOpen(false)
+      setVideoUri(null)
+
+  };
   // Send captured image to backend API
   const sendImageToBackend = async (imageBase64: string) => {
     console.log(imageBase64)
@@ -122,12 +130,15 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
       setLoading(false);
     }
   };
-
+  
   return (
     <SafeAreaView style={styles.container}>
-      <Button title="Choose Video" onPress={pickVideo} />
-      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => setIsCameraOpen(!isCameraOpen)} />
+      <View style={styles.buttonStyle}>
+      <Button title="Choose Video" onPress={pickVideo}/>
+      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null)} } />
       <Button title="Fetch Data from API" disabled={loading} />
+      <Button title="Back" onPress={returnBack}/>
+      </View>
 
       {isCameraOpen && hasPermission && <CameraComponent cameraRef={cameraRef} />}
       
@@ -156,10 +167,20 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 16,
+    backgroundColor: '#FFF',
+  },
+  buttonStyle: {
+
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    paddingTop: 15,
+    paddingBottom: 15,
+    backgroundColor: '#AAA',
+    width: '100%',
+
   },
   cameraContainer: {
     width: 300,
