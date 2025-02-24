@@ -1,13 +1,17 @@
+import base64
+import cv2
+import numpy as np
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from . import backend
+
 from .serializers import UploadedImageSerializer
 
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.decorators import api_view
-
-from .backend import processFrame
 
 from django.http import JsonResponse
 
@@ -19,8 +23,35 @@ class UploadImageView (APIView):
 
         serializer = UploadedImageSerializer(data=request.data)
         if serializer.is_valid():
-            article = serializer.save()
-            return Response(serializer.data, status=201)
+            base64_image = request.data.get('image')
+
+            print(base64_image)
+
+            if base64_image.startswith('data:image'):
+                base64_image = base64_image.split(',')[1]
+
+            padding_needed = len(base64_image) % 4
+            if padding_needed != 0:
+                base64_image += '=' * (4 - padding_needed)
+
+
+            image_data = base64.b64decode(base64_image)
+
+            nparr = np.frombuffer(image_data, np.uint8)
+
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            points = backend.processFrame(image)
+
+            points_for = [point.to_dict() for point in points]
+
+            response_data = {
+                'points': points_for
+            }
+
+            print(response_data)
+
+            return Response(response_data, status=201)
         else:
             return Response(serializer.errors, status=400)
 

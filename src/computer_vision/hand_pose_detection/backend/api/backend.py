@@ -1,3 +1,4 @@
+import base64
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -45,6 +46,9 @@ class Point2D:
 
     def as_tuple(self):
         return (self.x, self.y)
+    
+    def to_dict(self):
+        return {'x': self.x, 'y': self.y}
     
     def find_point_p1(A, B, ratio=0.7):
         """
@@ -427,7 +431,7 @@ def main():
     testList = processFrame('C:\\Users\\pelor\\Documents\\Coding\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\frontend_refactor\\Screenshot 2025-02-17 210532.png')
     print(testList)
 
-def processFrame(image_file_path):
+def processFrame(image):
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
     model = YOLO('C:\\Users\\pelor\\Documents\\Coding\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\bow_target.pt')  # Path to your model file
@@ -438,7 +442,16 @@ def processFrame(image_file_path):
     #input video file
     #video_file_path = 'C:\\Users\\pelor\\Documents\\Coding\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\Too much pronation (1).mp4'
     #'/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
-    image = cv2.imread(image_file_path)
+    
+
+    os.makedirs('images', exist_ok=True)
+
+    # Generate the path where the image will be saved
+    image_path = os.path.join('images', 'img.jpg')  # You can change the file extension if needed
+
+    # Save the image to the specified path
+    cv2.imwrite(image_path, image)
+
     frame_count = 0
     output_frame_length = 960
     output_frame_width = 720
@@ -723,6 +736,8 @@ def processFrame(image_file_path):
         cv2.destroyAllWindows()
 
         newList = bow_coord_list + string_coord_list
+        #print("NEW LIST")
+        #print(newList)
         return newList
 
 if __name__ == "__main__":

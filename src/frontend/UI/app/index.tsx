@@ -118,8 +118,13 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
 
       if (response.ok) {
         console.log(response)
-        //const pointArray: Point[] = await response.json();
-        //console.log('Points:', pointArray);
+
+        const responseData = await response.json();
+
+        console.log('Response Data:', responseData);
+
+        const points = responseData.points; // Assuming the response has a 'points' field
+        console.log('Points:', points);
       }
 
     } catch (error) {
