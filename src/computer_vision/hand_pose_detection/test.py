@@ -682,20 +682,7 @@ class Hands:
         plt.ylabel("True Label")
         plt.title("Confusion Matrix")
         plt.show()
-        
-        
 
-def logging_csv(number, mode, landmark_list, handedness, frame_num):
-    if mode == 0:
-        pass
-    if mode == 1 and (0 <= number <= 9):
-        if handedness.classification[0].label[0:] == "Right":
-            csv_path = 'src/computer_vision/hand_pose_detection/model/keypoint_classifier/keypoint.csv'
-            with open(csv_path, 'a', newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow([number, *landmark_list])
-                print("Logged data on frame " + str(frame_num))
-    return
 
 
 def select_mode(key, mode):
@@ -818,12 +805,6 @@ def main():
             # calculate FPS
             fps = cvFpsCalc.get()
 
-            key = cv2.waitKey(10)
-            if key == 27:  # ESC
-                break
-            number, mode = Hands.select_mode(key, 0)
-
-
             # To improve performance, optionally mark the image as not writeable to
             # pass by reference.
             image.flags.writeable = False
@@ -834,24 +815,13 @@ def main():
             # debug_image = cv2.cvtColor(debug_image, cv2.COLOR_BGR2RGB)
             # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             
-            # classify hand signs
+            # mp hand model
             results = hands.process(image)
-            # classify body pose
+            # mp pose model
             pose_results = pose.process(image)
 
             frame_count += 1
 
-            # display majority class every 15 frames
-            if (frame_count % 15 == 0):
-                if max(num_pronation, num_none, num_supination) == num_supination:
-                    display_gesture = "Supination"
-                elif max(num_pronation, num_none, num_supination) == num_pronation:
-                    display_gesture = "Pronation"
-                else:
-                    display_gesture = "Correct!"
-                num_none = 0
-                num_supination = 0
-                num_pronation = 0
             
             '''
             bow_coord_list = []
@@ -1086,7 +1056,6 @@ def main():
         cap.release()
         writer.release()
         cv2.destroyAllWindows()
-
         
         # print("Classification Results:", classification_results)
         if classification_results:
