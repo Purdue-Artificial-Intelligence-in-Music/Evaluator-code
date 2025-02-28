@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SafeAreaView, Button, Text, StyleSheet, View } from 'react-native';
+
 import { ResizeMode, Video } from 'expo-av';
-import * as ImagePicker from 'react-native-image-picker';
 import * as ImagePickerExpo from 'expo-image-picker';
-import * as Network from 'expo-network';
 import { Camera, CameraView } from 'expo-camera';
 
+import * as Network from 'expo-network';
 
-// Define Point type for clarity
 type Point = {
   x: number;
   y: number;
@@ -19,7 +18,6 @@ export default function App() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [ipAddress, setIpAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [pickerResponse, setPickerResponse] = useState<ImagePicker.ImagePickerResponse | null>(null);
   const [hasPermission, setHasPermission] = useState(false);  // State for camera permission
   const cameraRef = useRef<React.RefObject<typeof Camera>>(null); // Ref to the Camera component
 
