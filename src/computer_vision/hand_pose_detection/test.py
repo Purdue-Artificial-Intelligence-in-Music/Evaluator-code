@@ -22,7 +22,7 @@ GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # gesture model path (set path to gesture_recognizer_custom.task)
-gesture_model = '/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/3_category.task'
+gesture_model = '3_category.task'
 
 # A class that stores methods/data for 2d points on the screen
 class Point2D:
@@ -166,14 +166,15 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
 def main():
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
-    model = YOLO(r'src\computer_vision\hand_pose_detection\bow_target.pt')
+    #model = YOLO(r"src\\computer_vision\\hand_pose_detection\\bow_target.pt")
+    model = YOLO("bow_target.pt")
   
     # For webcam input:
     # model.overlap = 80
 
     #input video file
-    video_file_path = r"C:\Users\Gurte\Downloads\right elbow too high 5.mp4"
-    cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
+    video_file_path = r"C:\\Users\\Gurte\\Downloads\\right elbow too high 5.mp4"
+    cap = cv2.VideoCapture(0) # change argument to 0 for demo/camera input
 
     frame_count = 0
     output_frame_length = 960
@@ -291,8 +292,13 @@ def main():
             bow_coord_list = []
             string_coord_list =[]
             YOLOresults = model(image)
+
+            # Flag to track if bow is detected
+            bow_detected = False
+
             for result in YOLOresults:
                 if len(result.obb.xyxyxyxy) > 0:
+                    #String detection code starts here
                     coord_box_one = result.obb.xyxyxyxy[0]
                     round_coord_box_one = torch.round(coord_box_one)
 
@@ -346,6 +352,7 @@ def main():
 
 
                 if len(result.obb.xyxyxyxy) >= 2:
+                    #Bow detection code starts here:
                     coord_box_two = result.obb.xyxyxyxy[1]
                     round_coord_box_two = torch.round(coord_box_two)
 
@@ -415,6 +422,22 @@ def main():
                             cv2.putText(image, "Bow Angle Correct", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
                         else:
                             cv2.putText(image, "Bow Not Perpendicular to Fingerboard", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
+            
+
+            # Display bow detection status
+            if not bow_detected:
+                # Position for the "Bow not detected" message
+                bow_status_position = (10, image.shape[0] - 30)  # Bottom left corner
+                cv2.putText(
+                    image,
+                    "Bow not detected",
+                    bow_status_position,
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (0, 0, 255),  # Red color
+                    2,
+                    cv2.LINE_AA
+                )
 
             detections = sv.Detections.from_ultralytics(YOLOresults[0])
 
