@@ -25,7 +25,7 @@ class UploadImageView (APIView):
         if serializer.is_valid():
             base64_image = request.data.get('image')
 
-            print(base64_image)
+            #print(base64_image)
 
             if base64_image.startswith('data:image'):
                 base64_image = base64_image.split(',')[1]
@@ -43,12 +43,26 @@ class UploadImageView (APIView):
 
             points = backend.processFrame(image)
 
-            points_for = [point.to_dict() for point in points]
+            print("LEN")
+            print(len(points))
 
-            response_data = {
-                'points': points_for
-            }
+            print(points)
+            response_data = {}
 
+            if (len(points) == 8):
+                response_data = {
+                    points[0][0]: (points[0][1]).to_dict(),
+                    points[1][0]: (points[1][1]).to_dict(),
+                    points[2][0]: (points[2][1]).to_dict(),
+                    points[3][0]: (points[3][1]).to_dict(),
+                    points[4][0]: (points[4][1]).to_dict(),
+                    points[5][0]: (points[5][1]).to_dict(),
+                    points[6][0]: (points[6][1]).to_dict(),
+                    points[7][0]: (points[7][1]).to_dict(),
+                }
+            else:
+                response_data = {}
+                
             print(response_data)
 
             return Response(response_data, status=201)

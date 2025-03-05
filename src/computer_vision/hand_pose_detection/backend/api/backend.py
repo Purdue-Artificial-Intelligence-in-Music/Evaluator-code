@@ -434,6 +434,7 @@ def main():
 def processFrame(image):
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
+    
     model = YOLO('C:\\Users\\pelor\\Documents\\Coding\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\bow_target.pt')  # Path to your model file
   
     # For webcam input:
@@ -566,6 +567,7 @@ def processFrame(image):
         bow_coord_list = []
         string_coord_list =[]
         YOLOresults = model(image)
+        newList = []
         for result in YOLOresults:
             if len(result.obb.xyxyxyxy) > 0:
                 coord_box_one = result.obb.xyxyxyxy[0]
@@ -581,6 +583,11 @@ def processFrame(image):
                 box_str_point_two = Point2D(box_str_coordinate_2[0].item(), box_str_coordinate_2[1].item())
                 box_str_point_three = Point2D(box_str_coordinate_3[0].item(), box_str_coordinate_3[1].item())
                 box_str_point_four = Point2D(box_str_coordinate_4[0].item(), box_str_coordinate_4[1].item())
+
+                newList.append(("box string top left", box_str_point_one))
+                newList.append(("box string top right", box_str_point_two))
+                newList.append(("box string bottom right", box_str_point_three))
+                newList.append(("box string bottom left", box_str_point_four))
 
                     # Prepare text
                 text_one = "String OBB Coords:"
@@ -602,6 +609,8 @@ def processFrame(image):
                 string_coord_list.append(box_str_point_two)
                 string_coord_list.append(box_str_point_three)
                 string_coord_list.append(box_str_point_four)
+
+                
                     # Define bottom left corners for each text line
                 bottom_left_corner_text_one = (image.shape[1] - 370, 35 * 6 + 20)  # Adjusted to move higher
                 bottom_left_corner_coord1 = (image.shape[1] - 370, 35 * 7 + 15)   # Adjusted to move higher
@@ -646,6 +655,11 @@ def processFrame(image):
                 bow_coord_list.append(box_bow_coord_two)
                 bow_coord_list.append(box_bow_coord_three)
                 bow_coord_list.append(box_bow_coord_four)
+
+                newList.append(("bow bow top left", box_bow_coord_one))
+                newList.append(("box bow bottom left", box_bow_coord_two))
+                newList.append(("box bow bottom right", box_bow_coord_three))
+                newList.append(("box bow top right", box_bow_coord_four))
 
                     # Prepare text for box one
                 text_coord1 = f"Coord 1: ({box_bow_coord_one.x}, {box_bow_coord_one.y})"
@@ -735,8 +749,9 @@ def processFrame(image):
         writer.release()
         cv2.destroyAllWindows()
 
-        newList = bow_coord_list + string_coord_list
-        #print("NEW LIST")
+        #newList = bow_coord_list + string_coord_list
+        print("*****************************")
+        print(finger_coords)
         #print(newList)
         return newList
 
