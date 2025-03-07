@@ -28,7 +28,7 @@ base_directory = os.path.dirname(__file__)
 
 # Calculate the correct path to the model directory
 model_directory = os.path.join(base_directory, 'model', 'keypoint_classifier')
-model_file = os.path.join(model_directory, 'keypoint_classifier (1).tflite')
+model_file = os.path.join(model_directory, 'keypoint_classifier_v1.tflite')
 
 # Ensure the model file exists
 if not os.path.exists(model_file):
@@ -49,11 +49,6 @@ if utils_directory not in sys.path:
 
 from utils import CvFpsCalc
 
-# option setup for gesture recognizer
-BaseOptions = mp.tasks.BaseOptions
-GestureRecognizer = mp.tasks.vision.GestureRecognizer
-GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
 
 # A class that stores methods/data for 2d points on the screen
 class Point2D:
@@ -665,9 +660,9 @@ class Hands:
         print(f"F1-score: {f1:.2%}")
 
         # Rolling Accuracy Over Time
-        rolling_accuracy = df.groupby(df.index // 100).apply(lambda x: accuracy_score(x["ground_truth"], x["predicted"]))
+        rolling_accuracy = df.groupby(df.index // 20).apply(lambda x: accuracy_score(x["ground_truth"], x["predicted"]))
         plt.plot(rolling_accuracy.index, rolling_accuracy.values, marker='o', linestyle='-')
-        plt.xlabel("Frame Chunk (100 Frames Each)")
+        plt.xlabel("Frame Chunk (20 Frames Each)")
         plt.ylabel("Rolling Accuracy")
         plt.title("Gesture Classification Accuracy Over Time")
         plt.show()
@@ -738,7 +733,7 @@ def main():
 
     #input video file
     # video_file_path = 'src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
-    video_file_path = 'src/computer_vision/hand_pose_detection/Supination.mp4'
+    video_file_path = 'src/computer_vision/hand_pose_detection/bow placing too high.mp4'
     cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
     frame_count = 0
@@ -780,8 +775,8 @@ def main():
     with mp_hands.Hands(
         model_complexity=0,
         max_num_hands=num_hands,
-        min_detection_confidence=0.4,
-        min_tracking_confidence=0.6) as hands, mp_pose.Pose(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5) as hands, mp_pose.Pose(
         model_complexity=0,
         min_detection_confidence=0.4,
         min_tracking_confidence=0.6) as pose:
@@ -812,8 +807,8 @@ def main():
             image = cv2.flip(image, 1)
             debug_image = np.copy(image)  # Use np.copy() instead of copy.deepcopy()
             debug_image.flags.writeable = True
-            # debug_image = cv2.cvtColor(debug_image, cv2.COLOR_BGR2RGB)
-            # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             
             # mp hand model
             results = hands.process(image)
@@ -823,7 +818,7 @@ def main():
             frame_count += 1
 
             
-            '''
+            
             bow_coord_list = []
             string_coord_list =[]
             YOLOresults = model(image)
@@ -951,7 +946,7 @@ def main():
                             cv2.putText(debug_image, "Bow Not Perpendicular to Fingerboard", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
 
             detections = sv.Detections.from_ultralytics(YOLOresults[0])
-            '''
+            
             image_height, image_width, _ = image.shape
             
             # Draw hand landmarks
