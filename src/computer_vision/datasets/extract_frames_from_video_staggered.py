@@ -5,7 +5,7 @@ import os
 
 def extract_frames(video_path, output_folder, interval=3):
     if not os.path.exists(output_folder):
-        os.makedirs(output_folder):
+        os.makedirs(output_folder)
     
     cap = cv2.VideoCapture(video_path)
 
@@ -37,6 +37,6 @@ def extract_frames(video_path, output_folder, interval=3):
     print(f"Successfully extracted {saved_frames} frames and saved to '{output_folder}'!")
 
 # Usage
-video_path = 'April_video_demo.mp4'
+video_path = 'C:\\Users\\Gurte\\Downloads\\right posture 2.mp4'
 output_folder = 'Photos'
 extract_frames(video_path, output_folder)
