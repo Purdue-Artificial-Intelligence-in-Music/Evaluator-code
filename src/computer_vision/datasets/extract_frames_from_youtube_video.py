@@ -7,7 +7,7 @@ import os
 '''
 Had to get some permissions for the YouTube video for this to work.
 YouTube API policy is weird and changes and this may not work for everything.
-If this doesn't work, the best approach may be to just download the video(third part app/extension/website) 
+If this doesn't work, the best approach may be to just download the video(third party app/extension/website) 
 and use extracting_frames_from_video.py, which should work 100% no problem.
 '''
 def download_youtube_video(url, download_folder):
