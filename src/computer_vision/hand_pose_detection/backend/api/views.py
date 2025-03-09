@@ -25,8 +25,6 @@ class UploadImageView (APIView):
         if serializer.is_valid():
             base64_image = request.data.get('image')
 
-            #print(base64_image)
-
             if base64_image.startswith('data:image'):
                 base64_image = base64_image.split(',')[1]
 

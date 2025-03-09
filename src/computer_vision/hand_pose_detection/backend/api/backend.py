@@ -448,7 +448,7 @@ def processFrame(image):
     os.makedirs('images', exist_ok=True)
 
     # Generate the path where the image will be saved
-    image_path = os.path.join('images', 'img.jpg')  # You can change the file extension if needed
+    image_path = os.path.join('images', '../images/img.jpg')  # You can change the file extension if needed
 
     # Save the image to the specified path
     cv2.imwrite(image_path, image)
@@ -744,14 +744,18 @@ def processFrame(image):
         resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
         writer.write(resized_frame)
+
+        image_path = os.path.join('images', '../images/imgOut.jpg')  # You can change the file extension if needed
+        cv2.imwrite(image_path, resized_frame)
+
         cv2.imshow('MediaPipe Hands', image)
 
         writer.release()
         cv2.destroyAllWindows()
 
         #newList = bow_coord_list + string_coord_list
-        print("*****************************")
-        print(finger_coords)
+        #print("*****************************")
+        #print(finger_coords)
         #print(newList)
         return newList
 
