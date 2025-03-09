@@ -656,10 +656,12 @@ def processFrame(image):
                 bow_coord_list.append(box_bow_coord_three)
                 bow_coord_list.append(box_bow_coord_four)
 
-                newList.append(("bow bow top left", box_bow_coord_one))
-                newList.append(("box bow bottom left", box_bow_coord_two))
-                newList.append(("box bow bottom right", box_bow_coord_three))
-                newList.append(("box bow top right", box_bow_coord_four))
+                sorted_points = sorted(bow_coord_list, key=lambda p: (p.y, p.x))
+                print(sorted_points)
+                newList.append(("bow bow top left", sorted_points[2]))
+                newList.append(("box bow top right", sorted_points[3]))
+                newList.append(("box bow bottom left", sorted_points[0]))
+                newList.append(("box bow bottom right", sorted_points[1]))
 
                     # Prepare text for box one
                 text_coord1 = f"Coord 1: ({box_bow_coord_one.x}, {box_bow_coord_one.y})"
