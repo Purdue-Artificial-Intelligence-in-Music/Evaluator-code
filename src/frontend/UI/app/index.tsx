@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SafeAreaView, Button, Text, Image, StyleSheet, View } from 'react-native';
+import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions } from 'react-native';
 
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
@@ -18,6 +18,11 @@ type ResponseData = {
   [key: string]: { x: number; y: number };
 };
 
+const windowWidth = Dimensions.get('window').width;
+const windowHeight = Dimensions.get('window').height;
+const aspectRatio = windowWidth + "x" + windowHeight;
+console.log(aspectRatio)
+
 export default function App() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
@@ -30,31 +35,33 @@ export default function App() {
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
   const [photoUri, setPhotoUri] = useState();
 
-  // CameraComponent to handle camera view
-const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) => {
-  
   const [recording, setRecording] = useState<boolean>(false);
 
+  // CameraComponent to handle camera view
+const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) => {
+
+  let interval: NodeJS.Timeout;
+
   const takePicture = async () => {
+    console.log("recording", recording)
     if (cameraRef.current) {
+      if (!recording) {
+        clearInterval(interval)
+      }
       const photo = await cameraRef.current.takePictureAsync();
       sendImageToBackend(photo.base64);
-      console.log('Photo URI:', photo.uri);
+      console.log("photo dimensions: ", photo.width, photo.height)
     }
   };
 
   const startProcessing = async () => {
-    console.log(recording)
-    setRecording(!recording) 
-    while (recording) {
-      await takePicture();
-    }
+    interval = setInterval(takePicture, 2000);
   }
 
   return (
     <View style={styles.cameraContainer}>
-      <CameraView ref={cameraRef} style={styles.camera} />
-      <Button title="Take Picture" onPress= {() => {takePicture()}} />
+      <CameraView ref={cameraRef} style={styles.camera} pictureSize={aspectRatio} mirror={true}/>
+      <Button title="RECORD" onPress= {() => {setRecording(!recording); startProcessing()}} />
       {photoUri && <Text>Photo taken! URI: {photoUri}</Text>}
       
     </View>
@@ -117,7 +124,6 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
   };
   // Send captured image to backend API
   const sendImageToBackend = async (imageBase64: string) => {
-    console.log(imageBase64)
     const jsonData = {
       "title": "Test Image",
       "content": "This is a test image",
@@ -140,17 +146,14 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
         const responseData: ResponseData = await response.json(); // Type casting here
 
         console.log('Response Data:', responseData);
-
-        console.log("All Keys in Response:", Object.keys(responseData));
+        console.log("All values in list: ", Object.values(responseData));
 
         const point1Data = responseData['box string top left'];
 
         console.log("test: ", point1Data); 
         
-        `
-        const points = responseData.points; // Assuming the response has a 'points' field
+        setPoints(Object.values(responseData))
         console.log('Points:', points);
-        `
       }
 
     } catch (error) {
@@ -207,9 +210,9 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
         </Text>
       )}
 
-      <Svg style={{ ...styles.cameraContainer, height: 200 }}>
+      <Svg style={{ ...styles.cameraContainer, height: 480 - 20 }}>
         {points.map((item, index) => (
-          <Circle cx={item.x} cy={item.y} fill="red" key={index}></Circle>
+          <Circle r={5} cx={item.x} cy={item.y} fill={"rgb(" + (255 - index * 30) +"," + index * 30 + "," + (255 - index * 30) + ")"} key={index}></Circle>
         ))}
       </Svg>
     </SafeAreaView>
@@ -238,8 +241,8 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'absolute',
     marginVertical: 150,
-    width: 300,
-    height: 400,
+    width: 640,
+    height: 480,
     marginBottom: 20,
     borderRadius: 10,
     backgroundColor: 'transparent',
