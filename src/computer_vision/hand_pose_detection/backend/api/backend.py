@@ -33,6 +33,7 @@ class Point2D:
 
     def __repr__(self):
         return f"Point2D({self.x}, {self.y})"
+    
 
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y
@@ -448,7 +449,7 @@ def processFrame(image):
     os.makedirs('images', exist_ok=True)
 
     # Generate the path where the image will be saved
-    image_path = os.path.join('images', 'img.jpg')  # You can change the file extension if needed
+    image_path = os.path.join('images', '../images/img.jpg')  # You can change the file extension if needed
 
     # Save the image to the specified path
     cv2.imwrite(image_path, image)
@@ -656,10 +657,12 @@ def processFrame(image):
                 bow_coord_list.append(box_bow_coord_three)
                 bow_coord_list.append(box_bow_coord_four)
 
-                newList.append(("bow bow top left", box_bow_coord_one))
-                newList.append(("box bow bottom left", box_bow_coord_two))
-                newList.append(("box bow bottom right", box_bow_coord_three))
-                newList.append(("box bow top right", box_bow_coord_four))
+                sorted_points = sorted(bow_coord_list, key=lambda p: (p.y, p.x))
+                print(sorted_points)
+                newList.append(("bow bow top left", sorted_points[2]))
+                newList.append(("box bow top right", sorted_points[3]))
+                newList.append(("box bow bottom left", sorted_points[0]))
+                newList.append(("box bow bottom right", sorted_points[1]))
 
                     # Prepare text for box one
                 text_coord1 = f"Coord 1: ({box_bow_coord_one.x}, {box_bow_coord_one.y})"
@@ -744,14 +747,18 @@ def processFrame(image):
         resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
         writer.write(resized_frame)
+
+        image_path = os.path.join('images', '../images/imgOut.jpg')  # You can change the file extension if needed
+        cv2.imwrite(image_path, resized_frame)
+
         cv2.imshow('MediaPipe Hands', image)
 
         writer.release()
         cv2.destroyAllWindows()
 
         #newList = bow_coord_list + string_coord_list
-        print("*****************************")
-        print(finger_coords)
+        #print("*****************************")
+        #print(finger_coords)
         #print(newList)
         return newList
 

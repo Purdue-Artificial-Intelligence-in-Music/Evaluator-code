@@ -14,6 +14,10 @@ type Point = {
   y: number;
 };
 
+type ResponseData = {
+  [key: string]: { x: number; y: number };
+};
+
 export default function App() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
@@ -133,17 +137,20 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
       if (response.ok) {
         console.log(response)
 
-        const responseData = await response.json();
+        const responseData: ResponseData = await response.json(); // Type casting here
 
         console.log('Response Data:', responseData);
-        console.log('responst data', responseData[0])
 
-        if (responseData.length > 0) {
-          const points = [responseData['bow bow bottom left']];
-          setPoints(responseData.points); // Assuming the response has a 'points' field
-        }
-        setPhotoUri(responseData.uri); //Assuming the response has a 'uri' field
+        console.log("All Keys in Response:", Object.keys(responseData));
+
+        const point1Data = responseData['box string top left'];
+
+        console.log("test: ", point1Data); 
+        
+        `
+        const points = responseData.points; // Assuming the response has a 'points' field
         console.log('Points:', points);
+        `
       }
 
     } catch (error) {

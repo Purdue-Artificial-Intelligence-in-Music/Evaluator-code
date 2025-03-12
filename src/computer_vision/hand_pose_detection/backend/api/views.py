@@ -25,8 +25,6 @@ class UploadImageView (APIView):
         if serializer.is_valid():
             base64_image = request.data.get('image')
 
-            #print(base64_image)
-
             if base64_image.startswith('data:image'):
                 base64_image = base64_image.split(',')[1]
 
@@ -42,7 +40,15 @@ class UploadImageView (APIView):
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
             points = backend.processFrame(image)
-            pointsDummy = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 }
+            pointsDummy = [ ("dum1", backend.Point2D(0, 0)),
+                            ("dum2", backend.Point2D(30, 30)), 
+                            ("dum3", backend.Point2D(60, 60)), 
+                            ("dum4", backend.Point2D(90, 90)), 
+                            ("dum5", backend.Point2D(120, 120)), 
+                            ("dum6", backend.Point2D(150, 150)), 
+                            ("dum7", backend.Point2D(180, 180)), 
+                            ("dum8", backend.Point2D(210, 210)),
+                          ]
 
             print("length of points " + str(len(points)))
 
@@ -61,7 +67,16 @@ class UploadImageView (APIView):
                     points[7][0]: (points[7][1]).to_dict(),
                 }
             else:
-                response_data = pointsDummy
+                response_data = {
+                    pointsDummy[0][0]: (pointsDummy[0][1]).to_dict(),
+                    pointsDummy[1][0]: (pointsDummy[1][1]).to_dict(),
+                    pointsDummy[2][0]: (pointsDummy[2][1]).to_dict(),
+                    pointsDummy[3][0]: (pointsDummy[3][1]).to_dict(),
+                    pointsDummy[4][0]: (pointsDummy[4][1]).to_dict(),
+                    pointsDummy[5][0]: (pointsDummy[5][1]).to_dict(),
+                    pointsDummy[6][0]: (pointsDummy[6][1]).to_dict(),
+                    pointsDummy[7][0]: (pointsDummy[7][1]).to_dict(),
+                }
                 
             print(response_data)
 
