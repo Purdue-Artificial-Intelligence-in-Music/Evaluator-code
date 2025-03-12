@@ -660,7 +660,7 @@ def processFrame(image):
 
                 sorted_points = sorted(bow_coord_list, key=lambda p: (p.y, p.x))
                 print(sorted_points)
-                newList.append(("bow bow top left", sorted_points[2]))
+                newList.append(("box bow top left", sorted_points[2]))
                 newList.append(("box bow top right", sorted_points[3]))
                 newList.append(("box bow bottom left", sorted_points[0]))
                 newList.append(("box bow bottom right", sorted_points[1]))

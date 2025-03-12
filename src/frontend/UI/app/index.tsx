@@ -5,7 +5,7 @@ import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
 import { Camera, CameraView } from 'expo-camera';
 
-import { Svg, Circle} from 'react-native-svg';
+import { Svg, Circle, Line} from 'react-native-svg';
 
 import * as Network from 'expo-network';
 
@@ -33,6 +33,7 @@ export default function App() {
   const cameraRef = useRef<React.RefObject<typeof Camera>>(null); // Ref to the Camera component\
   
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
+  const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
   const [photoUri, setPhotoUri] = useState();
 
   const [recording, setRecording] = useState<boolean>(false);
@@ -114,6 +115,23 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
 
   };
 
+  function processPoints(responseData: ResponseData) {
+    let newLines = [{start: responseData["box bow top left"], end: responseData["box bow top right"]},
+                    {start: responseData["box bow top right"], end: responseData["box bow bottom right"]},
+                    {start: responseData["box bow bottom right"], end: responseData["box bow bottom left"]},
+                    {start: responseData["box bow bottom left"], end: responseData["box bow top left"]},
+
+                    {start: responseData["box string top left"], end: responseData["box string top right"]},
+                    {start: responseData["box string top right"], end: responseData["box string bottom right"]},
+                    {start: responseData["box string bottom right"], end: responseData["box string bottom left"]},
+                    {start: responseData["box string bottom left"], end: responseData["box string top left"]},
+                  ];
+
+    setLinePoints(newLines);
+    console.log(newLines)
+    setPoints(Object.values(responseData))
+  }
+
   
 
   const returnBack = async () => {
@@ -148,11 +166,8 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
         console.log('Response Data:', responseData);
         console.log("All values in list: ", Object.values(responseData));
 
-        const point1Data = responseData['box string top left'];
-
-        console.log("test: ", point1Data); 
+        processPoints(responseData)
         
-        setPoints(Object.values(responseData))
         console.log('Points:', points);
       }
 
@@ -212,7 +227,21 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
 
       <Svg style={{ ...styles.cameraContainer, height: 480 - 20 }}>
         {points.map((item, index) => (
-          <Circle r={5} cx={item.x} cy={item.y} fill={"rgb(" + (255 - index * 30) +"," + index * 30 + "," + (255 - index * 30) + ")"} key={index}></Circle>
+          <Circle r={5} 
+                  cx={item.x} 
+                  cy={item.y} 
+                  fill={"rgb(" + (255 - index * 30) +"," + index * 30 + "," + (255 - index * 30) + ")"} 
+                  key={index}/>
+        ))}
+        {linePoints.map((item, index) => (
+          <Line x1={item.start.x} 
+                y1={item.start.y} 
+                x2={item.end.x}
+                y2={item.end.y}
+                strokeWidth={1}
+                stroke="red"
+                key={index}
+          />
         ))}
       </Svg>
     </SafeAreaView>

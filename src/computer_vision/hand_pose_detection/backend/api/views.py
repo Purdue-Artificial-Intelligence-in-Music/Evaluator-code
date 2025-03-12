@@ -40,14 +40,15 @@ class UploadImageView (APIView):
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
             points = backend.processFrame(image)
-            pointsDummy = [ ("dum1", backend.Point2D(0, 0)),
-                            ("dum2", backend.Point2D(30, 30)), 
-                            ("dum3", backend.Point2D(60, 60)), 
-                            ("dum4", backend.Point2D(90, 90)), 
-                            ("dum5", backend.Point2D(120, 120)), 
-                            ("dum6", backend.Point2D(150, 150)), 
-                            ("dum7", backend.Point2D(180, 180)), 
-                            ("dum8", backend.Point2D(210, 210)),
+            pointsDummy = [ ("box bow top left", backend.Point2D(200, 200)),
+                            ("box bow top right", backend.Point2D(250, 200)), 
+                            ("box bow bottom right", backend.Point2D(250, 270)), 
+                            ("box bow bottom left", backend.Point2D(200, 270)), 
+                            
+                            ("box string top left", backend.Point2D(100, 100)), 
+                            ("box string top right", backend.Point2D(300, 100)), 
+                            ("box string bottom right", backend.Point2D(300, 150)), 
+                            ("box string bottom left", backend.Point2D(100, 150)),
                           ]
 
             print("length of points " + str(len(points)))
