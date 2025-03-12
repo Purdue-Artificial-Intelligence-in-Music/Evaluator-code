@@ -42,11 +42,11 @@ class UploadImageView (APIView):
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
             points = backend.processFrame(image)
+            pointsDummy = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 }
 
-            print("LEN")
-            print(len(points))
+            print("length of points " + str(len(points)))
 
-            print(points)
+            print("points " + str(points))
             response_data = {}
 
             if (len(points) == 8):
@@ -61,22 +61,10 @@ class UploadImageView (APIView):
                     points[7][0]: (points[7][1]).to_dict(),
                 }
             else:
-                response_data = {}
+                response_data = pointsDummy
                 
             print(response_data)
 
             return Response(response_data, status=201)
         else:
             return Response(serializer.errors, status=400)
-
-'''
-def hello(request):
-    data = {
-        'name': 'image',
-        'type': 'image/png',
-    }
-    
-    uploaded_file = request.FILES['file']
-    file_name = default_storage.save(uploaded_file.name, uploaded_file) # Save to default storage
-    return JsonResponse({'message': 'File uploaded successfully', 'file_url': default_storage.url(file_name)})
-    '''

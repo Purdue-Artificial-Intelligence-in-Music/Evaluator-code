@@ -21,7 +21,7 @@ GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # gesture model path (set path to gesture_recognizer_custom.task)
-gesture_model = '/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/3_category.task'
+gesture_model = '/Users/hsken/projects_problems/school/AIM/Evaluator-code/src/computer_vision/hand_pose_detection/3_category.task'
 
 # A class that stores methods/data for 2d points on the screen
 
@@ -124,7 +124,7 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
 def main():
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
-    model = YOLO('/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt')  # Path to your model file
+    model = YOLO('/Users/hsken/projects_problems/school/AIM/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt')  # Path to your model file
   
     # For webcam input:
     # model.overlap = 80
