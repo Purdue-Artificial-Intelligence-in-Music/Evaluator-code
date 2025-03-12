@@ -505,6 +505,7 @@ def processFrame(image):
   
             # To improve performance, optionally mark the image as not writeable to
             # pass by reference.
+        image = cv2.flip(image, 1) #FLIP ON Y
         image.flags.writeable = False
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = hands.process(image)
