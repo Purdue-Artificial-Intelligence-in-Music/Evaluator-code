@@ -36,33 +36,62 @@ export default function App() {
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
   const [photoUri, setPhotoUri] = useState();
 
-  const [recording, setRecording] = useState<boolean>(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [recording, setRecording] = useState<Boolean>(false);
+  
 
   // CameraComponent to handle camera view
 const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) => {
 
-  let interval: NodeJS.Timeout;
-
+  
   const takePicture = async () => {
     console.log("recording", recording)
     if (cameraRef.current) {
-      if (!recording) {
-        clearInterval(interval)
-      }
       const photo = await cameraRef.current.takePictureAsync();
       sendImageToBackend(photo.base64);
       console.log("photo dimensions: ", photo.width, photo.height)
     }
   };
 
-  const startProcessing = async () => {
-    interval = setInterval(takePicture, 2000);
+
+  const toggleProcessing = () => {
+    if (recording) {
+      stopProcessing();
+    } else {
+      startProcessing();
+    }
   }
+
+  const startProcessing = async () => {
+    console.log("started processing", recording)
+    
+    intervalRef.current = setInterval(() => {
+      if (cameraRef.current) {
+        takePicture();
+      }
+      
+      if (!recording) {
+        stopProcessing();
+      }
+    }, 10000);
+  }
+
+  const stopProcessing = async () => {
+    if(intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      console.log("stopped processing");
+    }
+  };
+
+  /*useEffect(() => {
+    toggleProcessing();
+  }, [recording])*/
 
   return (
     <View style={styles.cameraContainer}>
       <CameraView ref={cameraRef} style={styles.camera} pictureSize={aspectRatio} mirror={true}/>
-      <Button title="RECORD" onPress= {() => {setRecording(!recording); startProcessing()}} />
+      <Button title="RECORD" onPress= {() => takePicture()} />
       {photoUri && <Text>Photo taken! URI: {photoUri}</Text>}
       
     </View>
