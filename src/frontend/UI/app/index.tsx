@@ -34,9 +34,7 @@ export default function App() {
   
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
-  const [photoUri, setPhotoUri] = useState();
-
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout>();
   const [recording, setRecording] = useState<Boolean>(false);
   
 
@@ -54,46 +52,28 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
   };
 
 
-  const toggleProcessing = () => {
-    if (recording) {
-      stopProcessing();
+
+  useEffect(() => {
+    if (recording && !loading) {
+      intervalRef.current = setInterval(() => {
+          takePicture();
+      }, 500);
+
     } else {
-      startProcessing();
+      clearInterval(intervalRef.current)
     }
-  }
 
-  const startProcessing = async () => {
-    console.log("started processing", recording)
-    
-    intervalRef.current = setInterval(() => {
-      if (cameraRef.current) {
-        takePicture();
-      }
-      
-      if (!recording) {
-        stopProcessing();
-      }
-    }, 10000);
-  }
-
-  const stopProcessing = async () => {
-    if(intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      console.log("stopped processing");
-    }
-  };
-
-  /*useEffect(() => {
-    toggleProcessing();
-  }, [recording])*/
+    return () => clearInterval(intervalRef.current);
+  }, [recording, loading]);
 
   return (
     <View style={styles.cameraContainer}>
-      <CameraView ref={cameraRef} style={styles.camera} pictureSize={aspectRatio} mirror={true}/>
-      <Button title="RECORD" onPress= {() => takePicture()} />
-      {photoUri && <Text>Photo taken! URI: {photoUri}</Text>}
-      
+      <CameraView ref={cameraRef} 
+                  style={styles.camera} 
+                  pictureSize={aspectRatio} 
+                  mirror={true}
+                  onCameraReady={() => setLoading(false)}/>
+      <Button title="RECORD" onPress={() => setRecording(!recording)}/>    
     </View>
   );
 };
@@ -164,10 +144,8 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
   
 
   const returnBack = async () => {
-
       setIsCameraOpen(false)
       setVideoUri(null)
-
   };
   // Send captured image to backend API
   const sendImageToBackend = async (imageBase64: string) => {
