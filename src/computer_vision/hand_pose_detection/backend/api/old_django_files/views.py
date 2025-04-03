@@ -90,3 +90,17 @@ class UploadImageView (APIView):
             return Response(response_data, status=201)
         else:
             return Response(serializer.errors, status=400)
+        
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UploadVideoView (APIView): 
+    @csrf_exempt
+    def post(self, request):
+        print("Video received") # check the request data
+        
+
+
+        output_video = backend.videoFeed()
+
+        response = {"Video" : }
+
