@@ -96,11 +96,16 @@ class UploadImageView (APIView):
 class UploadVideoView (APIView): 
     @csrf_exempt
     def post(self, request):
-        print("Video received") # check the request data
-        
 
+        print("Received video")
 
         output_video = backend.videoFeed()
 
-        response = {"Video" : }
+        #print(request.data.get('Video'))
+
+        response_data = {"Video": output_video}
+
+        return Response(response_data, status = 201)
+
+        
 

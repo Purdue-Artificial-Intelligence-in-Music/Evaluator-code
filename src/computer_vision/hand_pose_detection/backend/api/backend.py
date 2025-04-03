@@ -133,14 +133,16 @@ def videoFeed():
     # Used for bow and target area oriented bounding boxes
     hand_pose_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     model_dir = os.path.join(hand_pose_dir, "\\bow_target.pt")
-    model = YOLO(model_dir) # path to model file
+    model = YOLO("/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt") # path to model file
+    #/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt
     
     # For webcam input:
     # model.overlap = 80
 
     #input video file
     video_file_path = os.path.join(hand_pose_dir, "\\Too much pronation (1).mp4")
-    cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
+    #'/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
+    cap = cv2.VideoCapture("/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Too much pronation (1).mp4") # change argument to 0 for demo/camera input
 
     frame_count = 0
     output_frame_length = 960
@@ -423,7 +425,7 @@ def videoFeed():
             resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
             writer.write(resized_frame)
-            cv2.imshow('MediaPipe Hands', image)
+            #cv2.imshow('MediaPipe Hands', image)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -431,6 +433,7 @@ def videoFeed():
         cap.release()
         writer.release()
         cv2.destroyAllWindows()
+        return "/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/" + output_file
 
     testList = os.path.join(hand_pose_dir, "frontend_refactor\\Screenshot 2025-02-17 210532.png")
     print(testList)
