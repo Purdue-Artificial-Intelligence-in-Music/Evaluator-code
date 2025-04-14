@@ -47,7 +47,7 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync();
       sendImageToBackend(photo.base64);
-      console.log("photo dimensions: ", photo.width, photo.height)
+      // console.log("photo dimensions: ", photo.width, photo.height)
     }
   };
 
@@ -57,7 +57,7 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
     if (recording && !loading) {
       intervalRef.current = setInterval(() => {
           takePicture();
-      }, 500);
+      }, 1000);
 
     } else {
       clearInterval(intervalRef.current)
@@ -139,6 +139,7 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
     setLinePoints(newLines);
     console.log(newLines)
     setPoints(Object.values(responseData))
+    console.log("pts")
   }
 
   
@@ -232,7 +233,7 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
         </Text>
       )}
 
-      <Svg style={{ ...styles.cameraContainer, height: 480 - 20 }}>
+      <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
         {points.map((item, index) => (
           <Circle r={5} 
                   cx={item.x} 
@@ -278,7 +279,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     marginVertical: 150,
     width: 640,
-    height: 480,
+    height: 440,
     marginBottom: 20,
     borderRadius: 10,
     backgroundColor: 'transparent',
@@ -307,4 +308,3 @@ const styles = StyleSheet.create({
     color: '#333',
   },
 });
-
