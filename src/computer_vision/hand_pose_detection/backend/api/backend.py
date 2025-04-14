@@ -1,3 +1,5 @@
+# OPENCV LIVE VIDEO SUPPORT?
+
 import base64
 import cv2
 import mediapipe as mp
@@ -23,7 +25,6 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 
 # gesture model path (set path to gesture_recognizer_custom.task)
 hand_pose_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-#gesture_model = 'C:\\Users\\hsken\\projects_problems\\school\\AIM\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\gesture_recognizer_custom.task'
 gesture_model = os.path.join(hand_pose_dir, "gesture_recognizer_custom.task")
 
 # A class that stores methods/data for 2d points on the screen
@@ -130,7 +131,6 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
 def videoFeed():
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
-    #model = YOLO('C:\\Users\\hsken\\project_problems\\school\\AIM\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\bow_target.pt')  # Path to your model file
     hand_pose_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     model_dir = os.path.join(hand_pose_dir, "\\bow_target.pt")
     model = YOLO(model_dir) # path to model file
@@ -139,9 +139,7 @@ def videoFeed():
     # model.overlap = 80
 
     #input video file
-    #video_file_path = 'C:\\Users\\hsken\\projects_problems\\school\\AIM\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\Too much pronation (1).mp4'
     video_file_path = os.path.join(hand_pose_dir, "\\Too much pronation (1).mp4")
-    #'/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
     cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
 
     frame_count = 0
@@ -434,7 +432,6 @@ def videoFeed():
         writer.release()
         cv2.destroyAllWindows()
 
-    #testList = processFrame('C:\\Users\\hsken\\projects_problems\\school\\AIM\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\frontend_refactor\\Screenshot 2025-02-17 210532.png')
     testList = os.path.join(hand_pose_dir, "frontend_refactor\\Screenshot 2025-02-17 210532.png")
     print(testList)
 
@@ -442,7 +439,6 @@ def processFrame(image):
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
     
-    # model = YOLO('C:\\Users\hsken\\projects_problems\\school\\AIM\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\bow_target.pt')  # Path to your model file
     hand_pose_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     
     model_dir = os.path.join(hand_pose_dir, "bow_target.pt")
