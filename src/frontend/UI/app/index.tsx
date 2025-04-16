@@ -36,6 +36,8 @@ export default function App() {
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
   const intervalRef = useRef<NodeJS.Timeout>();
   const [recording, setRecording] = useState<Boolean>(false);
+
+  const [supinating, setSupinating] = useState<String>("none");
   
 
   // CameraComponent to handle camera view
@@ -73,7 +75,9 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
                   pictureSize={aspectRatio} 
                   mirror={true}
                   onCameraReady={() => setLoading(false)}/>
-      <Button title="RECORD" onPress={() => setRecording(!recording)}/>    
+      <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
+      <Button title="RECORD" onPress={() => setRecording(!recording)}/>
+        
     </View>
   );
 };
@@ -177,6 +181,9 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
         processPoints(responseData)
         
         console.log('Points:', points);
+
+        
+        setSupinating(responseData["supination"].toString())
       }
 
     } catch (error) {
@@ -252,6 +259,8 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
           />
         ))}
       </Svg>
+        
+      
     </SafeAreaView>
   );
 }
