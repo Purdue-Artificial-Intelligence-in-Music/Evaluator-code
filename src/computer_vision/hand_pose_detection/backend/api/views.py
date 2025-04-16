@@ -49,6 +49,8 @@ class UploadImageView (APIView):
                             ("box string top right", backend.Point2D(300, 100)), 
                             ("box string bottom right", backend.Point2D(300, 150)), 
                             ("box string bottom left", backend.Point2D(100, 150)),
+
+                            ("supination", "Invalid")
                           ]
 
             print("length of points " + str(len(points)))
@@ -56,7 +58,7 @@ class UploadImageView (APIView):
             print("points " + str(points))
             response_data = {}
 
-            if (len(points) == 8):
+            if (len(points) == 9):
                 response_data = {
                     points[0][0]: (points[0][1]).to_dict(),
                     points[1][0]: (points[1][1]).to_dict(),
@@ -66,6 +68,8 @@ class UploadImageView (APIView):
                     points[5][0]: (points[5][1]).to_dict(),
                     points[6][0]: (points[6][1]).to_dict(),
                     points[7][0]: (points[7][1]).to_dict(),
+
+                    points[8][0]: (points[8][1])
                 }
             else:
                 response_data = {
@@ -77,6 +81,8 @@ class UploadImageView (APIView):
                     pointsDummy[5][0]: (pointsDummy[5][1]).to_dict(),
                     pointsDummy[6][0]: (pointsDummy[6][1]).to_dict(),
                     pointsDummy[7][0]: (pointsDummy[7][1]).to_dict(),
+
+                    pointsDummy[8][0]: (pointsDummy[8][1])
                 }
                 
             print(response_data)

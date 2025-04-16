@@ -781,6 +781,10 @@ def processFrame(image):
         #print("*****************************")
         #print(finger_coords)
         #print(newList)
+
+        #adding supination/correct
+        newList.append(("supination", display_gesture))
+
         return newList
 
 if __name__ == "__main__":
