@@ -21,7 +21,7 @@ type ResponseData = {
 const windowWidth = Dimensions.get('window').width;
 const windowHeight = Dimensions.get('window').height;
 const aspectRatio = windowWidth + "x" + windowHeight;
-console.log(aspectRatio)
+// console.log(aspectRatio)
 
 export default function App() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -30,37 +30,43 @@ export default function App() {
   const [ipAddress, setIpAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);  // State for camera permission
-  const cameraRef = useRef<React.RefObject<typeof Camera>>(null); // Ref to the Camera component\
+  
+  const cameraComponentDelays = [0, 500]
+
   
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
   const intervalRef = useRef<NodeJS.Timeout>();
   const [recording, setRecording] = useState<Boolean>(false);
   
+  
 
   // CameraComponent to handle camera view
-const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) => {
+interface CameraComponentProps {
+  startDelay: number;
+}
 
-  
+const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
+  const cameraRef = useRef<Camera | null>(null); // Ref to the Camera component
+
   const takePicture = async () => {
-    console.log("recording", recording)
+    console.log("picture taken", startDelay);
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync();
-      sendImageToBackend(photo.base64);
-      console.log("photo dimensions: ", photo.width, photo.height)
+      sendImageToBackend(photo.base64 || '');
+      // console.log("photo dimensions: ", photo.width, photo.height);
     }
   };
 
-
-
   useEffect(() => {
     if (recording && !loading) {
-      intervalRef.current = setInterval(() => {
+      setTimeout(() => {
+        intervalRef.current = setInterval(() => {
           takePicture();
-      }, 500);
-
+        }, 1000);
+      }, startDelay)
     } else {
-      clearInterval(intervalRef.current)
+      clearInterval(intervalRef.current);
     }
 
     return () => clearInterval(intervalRef.current);
@@ -68,12 +74,14 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
 
   return (
     <View style={styles.cameraContainer}>
-      <CameraView ref={cameraRef} 
-                  style={styles.camera} 
-                  pictureSize={aspectRatio} 
-                  mirror={true}
-                  onCameraReady={() => setLoading(false)}/>
-      <Button title="RECORD" onPress={() => setRecording(!recording)}/>    
+      <CameraView
+        ref={cameraRef}
+        style={styles.camera}
+        pictureSize={aspectRatio}
+        mirror={true}
+        onCameraReady={() => setLoading(false)}
+      />
+      <Button title="RECORD" onPress={() => setRecording(!recording)} />
     </View>
   );
 };
@@ -166,16 +174,16 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
       });
 
       if (response.ok) {
-        console.log(response)
+        // console.log(response)
 
         const responseData: ResponseData = await response.json(); // Type casting here
 
-        console.log('Response Data:', responseData);
-        console.log("All values in list: ", Object.values(responseData));
+        // console.log('Response Data:', responseData);
+        // console.log("All values in list: ", Object.values(responseData));
 
         processPoints(responseData)
         
-        console.log('Points:', points);
+        // console.log('Points:', points);
       }
 
     } catch (error) {
@@ -210,9 +218,12 @@ const CameraComponent = ({ cameraRef }: { cameraRef: React.RefObject<Camera> }) 
       <Button title="Back" onPress={returnBack}/>
       </View>
 
-      {isCameraOpen && hasPermission && 
-       <CameraComponent cameraRef={cameraRef}/> }
-      
+      {(isCameraOpen && hasPermission) ? (
+       cameraComponentDelays.map((delay, index) => (
+          <CameraComponent startDelay={delay} key={index}/>
+       ))
+      ) : (<></>)
+      }    
       <Text>IP Address: {ipAddress || 'Fetching IP...'}</Text>
 
       {videoUri ? (
