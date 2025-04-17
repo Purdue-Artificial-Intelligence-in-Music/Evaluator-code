@@ -38,6 +38,8 @@ export default function App() {
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
   const intervalRef = useRef<NodeJS.Timeout>();
   const [recording, setRecording] = useState<Boolean>(false);
+
+  const [supinating, setSupinating] = useState<String>("none");
   
   
 
@@ -147,6 +149,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     setLinePoints(newLines);
     console.log(newLines)
     setPoints(Object.values(responseData))
+    console.log("pts")
   }
 
   
@@ -182,8 +185,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         // console.log("All values in list: ", Object.values(responseData));
 
         processPoints(responseData)
+        console.log('Points:', points);
+
         
-        // console.log('Points:', points);
+        setSupinating(responseData["supination"].toString())
       }
 
     } catch (error) {
@@ -243,7 +248,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         </Text>
       )}
 
-      <Svg style={{ ...styles.cameraContainer, height: 480 - 20 }}>
+      <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
         {points.map((item, index) => (
           <Circle r={5} 
                   cx={item.x} 
@@ -262,6 +267,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
           />
         ))}
       </Svg>
+        
+      
     </SafeAreaView>
   );
 }
@@ -289,7 +296,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     marginVertical: 150,
     width: 640,
-    height: 480,
+    height: 440,
     marginBottom: 20,
     borderRadius: 10,
     backgroundColor: 'transparent',
@@ -318,4 +325,3 @@ const styles = StyleSheet.create({
     color: '#333',
   },
 });
-

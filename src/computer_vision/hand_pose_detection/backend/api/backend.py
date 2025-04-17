@@ -37,7 +37,6 @@ class Point2D:
     def __repr__(self):
         return f"Point2D({self.x}, {self.y})"
     
-
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y
 
@@ -69,7 +68,7 @@ class Point2D:
         Px = A.x + ratio * (B.x - A.x)
         Py = A.y + ratio * (B.y - A.y)
         return Point2D(Px, Py)
-    
+
     def find_intersection(p1, p2, p3, p4):
         # Line 1: passing through p1 and p2
         A1 = p2.y - p1.y  # y2 - y1
@@ -564,7 +563,7 @@ def processFrame(image):
                 else:
                     num_none += 1
             
-                    # display classified gesture data on frames
+                    # display classified gesture data on frames ->need classifaction for later, remove placement on image
                 txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
                 if (display_gesture == "supination"):
                     cv2.putText(image, txt, (image.shape[1] - 600, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (218,10,3), 4, cv2.LINE_AA)
@@ -599,12 +598,13 @@ def processFrame(image):
                 newList.append(("box string bottom left", box_str_point_four))
 
                     # Prepare text
+                """
                 text_one = "String OBB Coords:"
                 text_coord1 = f"Coord 1: ({box_str_point_one.x}, {box_str_point_one.y})"
                 text_coord2 = f"Coord 2: ({box_str_point_two.x}, {box_str_point_two.y})"
                 text_coord3 = f"Coord 3: ({box_str_point_three.x}, {box_str_point_three.y})"
                 text_coord4 = f"Coord 4: ({box_str_point_four.x}, {box_str_point_four.y})"
-
+                """
 
                     # Define the color and size of the dot
                 radius = 5           # Radius of the dot
@@ -627,12 +627,13 @@ def processFrame(image):
                 bottom_left_corner_coord3 = (image.shape[1] - 370, 35 * 9 + 5)    # Adjusted to move higher
                 bottom_left_corner_coord4 = (image.shape[1] - 370, 35 * 10 + 0)    # Adjusted to move higher
                     # Put text on image for box one
+                """
                 cv2.putText(image, text_one, bottom_left_corner_text_one, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
                 cv2.putText(image, text_coord1, bottom_left_corner_coord1, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
                 cv2.putText(image, text_coord2, bottom_left_corner_coord2, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
                 cv2.putText(image, text_coord3, bottom_left_corner_coord3, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
                 cv2.putText(image, text_coord4, bottom_left_corner_coord4, cv2.FONT_HERSHEY_SIMPLEX, .8, (167, 52, 53), 2)
-            
+                """
                     # CALCULATING P1
                     #pointOne = Point2D.find_point_p1(leftCoordOne, rightCoordTwo, ratio=0.7)
 
@@ -672,6 +673,7 @@ def processFrame(image):
                 newList.append(("box bow bottom left", sorted_points[0]))
                 newList.append(("box bow bottom right", sorted_points[1]))
 
+                """
                     # Prepare text for box one
                 text_coord1 = f"Coord 1: ({box_bow_coord_one.x}, {box_bow_coord_one.y})"
                 text_coord2 = f"Coord 2: ({box_bow_coord_two.x}, {box_bow_coord_two.y})"
@@ -684,17 +686,19 @@ def processFrame(image):
                 top_right_corner_coord2_2 = (image.shape[1] - 370, text_offset * 3 + 10) # Adjusted to move down and left
                 top_right_corner_coord3_2 = (image.shape[1] - 370, text_offset * 4 + 5) # Adjusted to move down and left
                 top_right_corner_coord4_2 = (image.shape[1] - 370, text_offset * 5 + 0) # Adjusted to move down and left
-
+                """
                     # Put text on image for box two
+                """
                 text_two = "Bow OBB Coords:"
                 cv2.putText(image, text_two, top_right_corner_text_two, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
                 cv2.putText(image, text_coord1, top_right_corner_coord1_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
                 cv2.putText(image, text_coord2, top_right_corner_coord2_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
                 cv2.putText(image, text_coord3, top_right_corner_coord3_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
                 cv2.putText(image, text_coord4, top_right_corner_coord4_2, cv2.FONT_HERSHEY_SIMPLEX, .8, (73, 34, 124), 2)  # Reduced font size
+                """
 
-                    # Detect if bow too high or low
-                bow_too_high = (image.shape[1] - 370, text_offset * 11 + 0) # Adjusted to move down and left
+                    # Detect if bow too high or low -> keep for classifaction, remove putting text later
+                bow_too_high = (image.shape[1] - 370, 0 * 11 + 0) # Adjusted to move down and left
                 if(len(bow_coord_list) == 4 and len(string_coord_list) == 4):
             
                     P1 = Point2D.find_point_p1(bow_coord_list[0], bow_coord_list[1]) # left mid point
@@ -712,34 +716,42 @@ def processFrame(image):
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         image_height, image_width, _ = image.shape
 
-        if results.multi_hand_landmarks:
+        if results.multi_hand_landmarks: #NEED for finger node coords later
             for hand_landmarks in results.multi_hand_landmarks:
                 for ids, landmrk in enumerate(hand_landmarks.landmark):
                     cx, cy = landmrk.x * image_width, landmrk.y * image_height
                     store_finger_node_coords(ids, cx, cy, finger_coords)
+                """
                 mp_drawing.draw_landmarks(
                     image,
                     hand_landmarks,
                     mp_hands.HAND_CONNECTIONS,
                     mp_drawing_styles.get_default_hand_landmarks_style(),
                     mp_drawing_styles.get_default_hand_connections_style())
-
+                
                 landmark_subset = landmark_pb2.NormalizedLandmarkList(
                     landmark=pose_results.pose_landmarks.landmark[11:15]
-                )
+
+                ) """
+
+                """
                 mp_drawing.draw_landmarks(
                     image,
                     landmark_subset,
                     None,
                     mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=10, circle_radius=6))
+                """
 
         oriented_box_annotator = sv.OrientedBoxAnnotator()
+        """
         annotated_frame = oriented_box_annotator.annotate(
             scene=image,
             detections=detections
         )
+        """
 
         image = ResizeWithAspectRatio(image, height=800)
+        """ 
         image = cv2.putText(
             image,
             "Frame {}".format(frame_count),
@@ -749,25 +761,30 @@ def processFrame(image):
             (0, 0, 255),
             1,
             cv2.LINE_AA
-        )
+        ) 
+        """
         
             # Resize to specified output dimensions before writing
         resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
-        writer.write(resized_frame)
+        #writer.write(resized_frame)
 
         image_path = os.path.join('images', '../images/imgOut.jpg')  # You can change the file extension if needed
         cv2.imwrite(image_path, resized_frame)
 
-        cv2.imshow('MediaPipe Hands', image)
+        #cv2.imshow('MediaPipe Hands', image)
 
-        writer.release()
-        cv2.destroyAllWindows()
+        #writer.release()
+        #cv2.destroyAllWindows()
 
         #newList = bow_coord_list + string_coord_list
         #print("*****************************")
         #print(finger_coords)
         #print(newList)
+
+        #adding supination/correct
+        newList.append(("supination", display_gesture))
+
         return newList
 
 if __name__ == "__main__":
