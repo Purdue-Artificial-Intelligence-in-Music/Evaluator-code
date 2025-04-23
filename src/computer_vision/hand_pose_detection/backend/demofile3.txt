@@ -1,0 +1,1 @@
+[['box top left', Point2D(370.0, 244.0)], ['box bottom left', Point2D(390.0, 245.0)], ['box bottom right', Point2D(393.0, 211.0)], ['box top right', Point2D(372.0, 209.0)], ['bow bow top left', Point2D(462.0, 231.0)], ['box bow bottom left', Point2D(465.0, 212.0)], ['box bow bottom right', Point2D(278.0, 187.0)], ['box bow top right', Point2D(275.0, 206.0)]]

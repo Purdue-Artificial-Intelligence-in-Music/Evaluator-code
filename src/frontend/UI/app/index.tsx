@@ -168,7 +168,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
     try {
       setLoading(true);
-      const response = await fetch('http://127.0.0.1:8000/api/upload/', {
+      //django used /api/upload
+      const response = await fetch('http://127.0.0.1:8000/upload/', {
         method: 'POST',
         body: JSON.stringify(jsonData),
         headers: {
