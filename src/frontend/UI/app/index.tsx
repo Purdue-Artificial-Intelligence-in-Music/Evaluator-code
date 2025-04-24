@@ -83,6 +83,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         mirror={true}
         onCameraReady={() => setLoading(false)}
       />
+      <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
       <Button title="RECORD" onPress={() => setRecording(!recording)} />
     </View>
   );
