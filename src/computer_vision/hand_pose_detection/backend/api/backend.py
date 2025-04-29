@@ -436,7 +436,7 @@ def videoFeed(video_path_arg):
         cv2.destroyAllWindows()
 
         #print(Path(__file__).parent.parent)
-        path = str(Path(__file__).parent.parent / "demo.avi")
+        path = str(Path(__file__).parent / "demo.avi")
         print(path)
         return path
 

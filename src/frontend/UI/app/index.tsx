@@ -144,11 +144,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
       const jsonData = {
 
-          "Video": file_name
+          "video": file_name
 
       }
 
-      const response = await fetch('http://127.0.0.1:8000/api/change-video/', {
+      const response = await fetch('http://127.0.0.1:8000/change-video/', {
       method: "POST",
       body: JSON.stringify(jsonData),
       headers: {
@@ -243,7 +243,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
     const jsonData = {
 
-      "Video": videofile
+      "video": videofile
 
     }
 
@@ -253,7 +253,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     setVideoUri(null)
     setsendButton(false)
 
-    const response = await fetch('http://127.0.0.1:8000/api/send-video/', {
+    const response = await fetch('http://127.0.0.1:8000/send-video/', {
       method: "POST",
       body: JSON.stringify(jsonData),
       headers: {
@@ -271,7 +271,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
     console.log(selectedVideoUri)
 
-      setVideoDimensions({ width : 1280, height : 720 });
+      setVideoDimensions({ width : result["Width"], height : result["Height"] });
       if (selectedVideoUri) {
         setVideoUri(selectedVideoUri);
       }
