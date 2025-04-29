@@ -8,6 +8,7 @@ from mediapipe.tasks.python.components.containers.landmark import NormalizedLand
 from mediapipe.framework.formats import landmark_pb2
 
 import os
+from pathlib import Path
 import supervision as sv
 import ultralytics
 from ultralytics import YOLO
@@ -128,7 +129,7 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
     finger_coords[id].append((cx, cy))
 
 
-def videoFeed():
+def videoFeed(video_path_arg):
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
     hand_pose_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -142,7 +143,7 @@ def videoFeed():
     #input video file
     video_file_path = os.path.join(hand_pose_dir, "\\Too much pronation (1).mp4")
     #'/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
-    cap = cv2.VideoCapture("/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/Too much pronation (1).mp4") # change argument to 0 for demo/camera input
+    cap = cv2.VideoCapture(video_path_arg) # change argument to 0 for demo/camera input
 
     frame_count = 0
     output_frame_length = 960
@@ -433,7 +434,13 @@ def videoFeed():
         cap.release()
         writer.release()
         cv2.destroyAllWindows()
-        return "/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/" + output_file
+
+        #print(Path(__file__).parent.parent)
+        path = str(Path(__file__).parent.parent / "demo.avi")
+        print(path)
+        return path
+
+        #return "/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/backend/demo.avi"
 
     testList = os.path.join(hand_pose_dir, "frontend_refactor\\Screenshot 2025-02-17 210532.png")
     print(testList)

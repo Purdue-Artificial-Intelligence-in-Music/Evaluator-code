@@ -9,6 +9,9 @@ import { Svg, Circle, Line} from 'react-native-svg';
 
 import * as Network from 'expo-network';
 
+import * as FileSystem from 'expo-file-system';
+
+
 type Point = {
   x: number;
   y: number;
@@ -40,6 +43,7 @@ export default function App() {
   const [recording, setRecording] = useState<Boolean>(false);
   const [sendButton, setsendButton] = useState(false)
   const [sendVideo, setsendVideo] = useState(false)
+  const [videofile, setvideofile] = useState<string | null>(null);
 
   const [supinating, setSupinating] = useState<String>("none");
   
@@ -125,6 +129,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
     });
 
+    console.log(result)
+
     if(!result.canceled && result.assets && result.assets[0]) {
       const selectedVideoUri = result.assets[0].uri;
       const { width = 0, height = 0 } = result.assets[0];
@@ -132,6 +138,32 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       if (selectedVideoUri) {
         setVideoUri(selectedVideoUri);
       }
+
+
+      const file_name = result.assets[0].file?.name
+
+      const jsonData = {
+
+          "Video": file_name
+
+      }
+
+      const response = await fetch('http://127.0.0.1:8000/api/change-video/', {
+      method: "POST",
+      body: JSON.stringify(jsonData),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+    })
+
+    const res = await response.json()
+    console.log("Response from Backend", res)
+
+    setvideofile(res.Video)
+    console.log(videofile)
+
+
       setIsCameraOpen(false);
       setsendButton(true)
     }
@@ -211,7 +243,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
     const jsonData = {
 
-      "Video": videoUri
+      "Video": videofile
 
     }
 
@@ -236,10 +268,16 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     setsendVideo(false)
 
     const selectedVideoUri = result["Video"];
+
+    console.log(selectedVideoUri)
+
       setVideoDimensions({ width : 1280, height : 720 });
       if (selectedVideoUri) {
         setVideoUri(selectedVideoUri);
       }
+
+      console.log(videoUri)
+
       setIsCameraOpen(false);
 
 
