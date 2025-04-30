@@ -3,8 +3,14 @@ from pydantic import BaseModel
 import base64
 import numpy as np
 import cv2
-import backend
+from . import backend
 from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
+import os
+import subprocess
+import shlex
+import json
+
 
 app = FastAPI()
 
@@ -18,6 +24,9 @@ app.add_middleware(
 
 class ImagePayload(BaseModel):
     image: str
+
+class VideoPayload(BaseModel):
+    video: str
 
 @app.post("/upload")
 async def process_image(payload: ImagePayload):
@@ -78,5 +87,86 @@ async def process_image(payload: ImagePayload):
 
                     pointsDummy[8][0]: (pointsDummy[8][1])
                 }
+
+    return response_data
+
+@app.post("/change-video")
+async def change_video(payload: VideoPayload):
+    print("Received video")
+
+    video = payload.video
+
+    full_path = None
+
+    # This scans the downloads folder for the path of the video
+
+    for root, _, files in os.walk(os.path.expanduser("~/Downloads")):
+        if video in files:
+            full_path = os.path.join(root, video)
+
+    print(full_path)
+
+    response = {"Video":full_path}
+
+    return response
+
+@app.post("/send-video")
+async def upload_video(payload: VideoPayload):
+    print("Received video")
+
+    path = str(Path(__file__).parent.parent / "demo1.mp4")
+    print (path)
+    demo1 = path
+
+    try :
+        os.remove(demo1)
+    except FileNotFoundError:
+        pass
+
+    
+    output_video = backend.videoFeed(payload.video)
+
+    print(demo1)
+    print(output_video)
+
+    #Convert the AVI file into Mp4 using 
+
+    try:
+        result = subprocess.run(
+        ['ffmpeg', '-i', output_video, '-vf', "transpose=2", demo1],
+        capture_output=True,
+        text=True
+        )
+    
+        if result.returncode == 0:
+            output_video = demo1
+            print("Conversion completed")
+        else:
+            print("Conversion failed:")
+            print(result.stderr)
+    except FileNotFoundError:
+        print("ffmpeg not found. Make sure it's installed and in your PATH.")
+
+    # Following code based on stackoverflow page on getting resolution from ffmpeg
+    cmd = "ffprobe -v quiet -print_format json -show_streams"
+    args = shlex.split(cmd)
+    args.append(demo1)
+    # run the ffprobe process, decode stdout into utf-8 & convert to JSON
+    ffprobeOutput = subprocess.check_output(args).decode('utf-8')
+    ffprobeOutput = json.loads(ffprobeOutput)
+
+    # find height and width
+    height = ffprobeOutput['streams'][0]['height']
+    width = ffprobeOutput['streams'][0]['width']
+
+    # Encode the file into base64
+    with open(demo1, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+        output_video = f"data:video/mp4;base64,{encoded}"
+
+    response_data = { "Video": output_video,
+                     "Height": height,
+                     "Width": width }
+
 
     return response_data

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions } from 'react-native';
+import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
 
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
@@ -8,6 +8,9 @@ import { Camera, CameraView } from 'expo-camera';
 import { Svg, Circle, Line} from 'react-native-svg';
 
 import * as Network from 'expo-network';
+
+import * as FileSystem from 'expo-file-system';
+
 
 type Point = {
   x: number;
@@ -37,6 +40,9 @@ export default function App() {
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
   const intervalRef = useRef<NodeJS.Timeout>();
   const [recording, setRecording] = useState<Boolean>(false);
+  const [sendButton, setsendButton] = useState(false)
+  const [sendVideo, setsendVideo] = useState(false)
+  const [videofile, setvideofile] = useState<string | null>(null);
 
   const [supinating, setSupinating] = useState<String>("none");
   
@@ -87,6 +93,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         mirror={true}
         onCameraReady={() => setLoading(false)}
       />
+      <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
       <Button title="RECORD" onPress={() => setRecording(!recording)} />
     </View>
   );
@@ -126,6 +133,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
     });
 
+    console.log(result)
+
     if(!result.canceled && result.assets && result.assets[0]) {
       const selectedVideoUri = result.assets[0].uri;
       const { width = 0, height = 0 } = result.assets[0];
@@ -133,7 +142,34 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       if (selectedVideoUri) {
         setVideoUri(selectedVideoUri);
       }
+
+
+      const file_name = result.assets[0].file?.name
+
+      const jsonData = {
+
+          "video": file_name
+
+      }
+
+      const response = await fetch('http://127.0.0.1:8000/change-video/', {
+      method: "POST",
+      body: JSON.stringify(jsonData),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+    })
+
+    const res = await response.json()
+    console.log("Response from Backend", res)
+
+    setvideofile(res.Video)
+    console.log(videofile)
+
+
       setIsCameraOpen(false);
+      setsendButton(true)
     }
 
   };
@@ -161,6 +197,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   const returnBack = async () => {
       setIsCameraOpen(false)
       setVideoUri(null)
+      setsendButton(false)
+
   };
   // Send captured image to backend API
   const sendImageToBackend = async (imageBase64: string) => {
@@ -205,6 +243,51 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     }
   };
 
+  async function sendVideoBackend() {
+
+    const jsonData = {
+
+      "video": videofile
+
+    }
+
+    console.log(jsonData)
+
+    setsendVideo(true)
+    setVideoUri(null)
+    setsendButton(false)
+
+    const response = await fetch('http://127.0.0.1:8000/send-video/', {
+      method: "POST",
+      body: JSON.stringify(jsonData),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+
+    })
+
+    const result = await response.json()
+    console.log("Response from Backend", result)
+
+    setsendVideo(false)
+
+    const selectedVideoUri = result["Video"];
+
+    console.log(selectedVideoUri)
+
+      setVideoDimensions({ width : result["Width"], height : result["Height"] });
+      if (selectedVideoUri) {
+        setVideoUri(selectedVideoUri);
+      }
+
+      console.log(videoUri)
+
+      setIsCameraOpen(false);
+
+
+    
+  }
+
   async function demoVideo() {
     const jsonData = {
       "title": "demo video",
@@ -221,10 +304,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   
   return (
     <SafeAreaView style={styles.container}>
+
+
       <View style={styles.buttonStyle}>
       <Button title="Choose Video" onPress={pickVideo}/>
-      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null)} } />
-      <Button title="Fetch Data from API" onPress={demoVideo} />
+
+      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null); setsendButton(false)}} />
+      <Button title="Fetch Data from API" disabled={loading} onPress={demoVideo} />
       <Button title="Back" onPress={returnBack}/>
       </View>
 
@@ -234,15 +320,21 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       
       <Text>IP Address: {ipAddress || 'Fetching IP...'}</Text>
 
+
       {videoUri ? (
+        <ScrollView 
+          contentContainerStyle={{ flexGrow: 1 }} 
+          showsVerticalScrollIndicator={true}
+        >
         <Video
           source={{ uri: videoUri }}
           shouldPlay
           resizeMode={ResizeMode.COVER}
           style={{ width: videoDimensions?.width, height: videoDimensions?.height }}
         />
+        </ScrollView>
       ) : (
-        <Text style={styles.placeholderText}>No video selected</Text>
+        !sendVideo && <Text style={styles.placeholderText}>No video selected</Text>
       )}
 
       {videoDimensions && (
@@ -251,7 +343,15 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         </Text>
       )}
 
-      <Svg style={styles.cameraContainer}>
+
+      {sendVideo && <ActivityIndicator size="large" color="#0000ff" />} 
+
+      <View style={{marginTop: 10,opacity: sendButton ? 1: 0}}>
+        <Button title="Send Video" onPress={sendVideoBackend} />
+      </View>
+
+      <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
+
         {points.map((item, index) => (
           <Circle r={5} 
                   cx={item.x} 

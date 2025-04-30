@@ -8,6 +8,7 @@ from mediapipe.tasks.python.components.containers.landmark import NormalizedLand
 from mediapipe.framework.formats import landmark_pb2
 
 import os
+from pathlib import Path
 import supervision as sv
 import ultralytics
 from ultralytics import YOLO
@@ -128,19 +129,21 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
     finger_coords[id].append((cx, cy))
 
 
-def videoFeed():
+def videoFeed(video_path_arg):
     # YOLOv8 model trained from Roboflow dataset
     # Used for bow and target area oriented bounding boxes
     hand_pose_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     model_dir = os.path.join(hand_pose_dir, "\\bow_target.pt")
-    model = YOLO(model_dir) # path to model file
+    model = YOLO("/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt") # path to model file
+    #/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt
     
     # For webcam input:
     # model.overlap = 80
 
     #input video file
     video_file_path = os.path.join(hand_pose_dir, "\\Too much pronation (1).mp4")
-    cap = cv2.VideoCapture(video_file_path) # change argument to 0 for demo/camera input
+    #'/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
+    cap = cv2.VideoCapture(video_path_arg) # change argument to 0 for demo/camera input
 
     frame_count = 0
     output_frame_length = 960
@@ -423,7 +426,7 @@ def videoFeed():
             resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
             writer.write(resized_frame)
-            cv2.imshow('MediaPipe Hands', image)
+            #cv2.imshow('MediaPipe Hands', image)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -431,6 +434,13 @@ def videoFeed():
         cap.release()
         writer.release()
         cv2.destroyAllWindows()
+
+        #print(Path(__file__).parent.parent)
+        path = str(Path(__file__).parent / "demo.avi")
+        print(path)
+        return path
+
+        #return "/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/backend/demo.avi"
 
     testList = os.path.join(hand_pose_dir, "frontend_refactor\\Screenshot 2025-02-17 210532.png")
     print(testList)

@@ -1,6 +1,9 @@
 import base64
 import cv2
 import numpy as np
+import os
+from pathlib import Path
+import subprocess
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -90,3 +93,75 @@ class UploadImageView (APIView):
             return Response(response_data, status=201)
         else:
             return Response(serializer.errors, status=400)
+        
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UploadVideoView (APIView): 
+    @csrf_exempt
+    def post(self, request):
+
+        print("Received video")
+
+        path = str(Path(__file__).parent.parent / "demo1.mp4")
+        demo1 = path
+
+        try :
+            os.remove(demo1)
+        except FileNotFoundError:
+            pass
+
+        
+        output_video = backend.videoFeed(request.data.get('Video'))
+
+        #Convert the AVI file into Mp4 using 
+
+        try:
+            result = subprocess.run(
+            ['ffmpeg', '-i', output_video, '-vf', "transpose=2", demo1],
+            capture_output=True,
+            text=True
+            )
+        
+            if result.returncode == 0:
+                output_video = demo1
+            else:
+                print("Conversion failed:")
+                print(result.stderr)
+        except FileNotFoundError:
+            print("ffmpeg not found. Make sure it's installed and in your PATH.")
+
+        # Encode the file into base64
+        with open(demo1, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+            output_video = f"data:video/mp4;base64,{encoded}"
+
+        response_data = {"Video": output_video}
+
+
+        return Response(response_data, status = 201)
+    
+    
+@method_decorator(csrf_exempt, name='dispatch')
+class FilePathVideo (APIView): 
+    @csrf_exempt
+    def post(self, request):
+        print("Received video")
+
+        video = request.data.get('Video')
+
+        full_path = None
+
+        # This scans the downloads folder for the path of the video
+
+        for root, _, files in os.walk(os.path.expanduser("~/Downloads")):
+            if video in files:
+                full_path = os.path.join(root, video)
+
+        print(full_path)
+
+        response = {"Video":full_path}
+
+        return Response(response, status = 201)
+
+        
+
