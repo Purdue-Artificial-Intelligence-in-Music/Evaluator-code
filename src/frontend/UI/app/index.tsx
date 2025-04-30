@@ -31,7 +31,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);  // State for camera permission
   
-  const cameraComponentDelays = [0, 500]
 
   
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
@@ -52,20 +51,25 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   const cameraRef = useRef<Camera | null>(null); // Ref to the Camera component
 
   const takePicture = async () => {
-    console.log("picture taken", startDelay);
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync();
+      const photo = await cameraRef.current.takePictureAsync({
+        qualityPrioritization: 'speed',
+        quality: 85,
+        skipProcessing: true,
+        skipMetadata: true,
+        shutterSound: false,
+    });
       sendImageToBackend(photo.base64 || '');
       // console.log("photo dimensions: ", photo.width, photo.height);
     }
   };
 
   useEffect(() => {
-    if (recording && !loading) {
+    if (recording && !(loading)) {
       setTimeout(() => {
         intervalRef.current = setInterval(() => {
           takePicture();
-        }, 1000);
+        }, 500);
       }, startDelay)
     } else {
       clearInterval(intervalRef.current);
@@ -220,16 +224,14 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       <View style={styles.buttonStyle}>
       <Button title="Choose Video" onPress={pickVideo}/>
       <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null)} } />
-      <Button title="Fetch Data from API" disabled={loading} onPress={demoVideo} />
+      <Button title="Fetch Data from API" onPress={demoVideo} />
       <Button title="Back" onPress={returnBack}/>
       </View>
 
-      {(isCameraOpen && hasPermission) ? (
-       cameraComponentDelays.map((delay, index) => (
-          <CameraComponent startDelay={delay} key={index}/>
-       ))
-      ) : (<></>)
-      }    
+      (isCameraOpen && hasPermission) ? (
+        <CameraComponent startDelay={0}/>
+      ) : (<></>)    
+      
       <Text>IP Address: {ipAddress || 'Fetching IP...'}</Text>
 
       {videoUri ? (
@@ -249,7 +251,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         </Text>
       )}
 
-      <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
+      <Svg style={styles.cameraContainer}>
         {points.map((item, index) => (
           <Circle r={5} 
                   cx={item.x} 
