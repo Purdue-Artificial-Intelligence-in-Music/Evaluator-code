@@ -469,13 +469,6 @@ class Hands:
         img_blur = cv2.GaussianBlur(img, (d, d), 0)
         return img * kernel + img_blur * (1 - kernel)
 
-        h, w  = img.shape[:2]
-        img_pad = cv2.copyMakeBorder(img, d, d, d, d, cv2.BORDER_WRAP)
-        img_blur = cv2.GaussianBlur(img_pad, (2*d+1, 2*d+1), -1)[d:-d,d:-d]
-        y, x = np.indices((h, w))
-        dist = np.dstack([x, w-x-1, y, h-y-1]).min(-1)
-        w = np.minimum(np.float32(dist)/d, 1.0)
-        return img*w + img_blur*(1-w)
 
     def motion_kernel(angle, d, sz=65):
         kern = np.ones((1, d), np.float32)
@@ -716,6 +709,19 @@ def defocus_kernel(d, sz=65):
     kern = np.float32(kern) / 255.0
     return kern
 
+def classify_elbow_posture(shoulder, elbow, hand, reference_ratio, threshold=0.1):
+    #calculate distances
+    shoulder_to_elbow = np.sqrt((shoulder.x - elbow.x)**2 + (shoulder.y - elbow.y)**2)
+    elbow_to_hand = np.sqrt((elbow.x - hand.x)**2 + (elbow.y - hand.y)**2)
+
+    # calculate ratio
+    distance_ratio = shoulder_to_elbow / elbow_to_hand
+
+    # compare with reference
+    if abs(distance_ratio - reference_ratio) > threshold:
+        return "Elbow Too High"
+    return "Correct Posture"
+
 
 def main():
     # YOLOv8 model trained from Roboflow dataset
@@ -730,6 +736,10 @@ def main():
     angle = 180  # Default angle for motion blur
     d = 22  # Default diameter
     snr = 25  # Default SNR value
+
+    target_x = 0.5
+    target_y = 0.5
+    proximity_threshold = 0.1
 
     #input video file
     # video_file_path = 'src/computer_vision/hand_pose_detection/Vertigo for Solo Cello - Cicely Parnas.mp4'
@@ -789,7 +799,7 @@ def main():
             success, image = cap.read()
             if not success:
                 break
-            
+                
             # Process Key (ESC: end) #################################################
             key = cv2.waitKey(10)
             if key == 27:  # ESC
@@ -814,11 +824,11 @@ def main():
             results = hands.process(image)
             # mp pose model
             pose_results = pose.process(image)
-
+            
             frame_count += 1
 
             
-            
+            '''
             bow_coord_list = []
             string_coord_list =[]
             YOLOresults = model(image)
@@ -944,13 +954,13 @@ def main():
                             cv2.putText(debug_image, "Bow Angle Correct", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
                         else:
                             cv2.putText(debug_image, "Bow Not Perpendicular to Fingerboard", bow_angle, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
-
-            detections = sv.Detections.from_ultralytics(YOLOresults[0])
             
+            detections = sv.Detections.from_ultralytics(YOLOresults[0])
+            '''
             image_height, image_width, _ = image.shape
             
             # Draw hand landmarks
-            if results.multi_hand_landmarks is not None:
+            if results.multi_hand_landmarks and pose_results.pose_landmarks:
 
                 for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
                     for ids, landmrk in enumerate(hand_landmarks.landmark):
@@ -1002,7 +1012,40 @@ def main():
                             handedness,
                             keypoint_classifier_labels[hand_sign_id]
                         )
+                        # Get pose landmarks
+                        pose_landmarks = pose_results.pose_landmarks.landmark
 
+                        shoulder = pose_landmarks[12]  #right shoulder
+                        elbow = pose_landmarks[14]    # right elbow
+                        hand = pose_landmarks[16]     # right wrist
+    
+                        # check if the hand node is near the target coordinate
+                        hand_distance = np.sqrt((hand.x - target_x)**2 + (hand.y - target_y)**2)
+                        if hand_distance <= proximity_threshold:
+                            # reference ratio (need to look at a bunch of videos to determine this number)
+                            reference_ratio = 1.2  #dummy value for now
+
+                            # classify
+                            posture = classify_elbow_posture(
+                                shoulder,
+                                elbow,
+                                hand,
+                                reference_ratio,
+                                threshold = 0.1  # buffer
+                            )
+
+                            #draw on image
+                            text_position = (debug_image.shape[1] - 300, debug_image.shape[0] - 20)  
+                            cv2.putText(
+                                debug_image,
+                                f"Posture: {posture}",
+                                text_position,
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.8, 
+                                (255, 255, 255), 
+                                2, 
+                                cv2.LINE_AA
+                            )
                     # Draw pose
                     if pose_results.pose_landmarks:
                         landmark_subset = landmark_pb2.NormalizedLandmarkList(landmark=pose_results.pose_landmarks.landmark[11:15])
@@ -1020,6 +1063,8 @@ def main():
                         None,
                         mp_drawing.DrawingSpec(color=(0, 0, 0), thickness=2, circle_radius=10)
                     )
+                    
+
             # end if
 
             # draw bounding boxes
@@ -1043,6 +1088,7 @@ def main():
             debug_image = Hands.draw_info(debug_image, fps, mode, number)
 
             writer.write(resized_frame)
+
             cv2.imshow('MediaPipe Hands', debug_image)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
