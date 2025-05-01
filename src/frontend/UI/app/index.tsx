@@ -175,6 +175,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   };
 
   function processPoints(responseData: ResponseData) {
+
+    //modify the points such that the screen adjusts
+    responseData = correctPoints(responseData, 0.75)
+
     let newLines = [{start: responseData["box bow top left"], end: responseData["box bow top right"]},
                     {start: responseData["box bow top right"], end: responseData["box bow bottom right"]},
                     {start: responseData["box bow bottom right"], end: responseData["box bow bottom left"]},
@@ -189,7 +193,21 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     setLinePoints(newLines);
     console.log(newLines)
     setPoints(Object.values(responseData))
+    //setPoints(correctPoints(0.75, [0, 1, 2, 3, 4, 5, 6, 7]))
     console.log("pts")
+  }
+
+  function modifyPoint(point: { x: number; y: number }, yFactor: number) {
+    return { ...point, y: point.y * yFactor };
+  }
+
+  function correctPoints(responseData: ResponseData, yFactor: number): ResponseData {
+    const correctedData = Object.entries(responseData).reduce((acc, [key, point]) => {
+      acc[key] = modifyPoint(point, yFactor);
+      return acc;
+    }, {} as ResponseData);
+  
+    return correctedData;
   }
 
   
