@@ -1,5 +1,3 @@
-# OPENCV LIVE VIDEO SUPPORT?
-
 import base64
 import cv2
 import mediapipe as mp
@@ -13,6 +11,7 @@ import supervision as sv
 import ultralytics
 from ultralytics import YOLO
 import torch
+from PIL import Image
 
 from datetime import datetime
 
@@ -457,6 +456,13 @@ def processFrame(image):
     # For webcam input:
     # model.overlap = 80
 
+    # dir = os.path.dirname(os.path.abspath(__file__))
+    bkgd_path = os.path.join("", 'images\white_background.jpg')
+    background = cv2.imread(bkgd_path)
+
+    #height,width = 480, 640
+    #transparent_img = np.zeros((height, width, 4), dtype=np.uint8)
+
     #input video file
     #video_file_path = 'C:\\Users\\pelor\\Documents\\Coding\\Evaluator-code\\src\\computer_vision\\hand_pose_detection\\Too much pronation (1).mp4'
     #'/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
@@ -465,7 +471,7 @@ def processFrame(image):
     os.makedirs('images', exist_ok=True)
 
     # Generate the path where the image will be saved
-    image_path = os.path.join('images', '../images/img.jpg')  # You can change the file extension if needed
+    image_path = os.path.join('', '/images/img.jpg')  # You can change the file extension if needed
 
     # Save the image to the specified path
     cv2.imwrite(image_path, image)
@@ -621,9 +627,10 @@ def processFrame(image):
                 thickness = -1       # Thickness -1 fills the circle, creating a dot
 
                     #SHOWING DOTS
-                cv2.circle(image, (int(box_str_point_one.x), int(box_str_point_one.y)), radius, (255, 0, 0), thickness) # bottom left
-                cv2.circle(image, (int(box_str_point_two.x), int(box_str_point_two.y)), radius, (0, 0, 0), thickness) # bottom right
-                cv2.circle(image, (int(box_str_point_three.x), int(box_str_point_three.y)), radius, (0, 255, 0), thickness) # top right                    cv2.circle(image, (int(box_str_point_four.x), int(box_str_point_four.y)), radius, (0, 0, 255), thickness) # top left
+                cv2.circle(background, (int(box_str_point_one.x), int(box_str_point_one.y)), radius, (255, 0, 0), thickness) # bottom left
+                cv2.circle(background, (int(box_str_point_two.x), int(box_str_point_two.y)), radius, (0, 0, 0), thickness) # bottom right
+                cv2.circle(background, (int(box_str_point_three.x), int(box_str_point_three.y)), radius, (0, 255, 0), thickness) # top right                    
+                cv2.circle(background, (int(box_str_point_four.x), int(box_str_point_four.y)), radius, (0, 0, 255), thickness) # top left
                 string_coord_list.append(box_str_point_one)
                 string_coord_list.append(box_str_point_two)
                 string_coord_list.append(box_str_point_three)
@@ -666,10 +673,10 @@ def processFrame(image):
                 box_bow_coord_three = Point2D(box_bow_coordinate_3[0].item(), box_bow_coordinate_3[1].item())
                 box_bow_coord_four = Point2D(box_bow_coordinate_4[0].item(), box_bow_coordinate_4[1].item())
                     # SHOWING DOTS
-                cv2.circle(image, (int(box_bow_coord_one.x), int(box_bow_coord_one.y)), radius, (73, 34, 124), thickness) # top-left
-                cv2.circle(image, (int(box_bow_coord_two.x), int(box_bow_coord_two.y)), radius, (73, 34, 124), thickness) # bottom - left
-                cv2.circle(image, (int(box_bow_coord_three.x), int(box_bow_coord_three.y)), radius, (73, 34, 124), thickness) # bottom - right
-                cv2.circle(image, (int(box_bow_coord_four.x), int(box_bow_coord_four.y)), radius, (73, 34, 124), thickness) # top - right
+                cv2.circle(background, (int(box_bow_coord_one.x), int(box_bow_coord_one.y)), radius, (73, 34, 124), thickness) # top-left
+                cv2.circle(background, (int(box_bow_coord_two.x), int(box_bow_coord_two.y)), radius, (73, 34, 124), thickness) # bottom - left
+                cv2.circle(background, (int(box_bow_coord_three.x), int(box_bow_coord_three.y)), radius, (73, 34, 124), thickness) # bottom - right
+                cv2.circle(background, (int(box_bow_coord_four.x), int(box_bow_coord_four.y)), radius, (73, 34, 124), thickness) # top - right
 
                 bow_coord_list.append(box_bow_coord_one)
                 bow_coord_list.append(box_bow_coord_two)
@@ -716,24 +723,24 @@ def processFrame(image):
                     int1 = Point2D.find_intersection(P1,P2,box_str_point_one,box_str_point_three)
                     int2 = Point2D.find_intersection(P1,P2,box_str_point_two,box_str_point_four)
                     if Point2D.is_above_or_below(int1, box_str_point_three, box_str_point_four) or Point2D.is_above_or_below(int2, box_str_point_three, box_str_point_four):
-                        cv2.putText(image, "Bow Too High", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
+                        cv2.putText(background, "Bow Too High", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 0, 0), 4)  # Reduced font size
                     else:
-                        cv2.putText(image, "Bow Correctly placed", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
+                        cv2.putText(background, "Bow Correctly placed", bow_too_high, cv2.FONT_HERSHEY_SIMPLEX, .8, (0, 255, 0), 4)  # Reduced font size
 
         detections = sv.Detections.from_ultralytics(YOLOresults[0])
 
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        image_height, image_width, _ = image.shape
+        background.flags.writeable = True
+        background = cv2.cvtColor(background, cv2.COLOR_RGB2BGR)
+        image_height, image_width, _ = background.shape
 
         if results.multi_hand_landmarks: #NEED for finger node coords later
             for hand_landmarks in results.multi_hand_landmarks:
                 for ids, landmrk in enumerate(hand_landmarks.landmark):
                     cx, cy = landmrk.x * image_width, landmrk.y * image_height
                     store_finger_node_coords(ids, cx, cy, finger_coords)
-                """
+                
                 mp_drawing.draw_landmarks(
-                    image,
+                    background,
                     hand_landmarks,
                     mp_hands.HAND_CONNECTIONS,
                     mp_drawing_styles.get_default_hand_landmarks_style(),
@@ -742,25 +749,25 @@ def processFrame(image):
                 landmark_subset = landmark_pb2.NormalizedLandmarkList(
                     landmark=pose_results.pose_landmarks.landmark[11:15]
 
-                ) """
+                ) 
 
-                """
+                
                 mp_drawing.draw_landmarks(
-                    image,
+                    background,
                     landmark_subset,
                     None,
                     mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=10, circle_radius=6))
-                """
+                
 
         oriented_box_annotator = sv.OrientedBoxAnnotator()
-        """
+        
         annotated_frame = oriented_box_annotator.annotate(
-            scene=image,
+            scene=background,
             detections=detections
         )
-        """
+        
 
-        image = ResizeWithAspectRatio(image, height=800)
+        background = ResizeWithAspectRatio(background, height=800)
         """ 
         image = cv2.putText(
             image,
@@ -773,14 +780,29 @@ def processFrame(image):
             cv2.LINE_AA
         ) 
         """
-        
-            # Resize to specified output dimensions before writing
-        resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
-        #writer.write(resized_frame)
+        resized_frame = cv2.resize(background, (output_frame_length, output_frame_width))
 
-        image_path = os.path.join('images', '../images/imgOut.jpg')  # You can change the file extension if needed
-        cv2.imwrite(image_path, resized_frame)
+        output_img = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2BGRA)
+        output_img[:, :, 3] = 0 
+        white_thresh = 250 
+        mask = ~((resized_frame[:, :, 0] > white_thresh) &
+         (resized_frame[:, :, 1] > white_thresh) &
+         (resized_frame[:, :, 2] > white_thresh))
+
+        output_img[mask] = np.concatenate(
+            (resized_frame[mask], np.full((np.count_nonzero(mask), 1), 255, dtype=np.uint8)),
+            axis=1
+        )
+
+
+        bkgd_path = os.path.join("", 'images\CLEAR.png')
+
+        cv2.imwrite(bkgd_path, output_img)
+
+        bkgd_path = os.path.join("", 'images\imgOut.jpg')
+
+        cv2.imwrite(bkgd_path, background)
 
         #cv2.imshow('MediaPipe Hands', image)
 
