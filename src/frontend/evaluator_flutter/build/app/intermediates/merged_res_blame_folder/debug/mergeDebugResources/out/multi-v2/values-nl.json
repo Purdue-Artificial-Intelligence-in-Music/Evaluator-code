@@ -1,0 +1,43 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.example.evaluator_flutter.app-mergeDebugResources-30:/values-nl/values-nl.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\hsken\\.gradle\\caches\\8.10.2\\transforms\\ab1dc0cd23ebe3c890248eaabfbb4ea4\\transformed\\jetified-media3-exoplayer-1.4.1\\res\\values-nl\\values-nl.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,126,190,254,321,398,467,556,639",
+                        "endColumns": "70,63,63,66,76,68,88,82,71",
+                        "endOffsets": "121,185,249,316,393,462,551,634,706"
+                    },
+                    "to": {
+                        "startLines": "9,10,11,12,13,14,15,16,17",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "789,860,924,988,1055,1132,1201,1290,1373",
+                        "endColumns": "70,63,63,66,76,68,88,82,71",
+                        "endOffsets": "855,919,983,1050,1127,1196,1285,1368,1440"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\hsken\\.gradle\\caches\\8.10.2\\transforms\\8cf478dec41eed746328fa8046755ba2\\transformed\\core-1.13.1\\res\\values-nl\\values-nl.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,157,259,359,459,566,670,789",
+                        "endColumns": "101,101,99,99,106,103,118,100",
+                        "endOffsets": "152,254,354,454,561,665,784,885"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7,8,18",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,157,259,359,459,566,670,1445",
+                        "endColumns": "101,101,99,99,106,103,118,100",
+                        "endOffsets": "152,254,354,454,561,665,784,1541"
+                    }
+                }
+            ]
+        }
+    ]
+}

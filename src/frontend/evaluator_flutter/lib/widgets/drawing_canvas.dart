@@ -37,7 +37,7 @@ class _CanvasPainter extends CustomPainter {
       final p = points[i];
       paintCircle.color =
           Color.fromARGB(255, 255 - i * 30, i * 30, 255 - i * 30);
-      canvas.drawCircle(Offset(p.x, p.y), 5, paintCircle);
+      canvas.drawCircle(Offset(p.x, p.y), 10, paintCircle);
     }
 
     for (var line in lines) {

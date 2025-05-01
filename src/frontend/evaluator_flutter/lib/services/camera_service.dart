@@ -1,5 +1,11 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:namer_app/widgets/drawing_canvas.dart';
+import 'dart:convert';
+import 'api_service.dart';
+import '../models/response_data.dart';
+import '../models/point.dart';
+import 'dart:typed_data';
 
 class CameraService {
   late CameraController _controller;
@@ -16,9 +22,17 @@ class CameraService {
     return CameraPreview(_controller);
   }
 
-  Future<void> takePicture() async {
-    final picture = await _controller.takePicture();
-    // TODO: Send picture to backend
+  Future<List<Point>> takePicture() async {
+    await _controller.setFocusMode(FocusMode.auto);
+
+    XFile picture = await _controller.takePicture();
+    Uint8List bytes = await picture.readAsBytes();
+    print('bytes $bytes');
+    String base64Image = base64Encode(bytes);
+    ResponseData responseData = await ApiService.uploadImage(base64Image);
+
+    // assumes that responseDara.pointsis a list
+    return responseData.points as List<Point>;
   }
 
   void dispose() {
