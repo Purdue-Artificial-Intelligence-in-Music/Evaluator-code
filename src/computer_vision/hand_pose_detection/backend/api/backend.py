@@ -460,6 +460,11 @@ def processFrame(image):
     bkgd_path = os.path.join("", 'images\white_background.jpg')
     background = cv2.imread(bkgd_path)
 
+    height, width = image.shape[:2]
+    channels = image.shape[2] if len(image.shape) == 3 else 1
+
+    background = np.ones((height, width, channels), dtype = np.uint8) * 255
+
     #height,width = 480, 640
     #transparent_img = np.zeros((height, width, 4), dtype=np.uint8)
 
