@@ -1,5 +1,3 @@
-# OPENCV LIVE VIDEO SUPPORT?
-
 import base64
 import cv2
 import mediapipe as mp

@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import base64
 import numpy as np
 import cv2
-from . import backend
+import backend
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import os

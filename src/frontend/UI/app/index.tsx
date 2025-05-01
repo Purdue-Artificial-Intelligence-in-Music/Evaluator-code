@@ -314,9 +314,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       <Button title="Back" onPress={returnBack}/>
       </View>
 
-      (isCameraOpen && hasPermission) ? (
-        <CameraComponent startDelay={0}/>
-      ) : (<></>)    
+      
+      {isCameraOpen && hasPermission ? (
+      <CameraComponent startDelay={0}/>
+    ) : null} 
       
       <Text>IP Address: {ipAddress || 'Fetching IP...'}</Text>
 
