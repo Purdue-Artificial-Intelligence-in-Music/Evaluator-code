@@ -738,11 +738,18 @@ def processFrame(image):
         background = cv2.cvtColor(background, cv2.COLOR_RGB2BGR)
         image_height, image_width, _ = background.shape
 
+        print(results)
         if results.multi_hand_landmarks: #NEED for finger node coords later
+            print("Processing hands: ")
             for hand_landmarks in results.multi_hand_landmarks:
                 for ids, landmrk in enumerate(hand_landmarks.landmark):
                     cx, cy = landmrk.x * image_width, landmrk.y * image_height
                     store_finger_node_coords(ids, cx, cy, finger_coords)
+                    #code for transmitting finger coords
+                    finger_point = Point2D(cx, cy)
+                    finger_label = "hand_pt_" + str(ids)
+                    newList.append((finger_label, finger_point))
+                    #print(newList[-1])
                 
                 mp_drawing.draw_landmarks(
                     background,
@@ -754,14 +761,15 @@ def processFrame(image):
                 landmark_subset = landmark_pb2.NormalizedLandmarkList(
                     landmark=pose_results.pose_landmarks.landmark[11:15]
 
-                ) 
-
+                )
                 
                 mp_drawing.draw_landmarks(
                     background,
                     landmark_subset,
                     None,
                     mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=10, circle_radius=6))
+        else:
+            print("Not Processing hands: ")
                 
 
         oriented_box_annotator = sv.OrientedBoxAnnotator()
@@ -821,7 +829,10 @@ def processFrame(image):
 
         #adding supination/correct
         newList.append(("supination", display_gesture))
-
+        
+        print("List len:", len(newList))
+        for item in newList:
+            print(item)
         return newList
 
 if __name__ == "__main__":

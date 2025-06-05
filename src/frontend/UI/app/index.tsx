@@ -193,7 +193,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     setLinePoints(newLines);
     console.log(newLines)
     setPoints(Object.values(responseData))
-    //setPoints(correctPoints(0.75, [0, 1, 2, 3, 4, 5, 6, 7]))
+
     console.log("pts")
   }
 
@@ -245,6 +245,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         // console.log('Response Data:', responseData);
         // console.log("All values in list: ", Object.values(responseData));
 
+        console.log(responseData)
         processPoints(responseData)
         console.log('Points:', points);
 

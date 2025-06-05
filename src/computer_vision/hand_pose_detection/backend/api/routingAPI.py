@@ -61,19 +61,37 @@ async def process_image(payload: ImagePayload):
 
     response_data = {}
 
-    if (len(points) == 9):
-                response_data = {
-                    points[0][0]: (points[0][1]).to_dict(),
-                    points[1][0]: (points[1][1]).to_dict(),
-                    points[2][0]: (points[2][1]).to_dict(),
-                    points[3][0]: (points[3][1]).to_dict(),
-                    points[4][0]: (points[4][1]).to_dict(),
-                    points[5][0]: (points[5][1]).to_dict(),
-                    points[6][0]: (points[6][1]).to_dict(),
-                    points[7][0]: (points[7][1]).to_dict(),
+    #this logic depends on the data being the correct order (bow box, string box, hands, supination)
+    if (len(points) == 9 or len(points) == 30):
+        for point in points:
+            if (point[0] != "supination"):
+                response_data.update({point[0]: (point[1]).to_dict()})
+            else:
+                response_data.update({point[0]: point[1]})
+    else:
+        for point in pointsDummy:
+            if (point[0] != "supination"):
+                response_data.update({point[0]: (point[1]).to_dict()})
+            else:
+                response_data.update({point[0]: point[1]})
 
-                    points[8][0]: (points[8][1])
-                }
+
+    '''
+    #old logic for routing points
+    if (len(points) == 9):
+        response_data.update({points[5][0]: (points[5][1]).to_dict()})
+        response_data = {
+            points[0][0]: (points[0][1]).to_dict(),
+            points[1][0]: (points[1][1]).to_dict(),
+            points[2][0]: (points[2][1]).to_dict(),
+            points[3][0]: (points[3][1]).to_dict(),
+            points[4][0]: (points[4][1]).to_dict(),
+            points[5][0]: (points[5][1]).to_dict(),
+            points[6][0]: (points[6][1]).to_dict(),
+            points[7][0]: (points[7][1]).to_dict(),
+
+            points[8][0]: (points[8][1])
+        }
     else:
                 response_data = {
                     pointsDummy[0][0]: (pointsDummy[0][1]).to_dict(),
@@ -87,6 +105,7 @@ async def process_image(payload: ImagePayload):
 
                     pointsDummy[8][0]: (pointsDummy[8][1])
                 }
+                '''
 
     return response_data
 
