@@ -120,6 +120,24 @@ class Point2D:
                 #Otherwise do nothing and continue to the next point
         #If the self point is below all the line segments, then return False
         return False
+    
+    def check_correct_bow_position(bow_coord_list, string_coord_list):
+        """
+        Determines if the bow is in the correct position.
+        Parameters:
+        bow_coord_list: list of Point2D, for the bow, from hand side to other side
+        string_coord_list: list of Point2D, for the cello strings, left to right for top strings then bottom strings
+        Does this by looking for a single intersection between the bow and a string
+        """
+        for x in range(len(string_coord_list)/2):
+            if find_intersection(bow_coord_list[0], bow_coord_list[1], string_coord_list[x], string_coord_list[6+x]):
+                return True
+        return False
+        
+        
+        
+
+
 
     @staticmethod
     def angle_between_lines(A, B, C, D):
