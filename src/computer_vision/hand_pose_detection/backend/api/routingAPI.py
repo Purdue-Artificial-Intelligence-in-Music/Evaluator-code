@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 import base64
 import numpy as np
@@ -10,6 +10,8 @@ import os
 import subprocess
 import shlex
 import json
+from fastapi.staticfiles import StaticFiles
+import shutil
 
 
 app = FastAPI()
@@ -109,83 +111,145 @@ async def process_image(payload: ImagePayload):
 
     return response_data
 
-@app.post("/change-video")
-async def change_video(payload: VideoPayload):
-    print("Received video")
 
-    video = payload.video
+# @app.post("/send-video")
+# async def upload_video(payload: VideoPayload):
+#     print("Received video")
 
-    full_path = None
+#     path = str(Path(__file__).parent.parent / "demo1.mp4")
+#     print (path)
+#     demo1 = path
 
-    # This scans the downloads folder for the path of the video
+#     try :
+#         os.remove(demo1)
+#     except FileNotFoundError:
+#         pass
 
-    for root, _, files in os.walk(os.path.expanduser("~/Downloads")):
-        if video in files:
-            full_path = os.path.join(root, video)
+    
+#     output_video = backend.videoFeed(payload.video)
 
-    print(full_path)
+#     print(demo1)
+#     print(output_video)
 
-    response = {"Video":full_path}
+#     #Convert the AVI file into Mp4 using 
 
-    return response
+#     try:
+#         result = subprocess.run(
+#         ['ffmpeg', '-i', output_video, '-vf', "transpose=2", demo1],
+#         capture_output=True,
+#         text=True
+#         )
+    
+#         if result.returncode == 0:
+#             output_video = demo1
+#             print("Conversion completed")
+#         else:
+#             print("Conversion failed:")
+#             print(result.stderr)
+#     except FileNotFoundError:
+#         print("ffmpeg not found. Make sure it's installed and in your PATH.")
 
+#     # Following code based on stackoverflow page on getting resolution from ffmpeg
+#     cmd = "ffprobe -v quiet -print_format json -show_streams"
+#     args = shlex.split(cmd)
+#     args.append(demo1)
+#     # run the ffprobe process, decode stdout into utf-8 & convert to JSON
+#     ffprobeOutput = subprocess.check_output(args).decode('utf-8')
+#     ffprobeOutput = json.loads(ffprobeOutput)
+
+#     # find height and width
+#     height = ffprobeOutput['streams'][0]['height']
+#     width = ffprobeOutput['streams'][0]['width']
+
+#     # Encode the file into base64
+#     with open(demo1, "rb") as f:
+#         encoded = base64.b64encode(f.read()).decode("utf-8")
+#         output_video = f"data:video/mp4;base64,{encoded}"
+
+#     response_data = { "Video": output_video,
+#                      "Height": height,
+#                      "Width": width }
+
+
+#     return response_data
+
+
+static_dir = Path(__file__).parent / "static"
+static_dir.mkdir(exist_ok=True)  # create /static
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+
+# base64 + return url
 @app.post("/send-video")
 async def upload_video(payload: VideoPayload):
     print("Received video")
 
-    path = str(Path(__file__).parent.parent / "demo1.mp4")
-    print (path)
-    demo1 = path
-
-    try :
-        os.remove(demo1)
-    except FileNotFoundError:
-        pass
-
-    
-    output_video = backend.videoFeed(payload.video)
-
-    print(demo1)
-    print(output_video)
-
-    #Convert the AVI file into Mp4 using 
+    current_dir = Path(__file__).parent
+    temp_video_path = str(current_dir / "temp_input.mp4")
+    output_path = str(static_dir / "processed_video.mp4")  # save file to /static
+    rotated_path = str(static_dir / "rotated_video.mp4")
 
     try:
-        result = subprocess.run(
-        ['ffmpeg', '-i', output_video, '-vf', "transpose=2", demo1],
-        capture_output=True,
-        text=True
-        )
-    
-        if result.returncode == 0:
-            output_video = demo1
-            print("Conversion completed")
+        # clean old files
+        for file_path in [temp_video_path, output_path, rotated_path]:
+            try:
+                os.remove(file_path)
+            except FileNotFoundError:
+                pass
+
+        # parse base64 video data
+        if "," in payload.video:
+            video_data = base64.b64decode(payload.video.split(",")[1])
         else:
-            print("Conversion failed:")
-            print(result.stderr)
-    except FileNotFoundError:
-        print("ffmpeg not found. Make sure it's installed and in your PATH.")
+            video_data = base64.b64decode(payload.video)
 
-    # Following code based on stackoverflow page on getting resolution from ffmpeg
-    cmd = "ffprobe -v quiet -print_format json -show_streams"
-    args = shlex.split(cmd)
-    args.append(demo1)
-    # run the ffprobe process, decode stdout into utf-8 & convert to JSON
-    ffprobeOutput = subprocess.check_output(args).decode('utf-8')
-    ffprobeOutput = json.loads(ffprobeOutput)
+        with open(temp_video_path, "wb") as f:
+            f.write(video_data)
 
-    # find height and width
-    height = ffprobeOutput['streams'][0]['height']
-    width = ffprobeOutput['streams'][0]['width']
+        cap = cv2.VideoCapture(temp_video_path)
+        if not cap.isOpened():
+            raise Exception("Failed to open input video file")
+        cap.release()
 
-    # Encode the file into base64
-    with open(demo1, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode("utf-8")
-        output_video = f"data:video/mp4;base64,{encoded}"
+        # call backend function, output saved to output_path
+        backend.videoFeed(temp_video_path, output_path)
+        print("Processed and saved:", output_path)
 
-    response_data = { "Video": output_video,
-                     "Height": height,
-                     "Width": width }
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise Exception("Output video missing or empty")
 
+        # ffmpeg rotate counter-clockwise
+        ffmpeg_path = shutil.which("ffmpeg")
+        if not ffmpeg_path:
+            raise Exception("FFmpeg not found. Please install and add to PATH.")
 
-    return response_data
+        result = subprocess.run(
+            [ffmpeg_path, "-i", output_path, "-vf", "transpose=2", rotated_path],
+            capture_output=True,
+            text=True,
+            timeout=30  # add timeout protection
+        )
+
+        if result.returncode != 0:
+            raise Exception(f"FFmpeg error: {result.stderr}")
+
+        # get video size
+        cap = cv2.VideoCapture(rotated_path)
+        if not cap.isOpened():
+            raise Exception("Failed to open rotated video file")
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+
+        # construct public/local access URL
+        video_url = f"http://127.0.0.1:8000/static/rotated_video.mp4"
+
+        return {
+            "Video": video_url,
+            "Height": height,
+            "Width": width
+        }
+
+    except Exception as e:
+        print("Error:", str(e))
+        raise HTTPException(status_code=500, detail=f"Error processing video: {str(e)}")

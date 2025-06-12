@@ -128,26 +128,32 @@ def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict)
     finger_coords[id].append((cx, cy))
 
 
-def videoFeed(video_path_arg):
+def videoFeed(video_path_arg, output_path):
     # YOLOv8 model trained from Roboflow dataset
-    # Used for bow and target area oriented bounding boxes
-    hand_pose_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_dir = os.path.join(hand_pose_dir, "\\bow_target.pt")
-    model = YOLO("/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt") # path to model file
-    #/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow_target.pt
+    current_dir = os.path.dirname(os.path.abspath(__file__))  # /backend/api
+    parent_dir = os.path.dirname(os.path.dirname(current_dir))
+    # load YOLO model
+    model_dir = os.path.join(parent_dir, "bow_target.pt")
+    print(f"Looking for model at: {model_dir}")
+    model = YOLO(model_dir)
     
-    # For webcam input:
-    # model.overlap = 80
+    # video capture setup
+    cap = cv2.VideoCapture(video_path_arg)
+    if not cap.isOpened():
+        raise Exception("Failed to open video file")
 
-    #input video file
-    video_file_path = os.path.join(hand_pose_dir, "\\Too much pronation (1).mp4")
-    #'/Users/Wpj11/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/bow placing too high.mp4'
-    cap = cv2.VideoCapture(video_path_arg) # change argument to 0 for demo/camera input
-
+    # Get video properties
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
     frame_count = 0
     output_frame_length = 960
     output_frame_width = 720
 
+    # Initialize video writer
+    fourcc = cv2.VideoWriter_fourcc(*'avc1')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (output_frame_length, output_frame_width))
+    if not out.isOpened():
+        raise Exception("Failed to create output video file")
+    
     mp_drawing = mp.solutions.drawing_utils
     mp_pose = mp.solutions.pose
     mp_drawing_styles = mp.solutions.drawing_styles
@@ -155,11 +161,6 @@ def videoFeed(video_path_arg):
 
     finger_coords = {}
 
-    # Initialize video writer
-    output_file = 'output.mp4' 
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    # saves output video to output_file
-    writer = cv2.VideoWriter(output_file, fourcc, 12.5, (output_frame_length, output_frame_width))
 
     #setup gesture options
     num_hands = 2
@@ -187,7 +188,8 @@ def videoFeed(video_path_arg):
         min_tracking_confidence=0.6) as pose, GestureRecognizer.create_from_options(gesture_options) as recognizer:
 
     
-        writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(output_frame_length,output_frame_width)) # algo makes a frame every ~80ms = 12.5 fps
+        # writer = cv2.VideoWriter("demo.avi", cv2.VideoWriter_fourcc(*"MJPG"), 12.5,(output_frame_length,output_frame_width)) # algo makes a frame every ~80ms = 12.5 fps
+
         while cap.isOpened():
             success, image = cap.read()
             if not success:
@@ -252,10 +254,8 @@ def videoFeed(video_path_arg):
                     txt = current_handedness[x] + ": " + display_gesture + " " + str(current_score[x])
                     if (display_gesture == "supination"):
                         cv2.putText(image, txt, (image.shape[1] - 600, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (218,10,3), 4, cv2.LINE_AA)
-                        print(txt)
                     else:
                         cv2.putText(image, txt, (image.shape[1] - 650, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 2, (37,245,252), 4, cv2.LINE_AA)
-                        print(txt)
 
             bow_coord_list = []
             string_coord_list =[]
@@ -424,22 +424,24 @@ def videoFeed(video_path_arg):
             # Resize to specified output dimensions before writing
             resized_frame = cv2.resize(image, (output_frame_length, output_frame_width))
 
-            writer.write(resized_frame)
+            out.write(resized_frame)
             #cv2.imshow('MediaPipe Hands', image)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         cap.release()
-        writer.release()
+        out.release()
         cv2.destroyAllWindows()
 
         #print(Path(__file__).parent.parent)
         path = str(Path(__file__).parent / "demo.avi")
         print(path)
-        return path
-
-        #return "/Users/aneeshpendyala/Documents/GitHub/Evaluator-code/src/computer_vision/hand_pose_detection/backend/demo.avi"
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            return output_path
+        else:
+            raise Exception("Failed to create output video file or file is empty")
+        
 
     testList = os.path.join(hand_pose_dir, "frontend_refactor\\Screenshot 2025-02-17 210532.png")
     print(testList)

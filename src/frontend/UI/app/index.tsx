@@ -120,59 +120,31 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   }, []);
 
   // Function to handle video selection
+  // base64 + url
   const pickVideo = async () => {
-    const permissionResult = await Camera.requestCameraPermissionsAsync();
+    try {
+      const result = await ImagePickerExpo.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        base64: true
+      });
 
-    if (!permissionResult.granted) {
-      alert('Permission to access media library is required!');
-      return;
-    }
-
-    const result = await ImagePickerExpo.launchImageLibraryAsync({
-      mediaTypes: ['videos']
-
-    });
-
-    console.log(result)
-
-    if(!result.canceled && result.assets && result.assets[0]) {
-      const selectedVideoUri = result.assets[0].uri;
-      const { width = 0, height = 0 } = result.assets[0];
-      setVideoDimensions({ width, height });
-      if (selectedVideoUri) {
+      if(!result.canceled && result.assets && result.assets[0]) {
+        const selectedVideoUri = result.assets[0].uri;
+        const { width = 0, height = 0 } = result.assets[0];
+        setVideoDimensions({ width, height });
         setVideoUri(selectedVideoUri);
+
+        
+        setvideofile(selectedVideoUri);
+        setIsCameraOpen(false);
+        setsendButton(true);
       }
-
-
-      const file_name = result.assets[0].file?.name
-
-      const jsonData = {
-
-          "video": file_name
-
-      }
-
-      const response = await fetch('http://127.0.0.1:8000/change-video/', {
-      method: "POST",
-      body: JSON.stringify(jsonData),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-
-    })
-
-    const res = await response.json()
-    console.log("Response from Backend", res)
-
-    setvideofile(res.Video)
-    console.log(videofile)
-
-
-      setIsCameraOpen(false);
-      setsendButton(true)
+    } catch (error) {
+      console.error('Error picking video:', error);
+      alert('Failed to pick video. Please try again.');
     }
-
   };
+
 
   function processPoints(responseData: ResponseData) {
 
@@ -262,49 +234,65 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     }
   };
 
+  // base64 + URL
   async function sendVideoBackend() {
-
-    const jsonData = {
-
-      "video": videofile
-
-    }
-
-    console.log(jsonData)
-
-    setsendVideo(true)
-    setVideoUri(null)
-    setsendButton(false)
-
-    const response = await fetch('http://127.0.0.1:8000/send-video/', {
-      method: "POST",
-      body: JSON.stringify(jsonData),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-
-    })
-
-    const result = await response.json()
-    console.log("Response from Backend", result)
-
-    setsendVideo(false)
-
-    const selectedVideoUri = result["Video"];
-
-    console.log(selectedVideoUri)
-
-      setVideoDimensions({ width : result["Width"], height : result["Height"] });
-      if (selectedVideoUri) {
-        setVideoUri(selectedVideoUri);
+    try {
+      if (!videofile) {
+        alert('No video selected');
+        return;
       }
 
-      console.log(videoUri)
+      // Extract base64 data from the URI
+      const base64Data = videofile.split(',')[1];
 
-      setIsCameraOpen(false);
+      const jsonData = {
+        "video": base64Data
+      };
 
+      console.log("Sending video data:", {
+        hasData: !!jsonData.video,
+        dataLength: jsonData.video?.length
+      });
 
-    
+      setsendVideo(true);
+      setVideoUri(null);
+      setsendButton(false);
+
+      const response = await fetch('http://127.0.0.1:8000/send-video', {
+        method: "POST",
+        body: JSON.stringify(jsonData),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Server error:', errorData);
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Response from Backend", result);
+
+      if (!result.Video) {
+        throw new Error('No video data in response');
+      }
+
+      
+      setVideoUri(result.Video);
+
+      
+      if (result.Width && result.Height) {
+        setVideoDimensions({ width: result.Width, height: result.Height });
+      }
+
+      setsendVideo(false);
+    } catch (error) {
+      console.error('Error sending video:', error);
+      alert(`Failed to send video: ${error.message}`);
+      setsendVideo(false);
+    }
   }
 
   async function demoVideo() {
