@@ -24,6 +24,8 @@
 
 # Media files
 \src\computer_vision\hand_pose_detection\backend\api\images
+src/computer_vision/hand_pose_detection/backend/api/images/
+
 
 # Logs
 **/*.log

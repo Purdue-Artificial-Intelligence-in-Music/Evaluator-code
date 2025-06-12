@@ -94,7 +94,16 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         onCameraReady={() => setLoading(false)}
       />
       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-      <Button title="RECORD" onPress={() => setRecording(!recording)} />
+      <Button title={recording ? "STOP" : "RECORD"} onPress={() => {
+        if (recording) {
+          setRecording(false);
+          // reset old dots and lines
+          setPoints([{x: 0, y: 0}]);
+          setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
+        } else {
+          setRecording(true);
+        }
+      }} />
     </View>
   );
 };
@@ -316,7 +325,18 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       <View style={styles.buttonStyle}>
       <Button title="Choose Video" onPress={pickVideo}/>
 
-      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null); setsendButton(false)}} />
+      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {
+        if (isCameraOpen) {  // if we're closing the camera
+          setRecording(false);
+          // reset old dots and lines
+          setPoints([{x: 0, y: 0}]);
+          setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
+        }
+        setIsCameraOpen(!isCameraOpen);        
+        setVideoUri(null); 
+        setVideoDimensions(null);
+        setsendButton(false);
+      }} />
       <Button title="Fetch Data from API" disabled={loading} onPress={demoVideo} />
       <Button title="Back" onPress={returnBack}/>
       </View>
@@ -358,8 +378,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         <Button title="Send Video" onPress={sendVideoBackend} />
       </View>
 
-      <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
-
+      {/* only show dots and lines when camera is open and recording*/}
+      {(isCameraOpen && recording) && <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
         {points.map((item, index) => (
           <Circle r={5} 
                   cx={item.x} 
@@ -377,7 +397,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
                 key={index}
           />
         ))}
-      </Svg>
+      </Svg>}
         
       
     </SafeAreaView>
