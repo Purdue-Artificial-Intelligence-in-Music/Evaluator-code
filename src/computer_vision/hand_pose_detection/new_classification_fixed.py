@@ -1,8 +1,7 @@
 import cv2
 import torch
+import numpy as np
 from ultralytics import YOLO
-
-
 
 class Point2D:
     def __init__(self, x=0, y=0):
@@ -134,42 +133,7 @@ class Point2D:
         angle_degrees = math.degrees(angle_radians)
         
         return angle_degrees
-    
-    @staticmethod
-    def classify_bow_position(bow_coords, string_coords):
-        left_middle = Point2D.find_point_p1(bow_coords[0], bow_coords[1])
-        right_middle = Point2D.find_point_p1(bow_coords[2], bow_coords[3])
-        
-        # finds intersection points between the bow and the strings
-        int1= Point2D.find_intersection(left_middle, right_middle, string_coords[0], string_coords[2])
-        int2 = Point2D.find_intersection(left_middle, right_middle, string_coords[1], string_coords[3])
 
-        # checks if both intersection points are valid
-        # if both intersection points are valid, check if they are above or below the string coordinates
-        if int1 and int2:
-            above = Point2D.is_above_or_below(int1, string_coords[2], string_coords[3]) or \
-                    Point2D.is_above_or_below(int2, string_coords[2], string_coords[3])
-            return "Bow Too High" if above else "Bow Correctly Placed"
-        return "Cannot Determine Bow Position"
-    @staticmethod
-    def classify_bow_angle(bow_coords, string_coords):
-        # calculates the angle between the bow and the string
-        angle = Point2D.angle_between_lines(bow_coords[0], bow_coords[1], string_coords[2], string_coords[3])
-        return "Correct Bow Angle" if 75 < angle < 105 else "Bow Not Perpendicular to Fingerboard"
-    @staticmethod
-    def draw_feedback(image, bow_coords, string_coords):
-        position = Point2D.classify_bow_position(bow_coords, string_coords)
-        angle_feedback = Point2D.classify_bow_angle(bow_coords, string_coords)
-
-        # Draw the bow and string coordinates on the image
-        position_color = (0, 255, 0) if position == "Bow Correctly Placed" else (0, 0, 255)
-        angle_color = (0, 255, 0) if angle_feedback == "Correct Bow Angle" else (0, 0, 255)
-
-        cv2.putText(image, f"Bow Position: {position}", (50, 700), cv2.FONT_HERSHEY_SIMPLEX, 1, position_color, 3)
-        cv2.putText(image, f"Bow Angle: {angle_feedback}", (50,750), cv2.FONT_HERSHEY_SIMPLEX, 1, angle_color, 3)
-        return image 
-
-    
     # Function to resize image with aspect ratio
     def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
         dim = None
@@ -328,8 +292,28 @@ class Classification:
         - opencv frame
         """
 
+        # define labels for classification results
+        label_map = {
+            0: ("Correct Bow Height", (0,255,0)),
+            1: ("Outside Bow Zone", (0,0,255)),
+            2: ("Too Low", (0,165,255)),
+            3: ("Too High", (255,0,0))
+        }
 
+        # if the result is in the label map, use that label and color
+        if result in label_map:
+            label, color = label_map[result]
+        else:
+            label = "Unknown"
+            color = (255, 255, 255)
 
+        cv2.putText(opencv_frame, label, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
+        for point in [self.bow_points, self.string_points]:
+            if point and len(point) == 4:
+                points = [tuple(map(int,p)) for p in point]
+                cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=color, thickness=2)
+
+        return opencv_frame
 """
     Main classification logic:
         within loop:
