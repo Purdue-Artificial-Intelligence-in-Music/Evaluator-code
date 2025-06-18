@@ -10,7 +10,7 @@ import { Svg, Circle, Line} from 'react-native-svg';
 import * as Network from 'expo-network';
 
 import * as FileSystem from 'expo-file-system';
-
+import * as MediaLibrary from 'expo-media-library';
 import { Platform } from 'react-native';
 
 type Point = {
@@ -310,6 +310,45 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     }
   }
 
+  const downloadVideo = async (videoUrl: string) => {
+    // Temporary part preventing crash on web platform
+    if (Platform.OS === 'web') {
+      alert("Video download is only supported on mobile devices.");
+      return;
+    }
+
+    try {
+      // Request permission
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        alert("Permission to access media library is required.");
+        return;
+      }
+
+      // Download video to local temporary folder
+      const fileUri = FileSystem.documentDirectory + 'downloaded_video.mp4';
+      const downloadResumable = FileSystem.createDownloadResumable(
+        videoUrl,
+        fileUri
+      );
+
+      const downloadResult = await downloadResumable.downloadAsync();
+
+      if (!downloadResult || !downloadResult.uri) {
+        throw new Error("Download failed");
+      }
+      const uri = downloadResult.uri;
+
+      // Save to gallery
+      await MediaLibrary.saveToLibraryAsync(uri);
+
+      alert("Video has been saved to your gallery!");
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("Failed to download video.");
+    }
+  };
+
   async function demoVideo() {
     const jsonData = {
       "title": "demo video",
@@ -395,6 +434,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       <View style={{marginTop: 10,opacity: sendButton ? 1: 0}}>
         <Button title="Send Video" onPress={sendVideoBackend} />
       </View>
+
+      {/* download video */}
+      {(videoUri && !sendButton) && <Button
+        title="Download Video"
+        onPress={() => downloadVideo(videoUri)}
+        disabled={!videoUri}
+      />}
 
       {/* only show dots and lines when camera is open and recording*/}
       {(isCameraOpen && recording) && <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
