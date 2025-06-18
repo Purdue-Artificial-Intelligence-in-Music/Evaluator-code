@@ -34,7 +34,9 @@ export default function App() {
   const [ipAddress, setIpAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);  // State for camera permission
-  
+
+  // TODO: use ip address of your computer (the backend) here (use ipconfig or ifconfig to look up)
+  const [serverIP, setServerIP] = useState("");
 
   
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
@@ -211,7 +213,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     try {
       setLoading(true);
       //django used /api/upload
-      const response = await fetch('http://127.0.0.1:8000/upload/', {
+      const response = await fetch(`http://${serverIP}:8000/upload/`, {
         method: 'POST',
         body: JSON.stringify(jsonData),
         headers: {
@@ -253,22 +255,25 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       }
 
       // Extract base64 data from the URI
-      const base64Data = videofile.split(',')[1];
-
+      const base64Data = await FileSystem.readAsStringAsync(videofile, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
       const jsonData = {
-        "video": base64Data
+        video: base64Data
       };
 
       console.log("Sending video data:", {
         hasData: !!jsonData.video,
         dataLength: jsonData.video?.length
       });
+      console.log("Raw videofile URI:", videofile);
 
       setsendVideo(true);
       setVideoUri(null);
       setsendButton(false);
 
-      const response = await fetch('http://127.0.0.1:8000/send-video', {
+      const response = await fetch(`http://${serverIP}:8000/send-video`, {
         method: "POST",
         body: JSON.stringify(jsonData),
         headers: {
@@ -310,7 +315,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       "title": "demo video",
       "videouri": "this is a test",
     }
-    const response = await fetch('http://127.0.0.1:8000/api/upload/', {
+    const response = await fetch(`http://${serverIP}:8000/api/upload/`, {
       method: 'POST',
       body: JSON.stringify(jsonData),
       headers: {
