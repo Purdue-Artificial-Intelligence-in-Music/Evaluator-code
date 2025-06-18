@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
+import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
@@ -11,6 +11,7 @@ import * as Network from 'expo-network';
 
 import * as FileSystem from 'expo-file-system';
 
+import { Platform } from 'react-native';
 
 type Point = {
   x: number;
@@ -322,23 +323,35 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     <SafeAreaView style={styles.container}>
 
 
-      <View style={styles.buttonStyle}>
-      <Button title="Choose Video" onPress={pickVideo}/>
-
-      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {
-        if (isCameraOpen) {  // if we're closing the camera
-          setRecording(false);
-          // reset old dots and lines
-          setPoints([{x: 0, y: 0}]);
-          setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
-        }
-        setIsCameraOpen(!isCameraOpen);        
-        setVideoUri(null); 
-        setVideoDimensions(null);
-        setsendButton(false);
-      }} />
-      <Button title="Fetch Data from API" disabled={loading} onPress={demoVideo} />
-      <Button title="Back" onPress={returnBack}/>
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.customButton} onPress={pickVideo}>
+          <Text style={styles.buttonText}>Choose Video</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.customButton}
+          onPress={() => {
+            if (isCameraOpen) {
+              setRecording(false);
+              // reset old dots and lines
+              setPoints([{ x: 0, y: 0 }]);
+              setLinePoints([{ start: { x: 0, y: 0 }, end: { x: 0, y: 0 } }]);
+            }
+            setIsCameraOpen(!isCameraOpen);
+            setVideoUri(null);
+            setVideoDimensions(null);
+            setsendButton(false);
+          }}
+        >
+          <Text style={styles.buttonText}>
+            {isCameraOpen ? 'Close Camera' : 'Open Camera'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.customButton} disabled={loading} onPress={demoVideo}>
+          <Text style={styles.buttonText}>Fetch Data from API</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.customButton} onPress={returnBack}>
+          <Text style={styles.buttonText}>Back</Text>
+        </TouchableOpacity>
       </View>
 
       
@@ -421,6 +434,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#AAA',
     width: '100%',
 
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    backgroundColor: '#AAA',
+    width: '100%',
+    gap: 10,
+  },
+  
+  customButton: {
+    flexBasis: '45%',          // Base width for flexible layout
+    flexGrow: 1,               // Allow the button to grow to fill space
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Platform.OS === 'web' ? 12 : 10,
+    paddingHorizontal: 10,     // Prevent text from stretching too wide
+    backgroundColor: '#444',
+    borderRadius: 8,
+    marginBottom: 10,
+    maxWidth: '48%',           // Limit width to keep layout balanced in a row
+    cursor: Platform.OS === 'web' ? 'pointer' : 'default',
+  },
+  
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
   },
   cameraContainer: {
     flex: 1,
