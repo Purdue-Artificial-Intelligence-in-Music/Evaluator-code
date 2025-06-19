@@ -1,8 +1,7 @@
 import cv2
 import torch
+import numpy as np
 from ultralytics import YOLO
-
-
 
 class Point2D:
     def __init__(self, x=0, y=0):
@@ -134,42 +133,7 @@ class Point2D:
         angle_degrees = math.degrees(angle_radians)
         
         return angle_degrees
-    
-    @staticmethod
-    def classify_bow_position(bow_coords, string_coords):
-        left_middle = Point2D.find_point_p1(bow_coords[0], bow_coords[1])
-        right_middle = Point2D.find_point_p1(bow_coords[2], bow_coords[3])
-        
-        # finds intersection points between the bow and the strings
-        int1= Point2D.find_intersection(left_middle, right_middle, string_coords[0], string_coords[2])
-        int2 = Point2D.find_intersection(left_middle, right_middle, string_coords[1], string_coords[3])
 
-        # checks if both intersection points are valid
-        # if both intersection points are valid, check if they are above or below the string coordinates
-        if int1 and int2:
-            above = Point2D.is_above_or_below(int1, string_coords[2], string_coords[3]) or \
-                    Point2D.is_above_or_below(int2, string_coords[2], string_coords[3])
-            return "Bow Too High" if above else "Bow Correctly Placed"
-        return "Cannot Determine Bow Position"
-    @staticmethod
-    def classify_bow_angle(bow_coords, string_coords):
-        # calculates the angle between the bow and the string
-        angle = Point2D.angle_between_lines(bow_coords[0], bow_coords[1], string_coords[2], string_coords[3])
-        return "Correct Bow Angle" if 75 < angle < 105 else "Bow Not Perpendicular to Fingerboard"
-    @staticmethod
-    def draw_feedback(image, bow_coords, string_coords):
-        position = Point2D.classify_bow_position(bow_coords, string_coords)
-        angle_feedback = Point2D.classify_bow_angle(bow_coords, string_coords)
-
-        # Draw the bow and string coordinates on the image
-        position_color = (0, 255, 0) if position == "Bow Correctly Placed" else (0, 0, 255)
-        angle_color = (0, 255, 0) if angle_feedback == "Correct Bow Angle" else (0, 0, 255)
-
-        cv2.putText(image, f"Bow Position: {position}", (50, 700), cv2.FONT_HERSHEY_SIMPLEX, 1, position_color, 3)
-        cv2.putText(image, f"Bow Angle: {angle_feedback}", (50,750), cv2.FONT_HERSHEY_SIMPLEX, 1, angle_color, 3)
-        return image 
-
-    
     # Function to resize image with aspect ratio
     def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
         dim = None
@@ -402,8 +366,28 @@ class Classification:
         - opencv frame
         """
 
+        # define labels for classification results
+        label_map = {
+            0: ("Correct Bow Height", (0,255,0)),
+            1: ("Outside Bow Zone", (0,0,255)),
+            2: ("Too Low", (0,165,255)),
+            3: ("Too High", (255,0,0))
+        }
 
+        # if the result is in the label map, use that label and color
+        if result in label_map:
+            label, color = label_map[result]
+        else:
+            label = "Unknown"
+            color = (255, 255, 255)
 
+        cv2.putText(opencv_frame, label, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
+        for point in [self.bow_points, self.string_points]:
+            if point and len(point) == 4:
+                points = [tuple(map(int,p)) for p in point]
+                cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=color, thickness=2)
+
+        return opencv_frame
 """
     Main classification logic:
         within loop:
@@ -432,8 +416,8 @@ class Classification:
 def main():
     # Open video
     # Load YOLOv11 OBB model
-    model = YOLO('best 2.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("supination_2.mov")
+    model = YOLO('new_obb2.pt')  # Replace with your actual model file    
+    cap = cv2.VideoCapture("Student 1/supination and bow high - slow.mp4")
 
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
@@ -441,6 +425,8 @@ def main():
         scale = target_width / w
         new_dim = (int(w * scale), int(h * scale))
         return cv2.resize(image, new_dim, interpolation=cv2.INTER_AREA)
+
+    cln = Classification()
 
     while cap.isOpened():
         success, frame = cap.read()
@@ -456,6 +442,42 @@ def main():
                 for box in obb_coords:
                     pts = box.reshape((-1, 1, 2)).astype(int)
                     cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
+            if len(result.obb.xyxyxyxy) >= 2:
+                print("Both bow and string detected")
+                if len(result.obb.xyxyxyxy) == 2:
+                    if result.names[0] == result.names[1]:
+                        continue #if both are bow or both are string, do nothing
+                    if result.names[0] == "Bow": #first is bow, second is string
+                        bow, string = torch.round(result.obb.xyxyxyxy)
+                    else: #first is string, second is bow
+                        string, bow = torch.round(result.obb.xyxyxyxy)
+                else: #more than 2 detections, means there's probably a double detection of a bow or string
+                    print("More than 2 detections")
+                    bow_conf = 0.0
+                    bow_index = -1
+                    string_conf = 0.0
+                    string_index = -1
+                    for x in range(len(result.obb)):
+                        if result.names[0] == "Bow":
+                            if result.obb[x].conf > bow_conf:
+                                bow_conf = result.obb[x].conf
+                                bow_index = x
+                        elif result.names[0] == "String":
+                            if result.obb[x].conf > string_conf:
+                                string_conf = result.obb[x].conf
+                                string_index = x
+                    if bow_index != -1 and string_index != -1:
+                        bow = torch.round(result.obb[bow_index])
+                        string = torch.round(result.obb[string_index])
+                bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
+                string_coords = [Point2D(string[0][0].item(), string[0][1].item()), Point2D(string[1][0].item(), string[1][1].item()), Point2D(string[2][0].item(), string[2][1].item()), Point2D(string[3][0].item(), string[3][1].item())]
+                #cln.update_points(string_coords, bow_coords)
+                #cln.get_vertical_lines()
+                #annotated_frame = cln.display_classification(cln.intersects_vertical(), frame)
+                
+
+        
+
 
         # Resize frame for display
         resized_frame = resize_keep_aspect(frame, target_width=700)
