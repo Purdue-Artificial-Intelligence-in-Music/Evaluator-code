@@ -227,7 +227,9 @@ class Classification:
         Returns:
         - None
         """
-        pass
+        self.bow_points = bow_box_xyxyxyxy
+        self.string_points = string_box_xyxyxyxy
+
 
     def get_midline(self):
         """
@@ -236,7 +238,19 @@ class Classification:
         Returns:
         - (m, b): Slope and y-intercept of the midline in the form y = mx + b
         """
-        pass
+
+        topRight = self.bow_points[0]
+        topLeft = self.bow_points[1]
+        botRight = self.bow_points[0]
+        botLeft = self.bow_points[1]
+
+        topMid = ((topRight[0] + botRight[0]) / 2, (topRight[1] + botRight[1]) / 2)
+        botMid = ((botLeft[0] + topLeft[0]) / 2, (botLeft[1] + topLeft[1]) / 2)
+        
+        slope = (topMid[1] - botMid[1]) / (topMid[0] - botMid[0])
+        yInt = topMid[1] - slope * topMid[0]
+
+        return (slope, yInt)
 
     def get_vertical_lines(self):
         """
@@ -246,8 +260,23 @@ class Classification:
         - (m1, b1, ht1, hb1): tuple of slope, x-intercept, top y, bottom y for left vertical line
         - (m2, b2, ht2, hb2): tuple of same for right vertical line
         """
-        pass
 
+        topRight = self.bow_points[0]
+        topLeft = self.bow_points[1]
+        botRight = self.bow_points[0]
+        botLeft = self.bow_points[1]
+        
+        leftSlope = (topLeft[1] - botLeft[1]) / (topLeft[0] - botLeft[0])
+        leftYint = topLeft[1] - leftSlope * topLeft[0]
+        leftHT1 = topLeft[1]
+        leftHT2 = botLeft[1]
+ 
+        rightSlope = (topRight[1] - botRight[1]) / (topRight[0] - botRight[0])
+        rightYint = topRight[1] - leftSlope * topRight[0]
+        rightHT1 = topRight[1]
+        rightHT2 = botRight[1]
+
+        return (leftSlope, leftYint, leftHT1, leftHT2), (rightSlope, rightYint, rightHT1, rightHT2)
     def intersects_vertical(self, linear_line, vertical_lines):
         """
         Check if a linear line intersects both vertical edges of the box.
