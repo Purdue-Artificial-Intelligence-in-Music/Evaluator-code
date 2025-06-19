@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from ultralytics import YOLO
 
+"""
 class Point2D:
     def __init__(self, x=0, y=0):
         self.x = x
@@ -26,16 +27,16 @@ class Point2D:
     
     def find_point_p1(A, B, ratio=0.7):
         """
-        Finds the coordinates of point P1 that is `ratio` distance from A to B.
+        # Finds the coordinates of point P1 that is `ratio` distance from A to B.
         
-        Parameters:
-        A (Point2D): Point A
-        B (Point2D): Point B
-        ratio (float): Ratio of the distance from A to B where P1 should be (default is 0.7)
+        # Parameters:
+        # A (Point2D): Point A
+        # B (Point2D): Point B
+        # ratio (float): Ratio of the distance from A to B where P1 should be (default is 0.7)
         
-        Returns:
-        Point2D: Coordinates of point P1
-        """
+        # Returns:
+        # Point2D: Coordinates of point P1
+"""
         Px = A.x + ratio * (B.x - A.x)
         Py = A.y + ratio * (B.y - A.y)
         return Point2D(Px, Py)
@@ -65,13 +66,13 @@ class Point2D:
     
     def is_above_or_below(self, A, B):
         """
-        Determines if the current point (self) is above or below the line segment defined by points A and B.
-        Parameters:
-        A (Point2D): First endpoint of the line segment.
-        B (Point2D): Second endpoint of the line segment.
-        Returns:
-        bool: True if the current point (self) is above the line, False if it is below or on the line.
-        """
+        # Determines if the current point (self) is above or below the line segment defined by points A and B.
+        # Parameters:
+        # A (Point2D): First endpoint of the line segment.
+        # B (Point2D): Second endpoint of the line segment.
+        # Returns:
+        # bool: True if the current point (self) is above the line, False if it is below or on the line.
+"""
         # Calculate the cross product of vectors AB and AC (where C is self)
         cross_product = (B.x - A.x) * (self.y - A.y) - (B.y - A.y) * (self.x - A.x)
         if cross_product > 0:
@@ -81,12 +82,12 @@ class Point2D:
     
     def is_above_or_below_list(self, pts_list):
         """
-        Determines if the current point (self) is above or below the line segment defined by points in pts_list.
-        Parameters:
-        pts_list (list of Point2D): List of points defining the line segment. Should be ordered from left to right.
-        Returns:
-        bool: True if the current point (self) is above the line, False if it is below or on the line.
-        """
+        # Determines if the current point (self) is above or below the line segment defined by points in pts_list.
+        # Parameters:
+        # pts_list (list of Point2D): List of points defining the line segment. Should be ordered from left to right.
+        # Returns:
+        # bool: True if the current point (self) is above the line, False if it is below or on the line.
+"""
         for x in range(len(pts_list)):
             if x == 0:
                 continue
@@ -100,12 +101,12 @@ class Point2D:
     
     def check_correct_bow_position(bow_coord_list, string_coord_list):
         """
-        Determines if the bow is in the correct position.
-        Parameters:
-        bow_coord_list: list of Point2D, for the bow, from hand side to other side
-        string_coord_list: list of Point2D, for the cello strings, left to right for top strings then bottom strings
-        Does this by looking for a single intersection between the bow and a string
-        """
+        # Determines if the bow is in the correct position.
+        # Parameters:
+        # bow_coord_list: list of Point2D, for the bow, from hand side to other side
+        # string_coord_list: list of Point2D, for the cello strings, left to right for top strings then bottom strings
+        # Does this by looking for a single intersection between the bow and a string
+"""
         for x in range(len(string_coord_list)/2):
             if find_intersection(bow_coord_list[0], bow_coord_list[1], string_coord_list[x], string_coord_list[6+x]):
                 return True
@@ -114,8 +115,8 @@ class Point2D:
     @staticmethod
     def angle_between_lines(A, B, C, D):
         """
-        Calculates the angle between the line segment AB and CD.        
-        """
+       # Calculates the angle between the line segment AB and CD.        
+"""
         # Vectors AB and CD
         vector_ab = (B.x - A.x, B.y - A.y)
         vector_cd = (D.x - C.x, D.y - C.y)
@@ -179,14 +180,14 @@ class Point2D:
 
     def find_intersection_list(self, p1, p2, pts_list):
         """
-            Determines Finds intersection between line segment p1p2 and line segments formed by points in pts_list.
-            Parameters:
-            p1: Point2D, first endpoint of the line segment
-            p2: Point2D, second endpoint of the line segment
-            pts_list: list of Point2D, for the cello strings, left to right for top strings then bottom strings
-            Returns:
-            bool: Coordinates of first intersection point found, if no intersection found then return None.
-        """
+            # Determines Finds intersection between line segment p1p2 and line segments formed by points in pts_list.
+            # Parameters:
+            # p1: Point2D, first endpoint of the line segment
+            # p2: Point2D, second endpoint of the line segment
+            # pts_list: list of Point2D, for the cello strings, left to right for top strings then bottom strings
+            # Returns:
+            # bool: Coordinates of first intersection point found, if no intersection found then return None.
+"""
         for x in range(len(pts_list)/2):
             intersection = find_intersection(p1, p2, pts_list[x], pts_list[6+x])
             if intersection:
@@ -195,12 +196,12 @@ class Point2D:
 
     def check_angle(p1, p2, pts_list):
         """
-        Determines if there is a line segment that is almost parallel (within 10 degrees) to the line segment p1p2.
-        Parameters:
-        p1: Point2D, first endpoint of the line segment
-        p2: Point2D, second endpoint of the line segment
-        pts_list: list of Point2D, for the cello strings, left to right for top strings
-        """
+        # Determines if there is a line segment that is almost parallel (within 10 degrees) to the line segment p1p2.
+        # Parameters:
+        # p1: Point2D, first endpoint of the line segment
+        # p2: Point2D, second endpoint of the line segment
+        # pts_list: list of Point2D, for the cello strings, left to right for top strings
+"""
         for x in range(len(pts_list[:6])):
             if x == 0:
                 continue
@@ -209,7 +210,7 @@ class Point2D:
                 if angle < 10:
                     return True
         return False
-
+"""
 class Classification:
     def __init__(self):
         self.bow_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
@@ -253,30 +254,35 @@ class Classification:
         return (slope, yInt)
 
     def get_vertical_lines(self):
-        """
-        Compute the left and right vertical edges of the box.
-
-        Returns:
-        - (m1, b1, ht1, hb1): tuple of slope, x-intercept, top y, bottom y for left vertical line
-        - (m2, b2, ht2, hb2): tuple of same for right vertical line
-        """
-
         topRight = self.bow_points[0]
         topLeft = self.bow_points[1]
-        botRight = self.bow_points[0]
-        botLeft = self.bow_points[1]
-        
-        leftSlope = (topLeft[1] - botLeft[1]) / (topLeft[0] - botLeft[0])
-        leftYint = topLeft[1] - leftSlope * topLeft[0]
+        botRight = self.bow_points[2]
+        botLeft = self.bow_points[3]
+
+        # Avoid division by zero by checking x-difference
+        dx_left = topLeft[0] - botLeft[0]
+        if dx_left == 0:
+            leftSlope = float('inf')  # or use a large number like 1e6
+            leftYint = None
+        else:
+            leftSlope = (topLeft[1] - botLeft[1]) / dx_left
+            leftYint = topLeft[1] - leftSlope * topLeft[0]
+
+        dx_right = topRight[0] - botRight[0]
+        if dx_right == 0:
+            rightSlope = float('inf')
+            rightYint = None
+        else:
+            rightSlope = (topRight[1] - botRight[1]) / dx_right
+            rightYint = topRight[1] - rightSlope * topRight[0]
+
         leftHT1 = topLeft[1]
         leftHT2 = botLeft[1]
- 
-        rightSlope = (topRight[1] - botRight[1]) / (topRight[0] - botRight[0])
-        rightYint = topRight[1] - leftSlope * topRight[0]
         rightHT1 = topRight[1]
         rightHT2 = botRight[1]
 
         return (leftSlope, leftYint, leftHT1, leftHT2), (rightSlope, rightYint, rightHT1, rightHT2)
+
     def intersects_vertical(self, linear_line, vertical_lines):
         """
         Check if a linear line intersects both vertical edges of the box.
@@ -445,8 +451,8 @@ class Classification:
 def main():
     # Open video
     # Load YOLOv11 OBB model
-    model = YOLO('new_obb2.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("Student 1/supination and bow high - slow.mp4")
+    model = YOLO('best 2.pt')  # Replace with your actual model file    
+    cap = cv2.VideoCapture("bow too high-slow (3).mp4")
 
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
@@ -463,14 +469,15 @@ def main():
             break
 
         # Run YOLOv11 OBB inference
-        results = model(frame)
+        annotated_frame = frame.copy()  # Initialize it safely with the original frame
 
+        results = model(frame)
         for result in results:
             if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
                 obb_coords = result.obb.xyxyxyxy.cpu().numpy()  # shape: (N, 4, 2)
-                for box in obb_coords:
-                    pts = box.reshape((-1, 1, 2)).astype(int)
-                    cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
+                # for box in obb_coords:
+                #     pts = box.reshape((-1, 1, 2)).astype(int)
+                #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
             if len(result.obb.xyxyxyxy) >= 2:
                 print("Both bow and string detected")
                 if len(result.obb.xyxyxyxy) == 2:
@@ -498,18 +505,27 @@ def main():
                     if bow_index != -1 and string_index != -1:
                         bow = torch.round(result.obb[bow_index])
                         string = torch.round(result.obb[string_index])
-                bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
-                string_coords = [Point2D(string[0][0].item(), string[0][1].item()), Point2D(string[1][0].item(), string[1][1].item()), Point2D(string[2][0].item(), string[2][1].item()), Point2D(string[3][0].item(), string[3][1].item())]
-                #cln.update_points(string_coords, bow_coords)
-                #cln.get_vertical_lines()
-                #annotated_frame = cln.display_classification(cln.intersects_vertical(), frame)
+                # bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
+                # string_coords = [Point2D(string[0][0].item(), string[0][1].item()), Point2D(string[1][0].item(), string[1][1].item()), Point2D(string[2][0].item(), string[2][1].item()), Point2D(string[3][0].item(), string[3][1].item())]
+                
+                bow_coords = [tuple(bow[i].tolist()) for i in range(4)]
+                string_coords = [tuple(string[i].tolist()) for i in range(4)]
+
+
+                cln.update_points(string_coords, bow_coords)
+                midlines = cln.get_midline()
+                vert_lines = cln.get_vertical_lines()
+                intersect_points = cln.intersects_vertical(midlines, vert_lines)
+                annotated_frame = cln.display_classification(intersect_points, annotated_frame)
                 
 
         
 
 
         # Resize frame for display
-        resized_frame = resize_keep_aspect(frame, target_width=700)
+        resized_frame = resize_keep_aspect(annotated_frame, target_width=500)
+
+        # resized_frame = resize_keep_aspect(frame, target_width=700)
 
         # Show the resized frame
         cv2.imshow("YOLOv11 OBB", resized_frame)
