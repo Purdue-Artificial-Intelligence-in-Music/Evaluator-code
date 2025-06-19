@@ -505,6 +505,8 @@ def main():
                     if bow_index != -1 and string_index != -1:
                         bow = torch.round(result.obb[bow_index])
                         string = torch.round(result.obb[string_index])
+                    else:
+                        continue
                 # bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
                 # string_coords = [Point2D(string[0][0].item(), string[0][1].item()), Point2D(string[1][0].item(), string[1][1].item()), Point2D(string[2][0].item(), string[2][1].item()), Point2D(string[3][0].item(), string[3][1].item())]
                 
