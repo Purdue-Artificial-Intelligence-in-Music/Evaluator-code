@@ -296,22 +296,96 @@ class Classification:
         - If intersects both: calls bow_height_intersection(...)
         - If not: returns 1
         """
-        pass
+    
+        vertical_one = vertical_lines[0]
+        vertical_two = vertical_lines[1]
 
-    def bow_height_intersection(self, linear_line, vertical_lines):
+        # check if lines are parallel
+        if (linear_line[0] == vertical_one[0] or linear_line[0] == vertical_two[0]):
+            print('parallel')
+            return 1
+
+        # get coordinates of intersection for first vertical
+        x_1 = (vertical_one[1] - linear_line[1]) / (linear_line[0] - vertical_one[0])
+        y_1 = vertical_one[0] * x_1 + vertical_one[1]
+        left = (vertical_one[3] - vertical_one[1]) / vertical_one[0]
+        right = (vertical_one[2] - vertical_one[1]) / vertical_one[0]
+        top = vertical_one[2]
+        bot = vertical_one[3]
+
+        # check coordinates are within target
+        if ((bot > y_1 or top < y_1) or (left > x_1 or right < x_1)):
+            print('bot', bot, 'top', top, 'y_intersect', y_1, 'left', left, 'right', right, 'x_intersect', x_1)
+            print('coordinates out of target 1')
+            return 1
+
+        # repeat for second vertical
+        if (linear_line[0] == vertical_one[0] or linear_line[0] == vertical_two[0]):
+            print('parallel')
+            return 1
+
+        # get coordinates of intersection 
+        x_2 = (vertical_two[1] - linear_line[1]) / (linear_line[0] - vertical_two[0])
+        y_2 = vertical_two[0] * x_2 + vertical_two[1]
+        left = (vertical_two[3] - vertical_two[1]) / vertical_two[0]
+        right = (vertical_two[2] - vertical_two[1]) / vertical_two[0]
+        top = vertical_two[2]
+        bot = vertical_two[3]
+
+        # check coordinates are within target
+        if ((bot > y_2 or top < y_2) or (left > x_2 or right < x_2)):
+            print('bot', bot, 'top', top, 'y_intersect', y_2, 'left', left, 'right', right, 'x_intersect', x_2)
+            print('coordinates out of target 2')
+            return 1
+        
+        return self.bow_height_intersection(((x_1, y_1), (x_2, y_2)), vertical_lines)
+
+    def bow_height_intersection(self, intersection_points, vertical_lines):
         """
         Determines the height level at which the linear line intersects the vertical lines.
 
         Parameters:
-        - linear_line (tuple): (m, b) for y = mx + b
-        - vertical_lines (tuple): Output of get_vertical_lines()
+        - intersection_points (tuple): ((x1, y1), (x2, y2)) coordinates of intersection for each line
+        - vertical_lines (tuple): Output of get_vertical_lines() (m1, b1, ht1, hb1)
 
         Returns:
         - 3: Intersection is near top of the box (ht1 or ht2)
         - 2: Intersection is near bottom (hb1 or hb2)
         - 0: Intersection is in middle
         """
-        pass
+        bot_scaling_factor = .20
+        top_scaling_factor = .10
+
+        vertical_one = vertical_lines[0]
+        vertical_two = vertical_lines[1]
+
+        # get lower and upper limit from vertical points
+        #bot_x1 = (vertical_one[3] - vertical_one[1]) / vertical_one[0] # x = (y - b) / m
+        bot_y1 = vertical_one[3]
+        #bot_x2 = (vertical_two[3] - vertical_two[1]) / vertical_two[0]
+        bot_y2 = vertical_two[3]
+        
+        #top_x1 = (vertical_one[2] - vertical_one[1]) / vertical_one[0] # x = (y - b) / m
+        top_y1 = vertical_one[2]
+        #top_x2 = (vertical_two[2] - vertical_two[1]) / vertical_two[0]
+        top_y2 = vertical_two[2]
+
+        # get avg height of vertical lines
+        height = (top_y1 - bot_y1 + top_y2 - bot_y2 ) / 2
+
+        # get lower limit by averaging bottom y value. Scaled by height of strings and bot_scaling_factor
+        min = ((bot_y1 + bot_y2) / 2) + height * bot_scaling_factor
+
+        if (intersection_points[0][1] <= min or intersection_points[1][1] <= min):
+            return 2
+        
+        # get upper limit by averaging top y value. Scaled by height of strings and bot_scaling_factor
+        max = ((top_y1 + top_y2) / 2) - height * top_scaling_factor
+
+        if (intersection_points[0][1] >= max or intersection_points[1][1] >= max):
+            return 3
+        
+        return 0
 
     def display_classification(self, result, opencv_frame):
         """
