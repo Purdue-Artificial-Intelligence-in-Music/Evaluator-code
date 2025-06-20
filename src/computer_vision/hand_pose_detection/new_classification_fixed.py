@@ -229,35 +229,43 @@ class Classification:
         - None
         """
         self.bow_points = bow_box_xyxyxyxy
+        print('bow:', bow_box_xyxyxyxy)
         self.string_points = string_box_xyxyxyxy
-
+        print('string:', string_box_xyxyxyxy)
 
     def get_midline(self):
         """
-        Compute the center horizontal midline between top and bottom edges.
-
+        Compute the center midline between top and bottom edges of the bow.
         Returns:
-        - (m, b): Slope and y-intercept of the midline in the form y = mx + b
+            - (m, b): slope and intercept for y = mx + b,
+                    OR (inf, x) for a vertical line x = b
         """
-
-        topRight = self.bow_points[0]
+        botLeft = self.bow_points[0]
         topLeft = self.bow_points[1]
-        botRight = self.bow_points[0]
-        botLeft = self.bow_points[1]
+        topRight = self.bow_points[2]
+        botRight = self.bow_points[3]
 
         topMid = ((topRight[0] + botRight[0]) / 2, (topRight[1] + botRight[1]) / 2)
         botMid = ((botLeft[0] + topLeft[0]) / 2, (botLeft[1] + topLeft[1]) / 2)
-        
-        slope = (topMid[1] - botMid[1]) / (topMid[0] - botMid[0])
+
+        dx = topMid[0] - botMid[0]
+        dy = topMid[1] - botMid[1]
+
+        if dx == 0:
+            # Perfect vertical line: x = constant
+            return (float('inf'), topMid[0])
+
+        slope = dy / dx
         yInt = topMid[1] - slope * topMid[0]
 
         return (slope, yInt)
 
+
     def get_vertical_lines(self):
-        topRight = self.bow_points[0]
-        topLeft = self.bow_points[1]
-        botRight = self.bow_points[2]
-        botLeft = self.bow_points[3]
+        topLeft = self.string_points[0]
+        topRight = self.string_points[1]
+        botRight = self.string_points[2]
+        botLeft = self.string_points[3]
 
         # Avoid division by zero by checking x-difference
         dx_left = topLeft[0] - botLeft[0]
@@ -276,68 +284,62 @@ class Classification:
             rightSlope = (topRight[1] - botRight[1]) / dx_right
             rightYint = topRight[1] - rightSlope * topRight[0]
 
-        leftHT1 = topLeft[1]
-        leftHT2 = botLeft[1]
-        rightHT1 = topRight[1]
-        rightHT2 = botRight[1]
+        # [top-left, top-right, bottom-right, bottom-left]
+        # (m1, b1, ht1, hb1)
+        leftHT1 = self.string_points[0][1]
+        leftHT2 = self.string_points[3][1]
+        rightHT1 = self.string_points[1][1]
+        rightHT2 = self.string_points[2][1]
 
         return (leftSlope, leftYint, leftHT1, leftHT2), (rightSlope, rightYint, rightHT1, rightHT2)
 
     def intersects_vertical(self, linear_line, vertical_lines):
-        """
-        Check if a linear line intersects both vertical edges of the box.
+        print('linear:', linear_line, '\nvertical:', vertical_lines)
 
-        Parameters:
-        - linear_line (tuple): (m, b) for y = mx + b
-        - vertical_lines (tuple): Output of get_vertical_lines()
-
-        Returns:
-        - If intersects both: calls bow_height_intersection(...)
-        - If not: returns 1
-        """
-    
+        m, b = linear_line  # from get_midline()
         vertical_one = vertical_lines[0]
         vertical_two = vertical_lines[1]
 
-        # check if lines are parallel
-        if (linear_line[0] == vertical_one[0] or linear_line[0] == vertical_two[0]):
-            print('parallel')
+        def get_intersection(v_line, x_ref):
+            slope_v, intercept_v, top_y, bot_y = v_line
+
+            if slope_v == float("inf") or intercept_v is None:
+                # vertical string line
+                x = x_ref
+                if m == float('inf'):
+                    # both lines vertical → no intersection
+                    return None
+                y = m * x + b
+            elif m == float("inf"):
+                # vertical bow midline (m = inf, b = x fixed)
+                x = b
+                y = slope_v * x + intercept_v
+            elif m == slope_v:
+                # parallel lines
+                return None
+            else:
+                x = (intercept_v - b) / (m - slope_v)
+                y = m * x + b
+
+            # Validate y is within vertical segment
+            if not (min(top_y, bot_y) <= y <= max(top_y, bot_y)):
+                print(f"Intersection y={y} out of bounds ({top_y}, {bot_y})")
+                return None
+
+            return (x, y)
+
+        x_left = self.string_points[0][0]  # top-left x
+        x_right = self.string_points[1][0]  # top-right x
+
+        pt1 = get_intersection(vertical_one, x_left)
+        pt2 = get_intersection(vertical_two, x_right)
+
+        if pt1 is None or pt2 is None:
+            print("One or both intersections invalid")
             return 1
 
-        # get coordinates of intersection for first vertical
-        x_1 = (vertical_one[1] - linear_line[1]) / (linear_line[0] - vertical_one[0])
-        y_1 = vertical_one[0] * x_1 + vertical_one[1]
-        left = (vertical_one[3] - vertical_one[1]) / vertical_one[0]
-        right = (vertical_one[2] - vertical_one[1]) / vertical_one[0]
-        top = vertical_one[2]
-        bot = vertical_one[3]
+        return self.bow_height_intersection((pt1, pt2), vertical_lines)
 
-        # check coordinates are within target
-        if ((bot > y_1 or top < y_1) or (left > x_1 or right < x_1)):
-            print('bot', bot, 'top', top, 'y_intersect', y_1, 'left', left, 'right', right, 'x_intersect', x_1)
-            print('coordinates out of target 1')
-            return 1
-
-        # repeat for second vertical
-        if (linear_line[0] == vertical_one[0] or linear_line[0] == vertical_two[0]):
-            print('parallel')
-            return 1
-
-        # get coordinates of intersection 
-        x_2 = (vertical_two[1] - linear_line[1]) / (linear_line[0] - vertical_two[0])
-        y_2 = vertical_two[0] * x_2 + vertical_two[1]
-        left = (vertical_two[3] - vertical_two[1]) / vertical_two[0]
-        right = (vertical_two[2] - vertical_two[1]) / vertical_two[0]
-        top = vertical_two[2]
-        bot = vertical_two[3]
-
-        # check coordinates are within target
-        if ((bot > y_2 or top < y_2) or (left > x_2 or right < x_2)):
-            print('bot', bot, 'top', top, 'y_intersect', y_2, 'left', left, 'right', right, 'x_intersect', x_2)
-            print('coordinates out of target 2')
-            return 1
-        
-        return self.bow_height_intersection(((x_1, y_1), (x_2, y_2)), vertical_lines)
 
     def bow_height_intersection(self, intersection_points, vertical_lines):
         """
@@ -352,37 +354,37 @@ class Classification:
         - 2: Intersection is near bottom (hb1 or hb2)
         - 0: Intersection is in middle
         """
-        bot_scaling_factor = .20
-        top_scaling_factor = .10
+        print('intersection:', intersection_points)
+        bot_scaling_factor = .25
+        top_scaling_factor = .20
 
         vertical_one = vertical_lines[0]
         vertical_two = vertical_lines[1]
 
-        # get lower and upper limit from vertical points
-        #bot_x1 = (vertical_one[3] - vertical_one[1]) / vertical_one[0] # x = (y - b) / m
         bot_y1 = vertical_one[3]
-        #bot_x2 = (vertical_two[3] - vertical_two[1]) / vertical_two[0]
         bot_y2 = vertical_two[3]
         
-        #top_x1 = (vertical_one[2] - vertical_one[1]) / vertical_one[0] # x = (y - b) / m
         top_y1 = vertical_one[2]
-        #top_x2 = (vertical_two[2] - vertical_two[1]) / vertical_two[0]
         top_y2 = vertical_two[2]
 
         # get avg height of vertical lines
         height = (top_y1 - bot_y1 + top_y2 - bot_y2 ) / 2
 
+        ## TOP AND BOTTOM CURRENTLY INTENTIONALLY FLIPPED
+
         # get lower limit by averaging bottom y value. Scaled by height of strings and bot_scaling_factor
-        min = ((bot_y1 + bot_y2) / 2) + height * bot_scaling_factor
+        min = ((bot_y1 + bot_y2) / 2) + height * top_scaling_factor
+        print('min:', min)
 
         if (intersection_points[0][1] <= min or intersection_points[1][1] <= min):
-            return 2
+            return 3
         
         # get upper limit by averaging top y value. Scaled by height of strings and bot_scaling_factor
-        max = ((top_y1 + top_y2) / 2) - height * top_scaling_factor
+        max = ((top_y1 + top_y2) / 2) - height * bot_scaling_factor
+        print('max:', max)
 
         if (intersection_points[0][1] >= max or intersection_points[1][1] >= max):
-            return 3
+            return 2
         
         return 0
 
@@ -452,8 +454,7 @@ def main():
     # Open video
     # Load YOLOv11 OBB model
     model = YOLO('best 2.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("bow too high-slow (3).mp4")
-
+    cap = cv2.VideoCapture("supination_2.mov")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
         h, w = image.shape[:2]
@@ -505,6 +506,8 @@ def main():
                     if bow_index != -1 and string_index != -1:
                         bow = torch.round(result.obb[bow_index])
                         string = torch.round(result.obb[string_index])
+                    else:
+                        continue
                 # bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
                 # string_coords = [Point2D(string[0][0].item(), string[0][1].item()), Point2D(string[1][0].item(), string[1][1].item()), Point2D(string[2][0].item(), string[2][1].item()), Point2D(string[3][0].item(), string[3][1].item())]
                 
@@ -523,7 +526,7 @@ def main():
 
 
         # Resize frame for display
-        resized_frame = resize_keep_aspect(annotated_frame, target_width=500)
+        resized_frame = resize_keep_aspect(annotated_frame, target_width=900)
 
         # resized_frame = resize_keep_aspect(frame, target_width=700)
 
@@ -534,6 +537,7 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
+
 
 
 
