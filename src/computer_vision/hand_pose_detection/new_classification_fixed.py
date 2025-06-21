@@ -248,7 +248,7 @@ class Classification:
             - (m, b): slope and intercept for y = mx + b (midline),
                     OR (inf, x) for vertical line
         """
-        topLeft, topRight, botRight, botLeft = self.bow_points
+        botLeft, topLeft, topRight, botRight = self.bow_points
 
         # Get slope and intercept of top edge
         dx_top = topRight[0] - topLeft[0]
@@ -364,7 +364,7 @@ class Classification:
 
         # Sort points clockwise around center
         sorted_pts = sorted(pts, key=angle_from_center)
-        return sorted_pts
+        return pts
 
 
     def bow_height_intersection(self, intersection_points, vertical_lines):
@@ -418,13 +418,13 @@ class Classification:
 
         min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
         print('min:', min_y)
-        if (intersection_points[0][1] <= min_y or intersection_points[1][1] <= min_y):
-            return 3
+        if (intersection_points[0][1] >= min_y or intersection_points[1][1] >= min_y):
+            return 2
 
         max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
-        print('max:', max_y)
-        if (intersection_points[0][1] >= max_y or intersection_points[1][1] >= max_y):
-            return 2
+        print('min:', max_y)
+        if (intersection_points[0][1] <= max_y or intersection_points[1][1] <= max_y):
+            return 3
 
         return 0
 
@@ -479,7 +479,7 @@ class Classification:
 
         cv2.putText(opencv_frame, label, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
         for point in [self.bow_points, self.string_points]:
-            if point and len(point) == 4:
+            if point.any() and len(point) == 4:
                 points = [tuple(map(int,p)) for p in point]
                 cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=color, thickness=2)
 
@@ -512,8 +512,8 @@ class Classification:
 def main():
     # Open video
     # Load YOLOv11 OBB model
-    model = YOLO('best 2.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("supination_2.mov")
+    model = YOLO('/Users/jacksonshields/Documents/Evaluator/runs/obb/train4/weights/best.pt')  # Replace with your actual model file    
+    cap = cv2.VideoCapture("/Users/jacksonshields/Downloads/supination_2.mov")
     # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
@@ -545,9 +545,9 @@ def main():
             if len(result.obb.xyxyxyxy) >= 2:
                 print("Both bow and string detected")
                 if len(result.obb.xyxyxyxy) == 2:
-                    if result.names[0] == result.names[1]:
+                    if result.obb.cls[0] == result.obb.cls[1]:
                         continue #if both are bow or both are string, do nothing
-                    if result.names[0] == "Bow": #first is bow, second is string
+                    if result.obb.cls[0] == 0: #first is bow, second is string
                         bow, string = torch.round(result.obb.xyxyxyxy)
                     else: #first is string, second is bow
                         string, bow = torch.round(result.obb.xyxyxyxy)
@@ -558,17 +558,17 @@ def main():
                     string_conf = 0.0
                     string_index = -1
                     for x in range(len(result.obb)):
-                        if result.names[0] == "Bow":
+                        if result.obb.cls[x] == 0:
                             if result.obb[x].conf > bow_conf:
                                 bow_conf = result.obb[x].conf
                                 bow_index = x
-                        elif result.names[0] == "String":
+                        elif result.obb.cls[x] == 1:
                             if result.obb[x].conf > string_conf:
                                 string_conf = result.obb[x].conf
                                 string_index = x
                     if bow_index != -1 and string_index != -1:
-                        bow = torch.round(result.obb[bow_index])
-                        string = torch.round(result.obb[string_index])
+                        bow = torch.round(result.obb[bow_index].xyxyxyxy)
+                        string = torch.round(result.obb[string_index].xyxyxyxy)
                     else:
                         continue
                 # bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
@@ -576,12 +576,12 @@ def main():
                 
                 # bow_coords = [tuple(bow[i].tolist()) for i in range(4)]
                 # string_coords = [tuple(string[i].tolist()) for i in range(4)]
-                bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
-                string_coords = cln.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
+                if (len(bow) == 4 and len(string) == 4):
+                    bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
+                    string_coords = cln.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
 
-                if (FRAME_COUNTER <= 61):
+                if (FRAME_COUNTER <= 10):
                     cln.average_y_coordinates(string_coords)
-
                 else:
                     if len(result.obb.xyxyxyxy) >= 2:
                         # You already handled this above
@@ -593,8 +593,6 @@ def main():
 
                     # Draw bow midline
                     midlines = cln.get_midline()
-
-
                     vert_lines = cln.get_vertical_lines()
                     intersect_points = cln.intersects_vertical(midlines, vert_lines)
 
