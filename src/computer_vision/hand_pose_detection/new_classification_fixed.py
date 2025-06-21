@@ -2,6 +2,7 @@ import cv2
 import torch
 import numpy as np
 from ultralytics import YOLO
+import statistics
 
 """
 class Point2D:
@@ -212,53 +213,63 @@ class Point2D:
         return False
 """
 class Classification:
+    frame_num = 0
+    string_ycoord_heights = []
     def __init__(self):
         self.bow_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
         self.string_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
+        self.y_locked = False
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
-        """
-        Update the internal box corner points.
-
-        Parameters:
-        - create two list of tuples, one for strings and one for bow:
-		box_xyxyxyxy (list of tuple): List of 4 (x, y) tuples representing box corners in the order:
-            [top-left, top-right, bottom-right, bottom-left]
-
-        Returns:
-        - None
-        """
         self.bow_points = bow_box_xyxyxyxy
         print('bow:', bow_box_xyxyxyxy)
-        self.string_points = string_box_xyxyxyxy
-        print('string:', string_box_xyxyxyxy)
+
+        if string_box_xyxyxyxy is not None:
+            if not self.y_locked:
+                self.string_points = string_box_xyxyxyxy
+            else:
+                self.string_points = [
+                    (new_x, old_y) for (new_x, _), (_, old_y) in zip(string_box_xyxyxyxy, self.string_points)
+                ]
+            self.last_valid_string = self.string_points  # save for fallback use
+        else:
+            print("No new string box detected. Reusing last known string box.")
+            if hasattr(self, 'last_valid_string'):
+                self.string_points = self.last_valid_string
+
+
+
+
 
     def get_midline(self):
         """
-        Compute the center midline between top and bottom edges of the bow.
+        Compute the midline (parallel to top and bottom edges) of the bow.
         Returns:
-            - (m, b): slope and intercept for y = mx + b,
-                    OR (inf, x) for a vertical line x = b
+            - (m, b): slope and intercept for y = mx + b (midline),
+                    OR (inf, x) for vertical line
         """
-        botLeft = self.bow_points[0]
-        topLeft = self.bow_points[1]
-        topRight = self.bow_points[2]
-        botRight = self.bow_points[3]
+        topLeft, topRight, botRight, botLeft = self.bow_points
 
-        topMid = ((topRight[0] + botRight[0]) / 2, (topRight[1] + botRight[1]) / 2)
-        botMid = ((botLeft[0] + topLeft[0]) / 2, (botLeft[1] + topLeft[1]) / 2)
+        # Get slope and intercept of top edge
+        dx_top = topRight[0] - topLeft[0]
+        dy_top = topRight[1] - topLeft[1]
 
-        dx = topMid[0] - botMid[0]
-        dy = topMid[1] - botMid[1]
+        if dx_top == 0:
+            # Perfect vertical bow
+            mid_x = (topLeft[0] + botLeft[0]) / 2
+            return float('inf'), mid_x
 
-        if dx == 0:
-            # Perfect vertical line: x = constant
-            return (float('inf'), topMid[0])
+        slope = dy_top / dx_top
+        intercept_top = topLeft[1] - slope * topLeft[0]
 
-        slope = dy / dx
-        yInt = topMid[1] - slope * topMid[0]
+        # Get slope and intercept of bottom edge (should be nearly same slope)
+        intercept_bottom = botLeft[1] - slope * botLeft[0]
 
-        return (slope, yInt)
+        # Midline is average of intercepts
+        intercept_mid = (intercept_top + intercept_bottom) / 2
+
+        return slope, intercept_mid
+
 
 
     def get_vertical_lines(self):
@@ -304,29 +315,31 @@ class Classification:
             slope_v, intercept_v, top_y, bot_y = v_line
 
             if slope_v == float("inf") or intercept_v is None:
-                # vertical string line
+                # Vertical string line: x = constant
                 x = x_ref
                 if m == float('inf'):
-                    # both lines vertical → no intersection
-                    return None
+                    return None  # both lines vertical
                 y = m * x + b
-            elif m == float("inf"):
-                # vertical bow midline (m = inf, b = x fixed)
+            elif m == float('inf'):
+                # Vertical bow midline
                 x = b
                 y = slope_v * x + intercept_v
-            elif m == slope_v:
-                # parallel lines
-                return None
+            elif abs(m - slope_v) < 1e-6:
+                return None  # Parallel lines
             else:
                 x = (intercept_v - b) / (m - slope_v)
                 y = m * x + b
 
-            # Validate y is within vertical segment
-            if not (min(top_y, bot_y) <= y <= max(top_y, bot_y)):
-                print(f"Intersection y={y} out of bounds ({top_y}, {bot_y})")
+            # Ensure top_y is *smaller* than bot_y (because image y increases downward)
+            ymin = min(top_y, bot_y)
+            ymax = max(top_y, bot_y)
+
+            if not (ymin <= y <= ymax):
+                print(f"Intersection y={y} is outside vertical range ({ymin}, {ymax})")
                 return None
 
             return (x, y)
+
 
         x_left = self.string_points[0][0]  # top-left x
         x_right = self.string_points[1][0]  # top-right x
@@ -339,6 +352,19 @@ class Classification:
             return 1
 
         return self.bow_height_intersection((pt1, pt2), vertical_lines)
+    
+    @staticmethod
+    def sort_box_points_clockwise(pts):
+        # Ensure numpy array for consistent indexing
+        pts = np.array(pts)
+        center = np.mean(pts, axis=0)
+
+        def angle_from_center(pt):
+            return np.arctan2(pt[1] - center[1], pt[0] - center[0])
+
+        # Sort points clockwise around center
+        sorted_pts = sorted(pts, key=angle_from_center)
+        return sorted_pts
 
 
     def bow_height_intersection(self, intersection_points, vertical_lines):
@@ -367,26 +393,59 @@ class Classification:
         top_y1 = vertical_one[2]
         top_y2 = vertical_two[2]
 
-        # get avg height of vertical lines
-        height = (top_y1 - bot_y1 + top_y2 - bot_y2 ) / 2
+        # # get avg height of vertical lines
+        # height = (top_y1 - bot_y1 + top_y2 - bot_y2 ) / 2
 
-        ## TOP AND BOTTOM CURRENTLY INTENTIONALLY FLIPPED
+        # ## TOP AND BOTTOM CURRENTLY INTENTIONALLY FLIPPED
 
-        # get lower limit by averaging bottom y value. Scaled by height of strings and bot_scaling_factor
-        min = ((bot_y1 + bot_y2) / 2) + height * top_scaling_factor
-        print('min:', min)
+        # # get lower limit by averaging bottom y value. Scaled by height of strings and bot_scaling_factor
+        # min = ((bot_y1 + bot_y2) / 2) + height * top_scaling_factor
+        # print('min:', min)
 
-        if (intersection_points[0][1] <= min or intersection_points[1][1] <= min):
+        # if (intersection_points[0][1] <= min or intersection_points[1][1] <= min):
+        #     return 3
+        
+        # # get upper limit by averaging top y value. Scaled by height of strings and bot_scaling_factor
+        # max = ((top_y1 + top_y2) / 2) - height * bot_scaling_factor
+        # print('max:', max)
+
+        # if (intersection_points[0][1] >= max or intersection_points[1][1] >= max):
+        #     return 2
+        
+
+                # get avg height of vertical lines
+        height = ((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2
+
+        min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
+        print('min:', min_y)
+        if (intersection_points[0][1] <= min_y or intersection_points[1][1] <= min_y):
             return 3
-        
-        # get upper limit by averaging top y value. Scaled by height of strings and bot_scaling_factor
-        max = ((top_y1 + top_y2) / 2) - height * bot_scaling_factor
-        print('max:', max)
 
-        if (intersection_points[0][1] >= max or intersection_points[1][1] >= max):
+        max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
+        print('max:', max_y)
+        if (intersection_points[0][1] >= max_y or intersection_points[1][1] >= max_y):
             return 2
-        
+
         return 0
+
+    def average_y_coordinates(self, string_box_xyxyxyxy):
+        Classification.frame_num += 1
+        y_coords = [pt[1] for pt in string_box_xyxyxyxy]
+        Classification.string_ycoord_heights.append(y_coords)
+
+        if Classification.frame_num == 61:
+            top_y_avg = statistics.median([frame[0] for frame in Classification.string_ycoord_heights])  # top edge
+            bot_y_avg = statistics.median([frame[3] for frame in Classification.string_ycoord_heights])  # bottom edge
+
+            # Use original x-values, but lock Y-values at average top/bottom height
+            self.string_points = [
+                (string_box_xyxyxyxy[0][0], top_y_avg),  # top-left
+                (string_box_xyxyxyxy[1][0], top_y_avg),  # top-right
+                (string_box_xyxyxyxy[2][0], bot_y_avg),  # bottom-right
+                (string_box_xyxyxyxy[3][0], bot_y_avg),  # bottom-left
+            ]
+            self.y_locked = True
+
 
     def display_classification(self, result, opencv_frame):
         """
@@ -455,6 +514,7 @@ def main():
     # Load YOLOv11 OBB model
     model = YOLO('best 2.pt')  # Replace with your actual model file    
     cap = cv2.VideoCapture("supination_2.mov")
+    # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
         h, w = image.shape[:2]
@@ -463,7 +523,7 @@ def main():
         return cv2.resize(image, new_dim, interpolation=cv2.INTER_AREA)
 
     cln = Classification()
-
+    FRAME_COUNTER = 0
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
@@ -479,6 +539,9 @@ def main():
                 # for box in obb_coords:
                 #     pts = box.reshape((-1, 1, 2)).astype(int)
                 #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
+            FRAME_COUNTER += 1
+
+            print("FRAME NUM ", FRAME_COUNTER)
             if len(result.obb.xyxyxyxy) >= 2:
                 print("Both bow and string detected")
                 if len(result.obb.xyxyxyxy) == 2:
@@ -511,15 +574,54 @@ def main():
                 # bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
                 # string_coords = [Point2D(string[0][0].item(), string[0][1].item()), Point2D(string[1][0].item(), string[1][1].item()), Point2D(string[2][0].item(), string[2][1].item()), Point2D(string[3][0].item(), string[3][1].item())]
                 
-                bow_coords = [tuple(bow[i].tolist()) for i in range(4)]
-                string_coords = [tuple(string[i].tolist()) for i in range(4)]
+                # bow_coords = [tuple(bow[i].tolist()) for i in range(4)]
+                # string_coords = [tuple(string[i].tolist()) for i in range(4)]
+                bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
+                string_coords = cln.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
+
+                if (FRAME_COUNTER <= 61):
+                    cln.average_y_coordinates(string_coords)
+
+                else:
+                    if len(result.obb.xyxyxyxy) >= 2:
+                        # You already handled this above
+                        cln.update_points(string_coords, bow_coords)
+
+                    elif len(result.obb.xyxyxyxy) == 1:
+                        print("Only bow detected, reusing string coords from previous frame")
+                        cln.update_points(cln.string_points, bow_coords)  # Use cached string x, y
+
+                    # Draw bow midline
+                    midlines = cln.get_midline()
 
 
-                cln.update_points(string_coords, bow_coords)
-                midlines = cln.get_midline()
-                vert_lines = cln.get_vertical_lines()
-                intersect_points = cln.intersects_vertical(midlines, vert_lines)
-                annotated_frame = cln.display_classification(intersect_points, annotated_frame)
+                    vert_lines = cln.get_vertical_lines()
+                    intersect_points = cln.intersects_vertical(midlines, vert_lines)
+
+                    # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
+                    if intersect_points == 1:
+                        result = 1  # Outside bow zone
+                    else:
+                        result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
+                    
+                    m, b = midlines
+                    if m == float('inf'):
+                        x = int(b)
+                        cv2.line(annotated_frame, (x, 0), (x, annotated_frame.shape[0]), (0, 255, 255), 2)
+                    else:
+                        x0 = 0
+                        y0 = int(m * x0 + b)
+                        x1 = annotated_frame.shape[1]
+                        y1 = int(m * x1 + b)
+                        cv2.line(annotated_frame, (x0, y0), (x1, y1), (0, 255, 255), 2)
+
+                    # Draw intersection points
+                    if isinstance(intersect_points, tuple):
+                        for pt in intersect_points:
+                            cv2.circle(annotated_frame, (int(pt[0]), int(pt[1])), 5, (255, 255, 255), -1)
+                    
+                    annotated_frame = cln.display_classification(result, annotated_frame)
+
                 
 
         
