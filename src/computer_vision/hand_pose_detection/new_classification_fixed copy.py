@@ -518,6 +518,7 @@ def process_frame(frame):
     results = model(frame)
     if len(results) == 0:
         return None
+    #print("************", len(results[0].obb.xyxyxyxy), "************")
     for result in results:
         if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
             obb_coords = result.obb.xyxyxyxy.cpu().numpy()  # shape: (N, 4, 2)
@@ -531,10 +532,10 @@ def process_frame(frame):
                 if int(result.obb.cls[0].item()) == int(result.obb.cls[1].item()):
                     #if only detect bow or string, return coordinates of high conf in list + -1 for classification
                     if result.obb[0].conf > result.obb[1].conf:
-                        b =  [(result.obb.cls[0], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b =  [(classes[int(result.obb.cls[0].item())], -1)] + [tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)]
                         return b
                     else:
-                        b =  [(result.obb.cls[1], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b =  [(classes[int(result.obb.cls[1].item())], -1)] + [tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)]
                         return b
                     #continue if both are bow or both are string, do nothing
                 if int(result.obb.cls[0].item()) == 0: #first is bow, second is string
@@ -562,10 +563,10 @@ def process_frame(frame):
                 else:
                     #3 or more detections of the same object
                     if bow_index != -1:
-                        b =  [(result.obb.cls[bow_index], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b =  [(classes[int(result.obb.cls[bow_index].item())], -1)] + [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)]
                         return b
                     else:
-                        b = [(result.obb.cls[string_index], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b = [(classes[int(result.obb.cls[string_index].item())], -1)] + [tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)]
                         return b
             if (len(bow) == 4 and len(string) == 4):
                 bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
@@ -584,7 +585,9 @@ def process_frame(frame):
                     result = 1  # Outside bow zone
                 else:
                     result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
-                return [("bow_class", result)] + bow_coords + string_coords
+                list_tuple_bow = [tuple(bow_coords[i].tolist()) for i in range(4)]
+                list_tuple_string = [tuple(string_coords[i].tolist()) for i in range(4)]
+                return [("bow_class", result)] + list_tuple_bow + list_tuple_string
         elif len(result.obb.xyxyxyxy) == 1:
             #print("Only one detection")
             #print(result.obb.cls[0], result.obb.xyxyxyxy)
