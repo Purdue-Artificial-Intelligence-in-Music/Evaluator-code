@@ -1,4 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
+
+
+import { TouchableOpacity} from 'react-native';
+import ChooseVideoIcon from '../assets/images/ChooseVideo.png';
+import CloseCamera from '../assets/images/CloseCamera.png';
+import FetchData from '../assets/images/FetchData.png';
+import OpenCamera from '../assets/images/OpenCamera.png';
+import Back from '../assets/images/Back.png';
+import Record from '../assets/images/Record.png';
+import Recording from '../assets/images/Recording.png';
+
+import { useWindowDimensions } from 'react-native';
+import { Platform } from 'react-native';
+
+import * as MediaLibrary from 'expo-media-library';
+
 import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
 
 import { ResizeMode, Video } from 'expo-av';
@@ -24,9 +40,12 @@ type ResponseData = {
 const windowWidth = Dimensions.get('window').width;
 const windowHeight = Dimensions.get('window').height;
 const aspectRatio = windowWidth + "x" + windowHeight;
-// console.log(aspectRatio)
+
+// TODO: use ip address of your computer (the backend) here (use ipconfig or ifconfig to look up)
+
 
 export default function App() {
+  const [serverIP, setServerIP] = useState("192.168.68.52"); // Change this to your server's IP address
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -39,7 +58,7 @@ export default function App() {
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
   const intervalRef = useRef<NodeJS.Timeout>();
-  const [recording, setRecording] = useState<Boolean>(false);
+  const [recording, setRecording] = useState<boolean>(false);
   const [sendButton, setsendButton] = useState(false)
   const [sendVideo, setsendVideo] = useState(false)
   const [videofile, setvideofile] = useState<string | null>(null);
@@ -80,12 +99,31 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     } else {
       clearInterval(intervalRef.current);
     }
+ 
+    if (!isCameraOpen) {
+      console.log("camera off");
+    } else {
+      console.log("camera on:", isCameraOpen);
+    }
 
     return () => clearInterval(intervalRef.current);
   }, [recording, loading]);
 
   return (
     <View style={styles.cameraContainer}>
+       <TouchableOpacity
+          style={styles.closeCameraButton}
+          onPress={() => {
+           
+            setRecording(false); 
+            closeCamera();       // close the overlay
+            
+          }}
+         
+          activeOpacity = {1} // Prevents the button from being pressed when recording
+        >
+        <Image source={CloseCamera} style={styles.closeCameraButton} resizeMode="contain" />
+      </TouchableOpacity>
       <CameraView
         ref={cameraRef}
         style={styles.camera}
@@ -93,8 +131,19 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         mirror={true}
         onCameraReady={() => setLoading(false)}
       />
+
       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-      <Button title="RECORD" onPress={() => setRecording(!recording)} />
+      <Button title={recording ? "STOP" : "RECORD"} onPress={() => {
+        if (recording) {
+          setRecording(false);
+          // reset old dots and lines
+          setPoints([{x: 0, y: 0}]);
+          setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
+        } else {
+          setRecording(true);
+        }
+      }} />
+      
     </View>
   );
 };
@@ -201,7 +250,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     try {
       setLoading(true);
       //django used /api/upload
-      const response = await fetch('http://127.0.0.1:8000/upload/', {
+      const response = await fetch(`http://${serverIP}:8000/upload/`, {
         method: 'POST',
         body: JSON.stringify(jsonData),
         headers: {
@@ -243,22 +292,26 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       }
 
       // Extract base64 data from the URI
-      const base64Data = videofile.split(',')[1];
+      
+       const base64Data = await FileSystem.readAsStringAsync(videofile, {
+         encoding: FileSystem.EncodingType.Base64,
+       });
 
       const jsonData = {
-        "video": base64Data
+        video: base64Data
       };
 
       console.log("Sending video data:", {
         hasData: !!jsonData.video,
         dataLength: jsonData.video?.length
       });
+      console.log("Raw videofile URI:", videofile);
 
       setsendVideo(true);
       setVideoUri(null);
       setsendButton(false);
 
-      const response = await fetch('http://127.0.0.1:8000/send-video', {
+      const response = await fetch(`http://${serverIP}:8000/send-video`, {
         method: "POST",
         body: JSON.stringify(jsonData),
         headers: {
@@ -295,12 +348,53 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     }
   }
 
+  const downloadVideo = async (videoUrl: string) => {
+    // Temporary part preventing crash on web platform
+    if (Platform.OS === 'web') {
+      alert("Video download is only supported on mobile devices.");
+      return;
+    }
+
+    try {
+      // Request permission
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        alert("Permission to access media library is required.");
+        return;
+      }
+
+      // Download video to local temporary folder
+      const fileUri = FileSystem.documentDirectory + 'downloaded_video.mp4';
+      const downloadResumable = FileSystem.createDownloadResumable(
+        videoUrl,
+        fileUri
+      );
+
+      const downloadResult = await downloadResumable.downloadAsync();
+
+      if (!downloadResult || !downloadResult.uri) {
+        throw new Error("Download failed");
+      }
+      const uri = downloadResult.uri;
+
+      // Save to gallery
+      await MediaLibrary.saveToLibraryAsync(uri);
+
+      alert("Video has been saved to your gallery!");
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("Failed to download video.");
+    }
+  };
+
+ 
+
   async function demoVideo() {
     const jsonData = {
       "title": "demo video",
       "videouri": "this is a test",
     }
-    const response = await fetch('http://127.0.0.1:8000/api/upload/', {
+    const response = await fetch(`http://${serverIP}:8000/api/upload/`, {
       method: 'POST',
       body: JSON.stringify(jsonData),
       headers: {
@@ -309,24 +403,123 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     });
   }
   
+  const openCamera = () => {
+    setIsCameraOpen(true);
+    setVideoUri(null);
+    setVideoDimensions(null);
+    setsendButton(false);
+  };
+
+  const closeCamera = () => {
+    console.log("Closing camera");
+    setIsCameraOpen(false);
+    setRecording(false);
+    setPoints([{ x: 0, y: 0 }]);
+    setLinePoints([{ start: { x: 0, y: 0 }, end: { x: 0, y: 0 } }]);
+    setVideoUri(null);
+    setVideoDimensions(null);
+    setsendButton(false);
+  };
   return (
     <SafeAreaView style={styles.container}>
 
 
       <View style={styles.buttonStyle}>
-      <Button title="Choose Video" onPress={pickVideo}/>
+      
 
-      <Button title={isCameraOpen ? 'Close Camera' : 'Open Camera'} onPress={() => {setIsCameraOpen(!isCameraOpen); setVideoUri(null); setsendButton(false)}} />
-      <Button title="Fetch Data from API" disabled={loading} onPress={demoVideo} />
-      <Button title="Back" onPress={returnBack}/>
+      <TouchableOpacity
+        onPress={pickVideo}
+        style={{
+          width: 320,    // smaller width to allow multiple buttons per row
+          height: 60,
+          margin: 5,     // margin to add space between buttons
+        }}
+        activeOpacity={0.7}
+      >
+      <Image
+        source={ChooseVideoIcon}
+        style={{ width: '100%', height: '100%' }}
+        resizeMode="cover"
+      />
+    </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => { 
+          if (!isCameraOpen) {
+            openCamera();
+          }
+         
+        }}
+        activeOpacity={0.7}
+        style={{
+          width: 320,
+          height: 60,
+          marginVertical: 5,
+        }}
+      >
+        <Image
+          source={OpenCamera}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
+      </TouchableOpacity>
+
+     <TouchableOpacity
+      onPress={demoVideo}
+      disabled={loading}
+      style={{
+        width:320,
+        height: 60,
+        marginVertical: 5,
+      }}
+      activeOpacity={0.7}
+    >
+      <Image
+        source={FetchData}
+        style={{
+          width: '100%',
+          height: '100%',
+        }}
+        resizeMode="cover" // or 'contain' if you want to keep aspect ratio
+      />
+      </TouchableOpacity>
+      
+      <TouchableOpacity
+      onPress={returnBack}
+      disabled={loading}
+      style={{
+        width:320,
+        height: 60,
+        marginVertical: 5,
+      }}
+      activeOpacity={0.7}
+    >
+      <Image
+        source={Back}
+        style={{
+          width: '100%',
+          height: '100%',
+        }}
+        resizeMode="cover" // or 'contain' if you want to keep aspect ratio
+      />
+      </TouchableOpacity>
+
       </View>
 
       
-      {isCameraOpen && hasPermission ? (
-      <CameraComponent startDelay={0}/>
-    ) : null} 
+      {isCameraOpen && hasPermission && (
+        <View style={styles.cameraOverlay}>
+          <CameraComponent startDelay={0} />
+
+         
+        </View>
+      )}
+
       
-      <Text>IP Address: {ipAddress || 'Fetching IP...'}</Text>
+      <Text style={styles.ipAddressText}>
+        IP Address: {ipAddress || 'Fetching IP...'}
+      </Text>
+
 
 
       {videoUri ? (
@@ -338,7 +531,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
           source={{ uri: videoUri }}
           shouldPlay
           resizeMode={ResizeMode.COVER}
-          style={{ width: videoDimensions?.width, height: videoDimensions?.height }}
+          style={{
+            width: videoDimensions ? videoDimensions.width * 0.2 : undefined,
+            height: videoDimensions ? videoDimensions.height * 0.2 : undefined
+          }}
         />
         </ScrollView>
       ) : (
@@ -358,8 +554,15 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         <Button title="Send Video" onPress={sendVideoBackend} />
       </View>
 
-      <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
+      {/* download video */}
+      {(videoUri && !sendButton) && <Button
+        title="Download Video"
+        onPress={() => downloadVideo(videoUri)}
+        disabled={!videoUri}
+      />}
 
+      {/* only show dots and lines when camera is open and recording*/}
+      {(isCameraOpen && recording) && <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
         {points.map((item, index) => (
           <Circle r={5} 
                   cx={item.x} 
@@ -377,7 +580,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
                 key={index}
           />
         ))}
-      </Svg>
+      </Svg>}
         
       
     </SafeAreaView>
@@ -393,21 +596,38 @@ const styles = StyleSheet.create({
   },
   buttonStyle: {
 
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     paddingTop: 15,
     paddingBottom: 15,
-    backgroundColor: '#AAA',
+    backgroundColor: '#FFFFFF',
     width: '100%',
 
   },
+  button: {
+    width: '90%',
+    height: 60,
+    marginVertical: 10,
+  },
+
+  closeCameraButton: {
+    position: 'absolute',
+    backgroundColor: 'transparent',
+    top: 10,
+    alignSelf: 'center',
+    width: 160,
+    height: 30,
+    zIndex: 10, 
+  },
+
   cameraContainer: {
     flex: 1,
     position: 'absolute',
-    marginVertical: 150,
-    width: 640,
-    height: 440,
+    marginVertical: 130,
+    top: 250,
+    width: 640 * 0.9, //can be changed
+    height: 440 * 0.9,
     marginBottom: 20,
     borderRadius: 10,
     backgroundColor: 'transparent',
@@ -421,18 +641,41 @@ const styles = StyleSheet.create({
     height: 5,
   },
   camera: {
+    flex: 1,
     width: '100%',
     height: '100%',
     borderRadius: 10,
   },
   placeholderText: {
-    color: '#000',
+    color: 'red',
     fontSize: 16,
-    marginTop: 20,
+    fontWeight: 'bold',
+    marginTop: 10,
   },
+
   videoDimensionsText: {
     marginTop: 10,
     fontSize: 16,
     color: '#333',
+  },
+  ipAddressText : {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 2,
+    fontFamily: 'System',
+
+  },
+
+  cameraOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: windowWidth,
+    height: windowHeight,
+    backgroundColor: 'rgba(0,0,0,0.9)', // Optional: Dim the background behind camera
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
   },
 });
