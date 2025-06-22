@@ -219,6 +219,7 @@ class Classification:
         self.bow_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
         self.string_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
         self.y_locked = False
+        self.FRAME_COUNTER = 0
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
@@ -484,6 +485,105 @@ class Classification:
                 cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=color, thickness=2)
 
         return opencv_frame
+    
+    def process_frame(self, frame):
+        return_dict = {"class": None, "bow": None, "string": None}
+        #expectation is that the frame is already resized to correct proportions
+        classes = ["bow", "string"]
+        model = YOLO('best.pt')  # Replace with your actual model file    
+        results = model(frame)
+        if len(results) == 0:
+            return None
+        #print("************", len(results[0].obb.xyxyxyxy), "************")
+        for result in results:
+            if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
+                obb_coords = result.obb.xyxyxyxy.cpu().numpy()  # shape: (N, 4, 2)
+                # for box in obb_coords:
+                #     pts = box.reshape((-1, 1, 2)).astype(int)
+                #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
+            self.FRAME_COUNTER += 1
+            if len(result.obb.xyxyxyxy) >= 2:
+                #print("Both bow and string detected")
+                if len(result.obb.xyxyxyxy) == 2:
+                    if int(result.obb.cls[0].item()) == int(result.obb.cls[1].item()):
+                        #if only detect bow or string, return coordinates of high conf in list + -1 for classification
+                        if result.obb[0].conf > result.obb[1].conf:
+                            return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)]
+                        else:
+                            return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)]
+                        return return_dict
+                        #continue if both are bow or both are string, do nothing
+                    if int(result.obb.cls[0].item()) == 0: #first is bow, second is string
+                        bow, string = torch.round(result.obb.xyxyxyxy)
+                    else: #first is string, second is bow
+                        string, bow = torch.round(result.obb.xyxyxyxy)
+                else: #more than 2 detections, means there's probably a double detection of a bow or string
+                    #print("More than 2 detections")
+                    bow_conf = 0.0
+                    bow_index = -1
+                    string_conf = 0.0
+                    string_index = -1
+                    for x in range(len(result.obb)):
+                        if int(result.obb.cls[x].item()) == 0:
+                            if result.obb[x].conf > bow_conf:
+                                bow_conf = result.obb[x].conf
+                                bow_index = x
+                        elif int(result.obb.cls[x].item()) == 1:
+                            if result.obb[x].conf > string_conf:
+                                string_conf = result.obb[x].conf
+                                string_index = x
+                    if bow_index != -1 and string_index != -1:
+                        bow = torch.round(result.obb[bow_index].xyxyxyxy)
+                        string = torch.round(result.obb[string_index].xyxyxyxy)
+                    else:
+                        #3 or more detections of the same object
+                        return_dict["class"] = -1
+                        if bow_index != -1:
+                            return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)]
+                        if string_index != -1:
+                            return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)]
+                        return return_dict
+                    
+                if (len(bow) == 4 and len(string) == 4):
+                    bow_coords = self.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
+                    string_coords = self.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
+
+                    # Update the classification object with the detected coordinates
+                    if (self.FRAME_COUNTER <= 10):
+                        self.average_y_coordinates(string_coords)
+                    else:
+                        if len(result.obb.xyxyxyxy) >= 2:
+                            # You already handled this above
+                            self.update_points(string_coords, bow_coords)
+                        elif len(result.obb.xyxyxyxy) == 1:
+                            #print("Only bow detected, reusing string coords from previous frame")
+                            self.update_points(self.string_points, bow_coords)  # Use cached string x, y
+
+
+                    # Get bow midline and vertical lines
+                    midlines = self.get_midline()
+                    vert_lines = self.get_vertical_lines()
+                    intersect_points = self.intersects_vertical(midlines, vert_lines)
+
+                    # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
+                    if intersect_points == 1:
+                        result = 1  # Outside bow zone
+                    else:
+                        result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
+                    return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
+                    return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
+                    return_dict["class"] = result
+                    return return_dict
+            elif len(result.obb.xyxyxyxy) == 1:
+                #print("Only one detection")
+                #print(result.obb.cls[0], result.obb.xyxyxyxy)
+                return_dict["class"] = -1
+                return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                return return_dict
+        
+        #no detections
+        return_dict["class"] = -2
+        return return_dict
 """
     Main classification logic:
         within loop:
@@ -509,98 +609,6 @@ class Classification:
                     (might not need the.numpy() could be wrong though)
 
 """
-
-def process_frame(frame):
-    return_dict = {"class": None, "bow": None, "string": None}
-    #expectation is that the frame is already resized to correct proportions
-    classes = ["bow", "string"]
-    model = YOLO('best.pt')  # Replace with your actual model file    
-    cln = Classification()
-    results = model(frame)
-    if len(results) == 0:
-        return None
-    #print("************", len(results[0].obb.xyxyxyxy), "************")
-    for result in results:
-        if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
-            obb_coords = result.obb.xyxyxyxy.cpu().numpy()  # shape: (N, 4, 2)
-            # for box in obb_coords:
-            #     pts = box.reshape((-1, 1, 2)).astype(int)
-            #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
-
-        if len(result.obb.xyxyxyxy) >= 2:
-            #print("Both bow and string detected")
-            if len(result.obb.xyxyxyxy) == 2:
-                if int(result.obb.cls[0].item()) == int(result.obb.cls[1].item()):
-                    #if only detect bow or string, return coordinates of high conf in list + -1 for classification
-                    if result.obb[0].conf > result.obb[1].conf:
-                        return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)]
-                    else:
-                        return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)]
-                    return return_dict
-                    #continue if both are bow or both are string, do nothing
-                if int(result.obb.cls[0].item()) == 0: #first is bow, second is string
-                    bow, string = torch.round(result.obb.xyxyxyxy)
-                else: #first is string, second is bow
-                    string, bow = torch.round(result.obb.xyxyxyxy)
-            else: #more than 2 detections, means there's probably a double detection of a bow or string
-                #print("More than 2 detections")
-                bow_conf = 0.0
-                bow_index = -1
-                string_conf = 0.0
-                string_index = -1
-                for x in range(len(result.obb)):
-                    if int(result.obb.cls[x].item()) == 0:
-                        if result.obb[x].conf > bow_conf:
-                            bow_conf = result.obb[x].conf
-                            bow_index = x
-                    elif int(result.obb.cls[x].item()) == 1:
-                        if result.obb[x].conf > string_conf:
-                            string_conf = result.obb[x].conf
-                            string_index = x
-                if bow_index != -1 and string_index != -1:
-                    bow = torch.round(result.obb[bow_index].xyxyxyxy)
-                    string = torch.round(result.obb[string_index].xyxyxyxy)
-                else:
-                    #3 or more detections of the same object
-                    return_dict["class"] = -1
-                    if bow_index != -1:
-                       return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        
-                    else:
-                        return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)]
-                    return return_dict
-                
-            if (len(bow) == 4 and len(string) == 4):
-                bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
-                string_coords = cln.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
-
-                # Update the classification object with the detected coordinates
-                cln.update_points(string_coords, bow_coords)
-
-                # Get bow midline and vertical lines
-                midlines = cln.get_midline()
-                vert_lines = cln.get_vertical_lines()
-                intersect_points = cln.intersects_vertical(midlines, vert_lines)
-
-                # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
-                if intersect_points == 1:
-                    result = 1  # Outside bow zone
-                else:
-                    result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
-                return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
-                return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
-                return_dict["class"] = result
-                return return_dict
-        elif len(result.obb.xyxyxyxy) == 1:
-            #print("Only one detection")
-            #print(result.obb.cls[0], result.obb.xyxyxyxy)
-            return_dict["class"] = -1
-            return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-            return return_dict
-    
-    #no detections
-    return_dict["class"] = -2
-    return return_dict
 
 def main():
     # Open video
