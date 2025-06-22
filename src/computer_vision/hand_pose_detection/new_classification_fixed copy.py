@@ -511,6 +511,7 @@ class Classification:
 """
 
 def process_frame(frame):
+    return_dict = {"class": None, "bow": None, "string": None}
     #expectation is that the frame is already resized to correct proportions
     classes = ["bow", "string"]
     model = YOLO('best.pt')  # Replace with your actual model file    
@@ -532,11 +533,10 @@ def process_frame(frame):
                 if int(result.obb.cls[0].item()) == int(result.obb.cls[1].item()):
                     #if only detect bow or string, return coordinates of high conf in list + -1 for classification
                     if result.obb[0].conf > result.obb[1].conf:
-                        b =  [(classes[int(result.obb.cls[0].item())], -1)] + [tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        return b
+                        return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)]
                     else:
-                        b =  [(classes[int(result.obb.cls[1].item())], -1)] + [tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        return b
+                        return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)]
+                    return return_dict
                     #continue if both are bow or both are string, do nothing
                 if int(result.obb.cls[0].item()) == 0: #first is bow, second is string
                     bow, string = torch.round(result.obb.xyxyxyxy)
@@ -562,12 +562,14 @@ def process_frame(frame):
                     string = torch.round(result.obb[string_index].xyxyxyxy)
                 else:
                     #3 or more detections of the same object
+                    return_dict["class"] = -1
                     if bow_index != -1:
-                        b =  [(classes[int(result.obb.cls[bow_index].item())], -1)] + [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        return b
+                       return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)]
+                        
                     else:
-                        b = [(classes[int(result.obb.cls[string_index].item())], -1)] + [tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        return b
+                        return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)]
+                    return return_dict
+                
             if (len(bow) == 4 and len(string) == 4):
                 bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
                 string_coords = cln.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
@@ -585,18 +587,20 @@ def process_frame(frame):
                     result = 1  # Outside bow zone
                 else:
                     result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
-                list_tuple_bow = [tuple(bow_coords[i].tolist()) for i in range(4)]
-                list_tuple_string = [tuple(string_coords[i].tolist()) for i in range(4)]
-                return [("bow_class", result)] + list_tuple_bow + list_tuple_string
+                return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
+                return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
+                return_dict["class"] = result
+                return return_dict
         elif len(result.obb.xyxyxyxy) == 1:
             #print("Only one detection")
             #print(result.obb.cls[0], result.obb.xyxyxyxy)
-            b =  [(classes[int(result.obb.cls[0].item())], -1)] + [tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-            print(b)
-            print("_____________________")
-            return b
+            return_dict["class"] = -1
+            return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+            return return_dict
     
-    return None
+    #no detections
+    return_dict["class"] = -2
+    return return_dict
 
 def main():
     # Open video
