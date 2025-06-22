@@ -512,6 +512,7 @@ class Classification:
 
 def process_frame(frame):
     #expectation is that the frame is already resized to correct proportions
+    classes = ["bow", "string"]
     model = YOLO('best.pt')  # Replace with your actual model file    
     cln = Classification()
     results = model(frame)
@@ -527,14 +528,16 @@ def process_frame(frame):
         if len(result.obb.xyxyxyxy) >= 2:
             #print("Both bow and string detected")
             if len(result.obb.xyxyxyxy) == 2:
-                if result.obb.cls[0] == result.obb.cls[1]:
+                if int(result.obb.cls[0].item()) == int(result.obb.cls[1].item()):
                     #if only detect bow or string, return coordinates of high conf in list + -1 for classification
                     if result.obb[0].conf > result.obb[1].conf:
-                        return [(result.obb.cls[0], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b =  [(result.obb.cls[0], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        return b
                     else:
-                        return [(result.obb.cls[1], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b =  [(result.obb.cls[1], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        return b
                     #continue if both are bow or both are string, do nothing
-                if result.obb.cls[0] == 0: #first is bow, second is string
+                if int(result.obb.cls[0].item()) == 0: #first is bow, second is string
                     bow, string = torch.round(result.obb.xyxyxyxy)
                 else: #first is string, second is bow
                     string, bow = torch.round(result.obb.xyxyxyxy)
@@ -545,11 +548,11 @@ def process_frame(frame):
                 string_conf = 0.0
                 string_index = -1
                 for x in range(len(result.obb)):
-                    if result.obb.cls[x] == 0:
+                    if int(result.obb.cls[x].item()) == 0:
                         if result.obb[x].conf > bow_conf:
                             bow_conf = result.obb[x].conf
                             bow_index = x
-                    elif result.obb.cls[x] == 1:
+                    elif int(result.obb.cls[x].item()) == 1:
                         if result.obb[x].conf > string_conf:
                             string_conf = result.obb[x].conf
                             string_index = x
@@ -559,9 +562,11 @@ def process_frame(frame):
                 else:
                     #3 or more detections of the same object
                     if bow_index != -1:
-                        return [(result.obb.cls[bow_index], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b =  [(result.obb.cls[bow_index], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        return b
                     else:
-                        return [(result.obb.cls[string_index], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        b = [(result.obb.cls[string_index], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)])
+                        return b
             if (len(bow) == 4 and len(string) == 4):
                 bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
                 string_coords = cln.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
@@ -579,11 +584,14 @@ def process_frame(frame):
                     result = 1  # Outside bow zone
                 else:
                     result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
-                return [("bow", result)] + bow_coords + string_coords
+                return [("bow_class", result)] + bow_coords + string_coords
         elif len(result.obb.xyxyxyxy) == 1:
             #print("Only one detection")
             #print(result.obb.cls[0], result.obb.xyxyxyxy)
-            return [(result.obb.cls[0], -1)] + cln.sort_box_points_clockwise([tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)])
+            b =  [(classes[int(result.obb.cls[0].item())], -1)] + [tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+            print(b)
+            print("_____________________")
+            return b
     
     return None
 
@@ -625,7 +633,7 @@ def main():
                 if len(result.obb.xyxyxyxy) == 2:
                     if result.obb.cls[0] == result.obb.cls[1]:
                         continue #if both are bow or both are string, do nothing
-                    if result.obb.cls[0] == 0: #first is bow, second is string
+                    if result.obb.cls[0].item() == 0.0: #first is bow, second is string
                         bow, string = torch.round(result.obb.xyxyxyxy)
                     else: #first is string, second is bow
                         string, bow = torch.round(result.obb.xyxyxyxy)
@@ -636,11 +644,11 @@ def main():
                     string_conf = 0.0
                     string_index = -1
                     for x in range(len(result.obb)):
-                        if result.obb.cls[x] == 0:
+                        if result.obb.cls[x].item() == 0.0:
                             if result.obb[x].conf > bow_conf:
                                 bow_conf = result.obb[x].conf
                                 bow_index = x
-                        elif result.obb.cls[x] == 1:
+                        elif result.obb.cls[x].item() == 1.0:
                             if result.obb[x].conf > string_conf:
                                 string_conf = result.obb[x].conf
                                 string_index = x
