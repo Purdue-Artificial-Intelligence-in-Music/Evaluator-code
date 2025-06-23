@@ -487,11 +487,26 @@ class Classification:
         return opencv_frame
     
     def process_frame(self, frame):
+        """
+        returns dictionary with keys: class, bow, string
+        class:
+        -3: updating string y coordinates, not ready to classify
+        -2: no detections
+        -1: detection of only one object
+        0: correct bow height
+        1: outside bow zone
+        2: too low
+        3: too high
+        
+        
+        """
+        num_wait_frames = 10
         return_dict = {"class": None, "bow": None, "string": None}
         #expectation is that the frame is already resized to correct proportions
         classes = ["bow", "string"]
         model = YOLO('best.pt')  # Replace with your actual model file    
         results = model(frame)
+        avg_frame_counter = False
         if len(results) == 0:
             return None
         #print("************", len(results[0].obb.xyxyxyxy), "************")
@@ -501,16 +516,23 @@ class Classification:
                 # for box in obb_coords:
                 #     pts = box.reshape((-1, 1, 2)).astype(int)
                 #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
-            self.FRAME_COUNTER += 1
             if len(result.obb.xyxyxyxy) >= 2:
                 #print("Both bow and string detected")
                 if len(result.obb.xyxyxyxy) == 2:
                     if int(result.obb.cls[0].item()) == int(result.obb.cls[1].item()):
+                        if int(result.obb.cls[0].item()) == 1 and self.FRAME_COUNTER <= num_wait_frames:
+                            self.FRAME_COUNTER += 1
+                            avg_frame_counter = True
                         #if only detect bow or string, return coordinates of high conf in list + -1 for classification
                         if result.obb[0].conf > result.obb[1].conf:
                             return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)]
                         else:
                             return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)]
+                        
+                        if avg_frame_counter:
+                            self.average_y_coordinates(self.sort_box_points_clockwise(return_dict["string"]))
+                            return_dict["class"] = -3
+                            return return_dict
                         return return_dict
                         #continue if both are bow or both are string, do nothing
                     if int(result.obb.cls[0].item()) == 0: #first is bow, second is string
@@ -542,6 +564,11 @@ class Classification:
                             return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)]
                         if string_index != -1:
                             return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)]
+                            if self.FRAME_COUNTER <= num_wait_frames:
+                                self.FRAME_COUNTER += 1
+                                self.average_y_coordinates(return_dict["string"])
+                                return_dict["class"] = -3
+                                return return_dict
                         return return_dict
                     
                 if (len(bow) == 4 and len(string) == 4):
@@ -551,6 +578,8 @@ class Classification:
                     # Update the classification object with the detected coordinates
                     if (self.FRAME_COUNTER <= 10):
                         self.average_y_coordinates(string_coords)
+                        return_dict["class"] = -3
+                        return return_dict
                     else:
                         if len(result.obb.xyxyxyxy) >= 2:
                             # You already handled this above
@@ -579,6 +608,10 @@ class Classification:
                 #print(result.obb.cls[0], result.obb.xyxyxyxy)
                 return_dict["class"] = -1
                 return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                if int(result.obb.cls[0].item()) == 1 and self.FRAME_COUNTER <= num_wait_frames:
+                    self.FRAME_COUNTER += 1
+                    self.average_y_coordinates(return_dict["string"])
+                    return_dict["class"] = -3
                 return return_dict
         
         #no detections
