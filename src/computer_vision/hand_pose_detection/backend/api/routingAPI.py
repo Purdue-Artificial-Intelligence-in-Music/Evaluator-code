@@ -30,6 +30,10 @@ class ImagePayload(BaseModel):
 class VideoPayload(BaseModel):
     video: str
 
+
+# TODO: use ip address of your computer here (use ipconfig or ifconfig to look up)
+server_ip = ""
+
 @app.post("/upload")
 async def process_image(payload: ImagePayload):
     base64_image = payload.image
@@ -242,7 +246,7 @@ async def upload_video(payload: VideoPayload):
         cap.release()
 
         # construct public/local access URL
-        video_url = f"http://127.0.0.1:8000/static/rotated_video.mp4"
+        video_url = f"http://{server_ip}:8000/static/rotated_video.mp4"
 
         return {
             "Video": video_url,
