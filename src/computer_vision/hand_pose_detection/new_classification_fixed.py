@@ -1,3 +1,4 @@
+import math
 import cv2
 import torch
 import numpy as np
@@ -446,8 +447,36 @@ class Classification:
             ]
             self.y_locked = True
 
+    def bow_angle(self, bow_line, vertical_lines):
+        """
+        Classify the bow angle relative to the two vertical lines
 
-    def display_classification(self, result, opencv_frame):
+        Parameters:
+        - bow_line (tuple): (m, b)
+        - vertical_lines (tuple): ((m1, b1, top1, bot1), (m2, b2, top2, bot2))
+
+        Returns:
+        - 1: Wrong Angle
+        - 0: Correct Angle
+        """
+        max_angle = 20
+
+        vertical_one = vertical_lines[0]
+        vertical_two = vertical_lines[1]
+
+        # Gets the angle converted to degrees using # arctan(|m1 - m2| / (1 + m1 * m2)). 
+        # Uses the most-perpendicular of the two bow angles.
+        angle_one = abs(math.degrees(math.atan(abs(bow_line[0] - vertical_two[0]) / (1 + bow_line[0] * vertical_two[0]))))
+        angle_two = abs(math.degrees(math.atan(abs(vertical_one[0] - bow_line[0]) / (1 + vertical_one[0] * bow_line[0]))))
+        
+        print('angle:', max(angle_one, angle_two))
+        
+        if (max(angle_one, angle_two) < (90 - max_angle)):
+            return 1
+        
+        return 0
+
+    def display_classification(self, height_result, angle_result, opencv_frame):
         """
         Display a classification label based on the result code. Display bounding boxes and coordinates as well.
 
@@ -462,26 +491,45 @@ class Classification:
         - opencv frame
         """
 
-        # define labels for classification results
-        label_map = {
+        # define labels for height classification results
+        height_label_map = {
             0: ("Correct Bow Height", (0,255,0)),
             1: ("Outside Bow Zone", (0,0,255)),
             2: ("Too Low", (0,165,255)),
             3: ("Too High", (255,0,0))
         }
+        angle_label_map = {
+            0: ("Correct Bow Angle", (0,255,0)),
+            1: ("Improper Bow Angle", (0,0,255))
+        }
+
+        # define labels for angle classification results
 
         # if the result is in the label map, use that label and color
-        if result in label_map:
-            label, color = label_map[result]
+        if height_result in height_label_map:
+            height_label, height_color = height_label_map[height_result]
         else:
-            label = "Unknown"
-            color = (255, 255, 255)
+            height_label = "Unknown"
+            height_color = (255, 255, 255)
+        
+        if angle_result in angle_label_map:
+            angle_label, angle_color = angle_label_map[angle_result]
+        else:
+            angle_label = "Unknown"
+            angle_color = (255, 255, 255)
 
-        cv2.putText(opencv_frame, label, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
-        for point in [self.bow_points, self.string_points]:
-            if point.any() and len(point) == 4:
-                points = [tuple(map(int,p)) for p in point]
-                cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=color, thickness=2)
+        cv2.putText(opencv_frame, height_label, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, height_color, 3, cv2.LINE_AA)
+        #for point in [self.bow_points, self.string_points]:
+        
+        if self.string_points.any() and len(self.string_points) == 4:
+                points = [tuple(map(int,p)) for p in self.string_points]
+                cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=height_color, thickness=2)
+
+        if self.bow_points.any() and len(self.bow_points) == 4:
+            points = [tuple(map(int,p)) for p in self.bow_points]
+            cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=angle_color, thickness=2)
+
+        cv2.putText(opencv_frame, angle_label, (50,250), cv2.FONT_HERSHEY_SIMPLEX, 1.2, angle_color, 3, cv2.LINE_AA)
 
         return opencv_frame
 """
@@ -513,7 +561,7 @@ def main():
     # Open video
     # Load YOLOv11 OBB model
     model = YOLO('/Users/jacksonshields/Documents/Evaluator/runs/obb/train4/weights/best.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("/Users/jacksonshields/Downloads/supination_2.mov")
+    cap = cv2.VideoCapture("/Users/jacksonshields/Downloads/right posture.mp4")
     # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
@@ -592,17 +640,12 @@ def main():
                         cln.update_points(cln.string_points, bow_coords)  # Use cached string x, y
 
                     # Draw bow midline
-                    midlines = cln.get_midline()
+                    midline = cln.get_midline()
                     vert_lines = cln.get_vertical_lines()
-                    intersect_points = cln.intersects_vertical(midlines, vert_lines)
-
-                    # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
-                    if intersect_points == 1:
-                        result = 1  # Outside bow zone
-                    else:
-                        result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
+                    intersect_points = cln.intersects_vertical(midline, vert_lines)
+                    bow_angle = cln.bow_angle(midline, vert_lines)
                     
-                    m, b = midlines
+                    m, b = midline
                     if m == float('inf'):
                         x = int(b)
                         cv2.line(annotated_frame, (x, 0), (x, annotated_frame.shape[0]), (0, 255, 255), 2)
@@ -618,7 +661,7 @@ def main():
                         for pt in intersect_points:
                             cv2.circle(annotated_frame, (int(pt[0]), int(pt[1])), 5, (255, 255, 255), -1)
                     
-                    annotated_frame = cln.display_classification(result, annotated_frame)
+                    annotated_frame = cln.display_classification(intersect_points, bow_angle, annotated_frame)
 
                 
 
