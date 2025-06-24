@@ -163,6 +163,12 @@ class Hands:
     
     def process_frame(self, image):
 
+        wrist_posture = 'None Detected'
+        elbow_posture = 'None Detected'
+        hand_coordinates = 'None Detected'
+
+        test = []
+
         with mp_hands.Hands(
             model_complexity=0,
             max_num_hands=num_hands,
@@ -185,6 +191,9 @@ class Hands:
 
             # mp hand model
             results = hands.process(image)
+
+            print(results)
+
             # mp pose model
             pose_results = pose.process(image)
                 
@@ -195,6 +204,9 @@ class Hands:
                         
                     # Check if the hand is the bow hand
                     if handedness.classification[0].label == 'Right':
+
+                        hand_coordinates = hand_landmarks
+
                         # Landmark calculation
                         landmark_list = self.calc_landmark_list(image, hand_landmarks)
 
@@ -220,8 +232,6 @@ class Hands:
 
                         landmarks = pose_results.pose_landmarks.landmark
 
-                        # Write to the dataset file
-                        #Hands.logging_csv(number, mode, pre_processed_landmark_list, handedness, frame_count, landmarks)
                         
                     elbow_metrics = self.classify_elbow_posture(landmarks, debug_image)
 
@@ -233,5 +243,12 @@ class Hands:
                         elbow_posture = 'Too Low'
                     elif elbow_classification_id == 2:
                         elbow_posture = 'Too High'
+
+        #hand coordinates are returned as x, y, and z coordinates
+        i = 0
+        while i <= 20:
+            cord = hand_coordinates.landmark[i].x
+            hand_coordinates.landmark[i].x = 1 - cord
+            i += 1
                 
-        return (wrist_posture, elbow_posture)
+        return (wrist_posture, elbow_posture, hand_coordinates)
