@@ -249,7 +249,7 @@ class Classification:
             - (m, b): slope and intercept for y = mx + b (midline),
                     OR (inf, x) for vertical line
         """
-        topLeft, topRight, botRight, botLeft  = self.bow_points
+        topLeft, topRight, botRight, botLeft, = self.bow_points
 
         # Get slope and intercept of top edge
         dx_top = topRight[0] - topLeft[0]
@@ -270,7 +270,6 @@ class Classification:
         intercept_mid = (intercept_top + intercept_bottom) / 2
 
         return slope, intercept_mid
-
 
 
     def get_vertical_lines(self):
