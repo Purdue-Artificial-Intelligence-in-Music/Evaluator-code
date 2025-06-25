@@ -216,8 +216,8 @@ class Classification:
     frame_num = 0
     string_ycoord_heights = []
     def __init__(self):
-        self.bow_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
-        self.string_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
+        self.bow_points = None  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
+        self.string_points = None  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
         self.y_locked = False
         self.FRAME_COUNTER = 0
 
@@ -249,7 +249,7 @@ class Classification:
             - (m, b): slope and intercept for y = mx + b (midline),
                     OR (inf, x) for vertical line
         """
-        botLeft, topLeft, topRight, botRight = self.bow_points
+        topLeft, topRight, botRight, botLeft  = self.bow_points
 
         # Get slope and intercept of top edge
         dx_top = topRight[0] - topLeft[0]
@@ -516,93 +516,73 @@ class Classification:
                 # for box in obb_coords:
                 #     pts = box.reshape((-1, 1, 2)).astype(int)
                 #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
-            if len(result.obb.xyxyxyxy) >= 2:
-                #print("Both bow and string detected")
-                if len(result.obb.xyxyxyxy) == 2:
-                    if int(result.obb.cls[0].item()) == int(result.obb.cls[1].item()):
-                        if int(result.obb.cls[0].item()) == 1 and self.FRAME_COUNTER <= num_wait_frames:
+            if len(result.obb.xyxyxyxy) >= 1:
+                bow_conf = 0.0
+                bow_index = -1
+                string_conf = 0.0
+                string_index = -1
+                for x in range(len(result.obb)):
+                    if int(result.obb.cls[x].item()) == 0:
+                        if result.obb[x].conf > bow_conf:
+                            bow_conf = result.obb[x].conf
+                            bow_index = x
+                    elif int(result.obb.cls[x].item()) == 1:
+                        if result.obb[x].conf > string_conf:
+                            string_conf = result.obb[x].conf
+                            string_index = x
+                if bow_index != -1 and string_index != -1:
+                    return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                    return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                    string_coords = self.sort_box_points_clockwise(return_dict["string"])
+                    bow_coords = self.sort_box_points_clockwise(return_dict["bow"])
+                else:
+                    #only one object class detected
+                    return_dict["class"] = -1
+                    if bow_index != -1:
+                        return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                        bow_coords = self.sort_box_points_clockwise(return_dict["bow"])
+                        string_coords = self.string_points
+                    else:
+                        return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                        string_coords = self.sort_box_points_clockwise(return_dict["string"])
+                        bow_coords = self.bow_points
+                        if self.FRAME_COUNTER <= num_wait_frames:
                             self.FRAME_COUNTER += 1
-                            avg_frame_counter = True
-                        #if only detect bow or string, return coordinates of high conf in list + -1 for classification
-                        if result.obb[0].conf > result.obb[1].conf:
-                            return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        else:
-                            return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[1].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        
-                        if avg_frame_counter:
-                            self.average_y_coordinates(self.sort_box_points_clockwise(return_dict["string"]))
+                            self.average_y_coordinates(return_dict["string"])
                             return_dict["class"] = -3
-                            return return_dict
-                        return return_dict
-                        #continue if both are bow or both are string, do nothing
-                    if int(result.obb.cls[0].item()) == 0: #first is bow, second is string
-                        bow, string = torch.round(result.obb.xyxyxyxy)
-                    else: #first is string, second is bow
-                        string, bow = torch.round(result.obb.xyxyxyxy)
-                else: #more than 2 detections, means there's probably a double detection of a bow or string
-                    #print("More than 2 detections")
-                    bow_conf = 0.0
-                    bow_index = -1
-                    string_conf = 0.0
-                    string_index = -1
-                    for x in range(len(result.obb)):
-                        if int(result.obb.cls[x].item()) == 0:
-                            if result.obb[x].conf > bow_conf:
-                                bow_conf = result.obb[x].conf
-                                bow_index = x
-                        elif int(result.obb.cls[x].item()) == 1:
-                            if result.obb[x].conf > string_conf:
-                                string_conf = result.obb[x].conf
-                                string_index = x
-                    if bow_index != -1 and string_index != -1:
-                        bow = torch.round(result.obb[bow_index].xyxyxyxy)
-                        string = torch.round(result.obb[string_index].xyxyxyxy)
-                    else:
-                        #3 or more detections of the same object
-                        return_dict["class"] = -1
-                        if bow_index != -1:
-                            return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[i].tolist()) for i in range(4)]
-                        if string_index != -1:
-                            return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[i].tolist()) for i in range(4)]
-                            if self.FRAME_COUNTER <= num_wait_frames:
-                                self.FRAME_COUNTER += 1
-                                self.average_y_coordinates(return_dict["string"])
-                                return_dict["class"] = -3
-                                return return_dict
-                        return return_dict
-                    
-                if (len(bow) == 4 and len(string) == 4):
-                    bow_coords = self.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
-                    string_coords = self.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
 
-                    # Update the classification object with the detected coordinates
-                    if (self.FRAME_COUNTER <= 10):
-                        self.average_y_coordinates(string_coords)
-                        return_dict["class"] = -3
-                        return return_dict
-                    else:
-                        if len(result.obb.xyxyxyxy) >= 2:
-                            # You already handled this above
-                            self.update_points(string_coords, bow_coords)
-                        elif len(result.obb.xyxyxyxy) == 1:
-                            #print("Only bow detected, reusing string coords from previous frame")
-                            self.update_points(self.string_points, bow_coords)  # Use cached string x, y
+                # Update the classification object with the detected coordinates
+                #first check if there are any None values for bow or string points (means they havent been detected yet)
+            else:
+                return_dict["class"] = -2
+                print("no detections")
+                return return_dict
+            if self.bow_points is None or self.string_points is None:
+                return_dict["class"] = -1
+            if (self.FRAME_COUNTER <= num_wait_frames and return_dict["string"] is not None):
+                self.average_y_coordinates(string_coords)
+                self.FRAME_COUNTER += 1
+                return_dict["class"] = -3
+                return return_dict
+            elif string_coords is not None and bow_coords is not None:
+                self.update_points(string_coords, bow_coords)
+                # Get bow midline and vertical lines
+                midlines = self.get_midline()
+                vert_lines = self.get_vertical_lines()
+                intersect_points = self.intersects_vertical(midlines, vert_lines)
 
-
-                    # Get bow midline and vertical lines
-                    midlines = self.get_midline()
-                    vert_lines = self.get_vertical_lines()
-                    intersect_points = self.intersects_vertical(midlines, vert_lines)
-
-                    # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
-                    if intersect_points == 1:
-                        result = 1  # Outside bow zone
-                    else:
-                        result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
-                    return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
-                    return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
-                    return_dict["class"] = result
-                    return return_dict
+                # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
+                if intersect_points == 1:
+                    result = 1  # Outside bow zone
+                else:
+                    result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
+                return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
+                return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
+                return_dict["class"] = result
+            else:
+                return_dict["class"] = -1
+            return return_dict
+            """
             elif len(result.obb.xyxyxyxy) == 1:
                 #print("Only one detection")
                 #print(result.obb.cls[0], result.obb.xyxyxyxy)
@@ -613,10 +593,8 @@ class Classification:
                     self.average_y_coordinates(return_dict["string"])
                     return_dict["class"] = -3
                 return return_dict
+            """
         
-        #no detections
-        return_dict["class"] = -2
-        return return_dict
 """
     Main classification logic:
         within loop:
@@ -642,12 +620,11 @@ class Classification:
                     (might not need the.numpy() could be wrong though)
 
 """
-
 def main():
     # Open video
     # Load YOLOv11 OBB model
     model = YOLO('best.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("bow too high-slow (3).mp4")
+    cap = cv2.VideoCapture("Vertigo for Solo Cello - Cicely Parnas.mp4")
     # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
@@ -666,93 +643,27 @@ def main():
         # Run YOLOv11 OBB inference
         annotated_frame = frame.copy()  # Initialize it safely with the original frame
 
-        results = model(frame)
-        for result in results:
-            if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
-                obb_coords = result.obb.xyxyxyxy.cpu().numpy()  # shape: (N, 4, 2)
-                # for box in obb_coords:
-                #     pts = box.reshape((-1, 1, 2)).astype(int)
-                #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
-            FRAME_COUNTER += 1
+        c = cln.process_frame(annotated_frame)
+        print(c)
 
-            print("FRAME NUM ", FRAME_COUNTER)
-            if len(result.obb.xyxyxyxy) >= 2:
-                print("Both bow and string detected")
-                if len(result.obb.xyxyxyxy) == 2:
-                    if result.obb.cls[0] == result.obb.cls[1]:
-                        continue #if both are bow or both are string, do nothing
-                    if result.obb.cls[0].item() == 0.0: #first is bow, second is string
-                        bow, string = torch.round(result.obb.xyxyxyxy)
-                    else: #first is string, second is bow
-                        string, bow = torch.round(result.obb.xyxyxyxy)
-                else: #more than 2 detections, means there's probably a double detection of a bow or string
-                    print("More than 2 detections")
-                    bow_conf = 0.0
-                    bow_index = -1
-                    string_conf = 0.0
-                    string_index = -1
-                    for x in range(len(result.obb)):
-                        if result.obb.cls[x].item() == 0.0:
-                            if result.obb[x].conf > bow_conf:
-                                bow_conf = result.obb[x].conf
-                                bow_index = x
-                        elif result.obb.cls[x].item() == 1.0:
-                            if result.obb[x].conf > string_conf:
-                                string_conf = result.obb[x].conf
-                                string_index = x
-                    if bow_index != -1 and string_index != -1:
-                        bow = torch.round(result.obb[bow_index].xyxyxyxy)
-                        string = torch.round(result.obb[string_index].xyxyxyxy)
-                    else:
-                        continue
-                # bow_coords = [Point2D(bow[0][0].item(), bow[0][1].item()), Point2D(bow[1][0].item(), bow[1][1].item()), Point2D(bow[2][0].item(), bow[2][1].item()), Point2D(bow[3][0].item(), bow[3][1].item())]
-                # string_coords = [Point2D(string[0][0].item(), string[0][1].item()), Point2D(string[1][0].item(), string[1][1].item()), Point2D(string[2][0].item(), string[2][1].item()), Point2D(string[3][0].item(), string[3][1].item())]
-                
-                # bow_coords = [tuple(bow[i].tolist()) for i in range(4)]
-                # string_coords = [tuple(string[i].tolist()) for i in range(4)]
-                if (len(bow) == 4 and len(string) == 4):
-                    bow_coords = cln.sort_box_points_clockwise([tuple(bow[i].tolist()) for i in range(4)])
-                    string_coords = cln.sort_box_points_clockwise([tuple(string[i].tolist()) for i in range(4)])
+        if c["class"] is not None and c["class"] > -1:
+            m, b = cln.get_midline()
+            if m == float('inf'):
+                x = int(b)
+                cv2.line(annotated_frame, (x, 0), (x, annotated_frame.shape[0]), (0, 255, 255), 2)
+            else:
+                x0 = 0
+                y0 = int(m * x0 + b)
+                x1 = annotated_frame.shape[1]
+                y1 = int(m * x1 + b)
+                cv2.line(annotated_frame, (x0, y0), (x1, y1), (0, 255, 255), 2)
 
-                if (FRAME_COUNTER <= 10):
-                    cln.average_y_coordinates(string_coords)
-                else:
-                    if len(result.obb.xyxyxyxy) >= 2:
-                        # You already handled this above
-                        cln.update_points(string_coords, bow_coords)
-
-                    elif len(result.obb.xyxyxyxy) == 1:
-                        print("Only bow detected, reusing string coords from previous frame")
-                        cln.update_points(cln.string_points, bow_coords)  # Use cached string x, y
-
-                    # Draw bow midline
-                    midlines = cln.get_midline()
-                    vert_lines = cln.get_vertical_lines()
-                    intersect_points = cln.intersects_vertical(midlines, vert_lines)
-
-                    # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
-                    if intersect_points == 1:
-                        result = 1  # Outside bow zone
-                    else:
-                        result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
-                    
-                    m, b = midlines
-                    if m == float('inf'):
-                        x = int(b)
-                        cv2.line(annotated_frame, (x, 0), (x, annotated_frame.shape[0]), (0, 255, 255), 2)
-                    else:
-                        x0 = 0
-                        y0 = int(m * x0 + b)
-                        x1 = annotated_frame.shape[1]
-                        y1 = int(m * x1 + b)
-                        cv2.line(annotated_frame, (x0, y0), (x1, y1), (0, 255, 255), 2)
-
-                    # Draw intersection points
-                    if isinstance(intersect_points, tuple):
-                        for pt in intersect_points:
-                            cv2.circle(annotated_frame, (int(pt[0]), int(pt[1])), 5, (255, 255, 255), -1)
-                    
-                    annotated_frame = cln.display_classification(result, annotated_frame)
+            # Draw intersection points
+#            if isinstance(cln.intersect_points, tuple):
+#                for pt in cln.intersect_points:
+#                    cv2.circle(annotated_frame, (int(pt[0]), int(pt[1])), 5, (255, 255, 255), -1)
+        
+            annotated_frame = cln.display_classification(c["class"], annotated_frame)
 
                 
 
