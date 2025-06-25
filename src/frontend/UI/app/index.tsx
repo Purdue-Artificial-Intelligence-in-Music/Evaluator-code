@@ -133,7 +133,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       />
 
       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-      <Button title={recording ? "STOP" : "RECORD"} onPress={() => {
+      <TouchableOpacity
+      onPress={() => {
+
         if (recording) {
           setRecording(false);
           // reset old dots and lines
@@ -142,7 +144,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         } else {
           setRecording(true);
         }
-      }} />
+      }} >
+
+      <Image
+        source = {recording ? Recording : Record}
+        style = {{width: 140, height: 40, marginTop: 10}}
+      />
+      </TouchableOpacity>
       
     </View>
   );
