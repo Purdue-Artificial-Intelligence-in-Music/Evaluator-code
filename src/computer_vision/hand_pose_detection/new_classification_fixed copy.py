@@ -3,6 +3,7 @@ import torch
 import numpy as np
 from ultralytics import YOLO
 import statistics
+import math
 
 """
 class Point2D:
@@ -493,6 +494,34 @@ class Classification:
             self.y_avg = [top_left_avg, top_right_avg]
             self.y_locked = True
 
+    def bow_angle(self, bow_line, vertical_lines):
+        """
+        Classify the bow angle relative to the two vertical lines
+
+        Parameters:
+        - bow_line (tuple): (m, b)
+        - vertical_lines (tuple): ((m1, b1, top1, bot1), (m2, b2, top2, bot2))
+
+        Returns:
+        - 1: Wrong Angle
+        - 0: Correct Angle
+        """
+        max_angle = 20
+
+        vertical_one = vertical_lines[0]
+        vertical_two = vertical_lines[1]
+
+        # Gets the angle converted to degrees using # arctan(|m1 - m2| / (1 + m1 * m2)). 
+        # Uses the most-perpendicular of the two bow angles.
+        angle_one = abs(math.degrees(math.atan(abs(bow_line[0] - vertical_two[0]) / (1 + bow_line[0] * vertical_two[0]))))
+        angle_two = abs(math.degrees(math.atan(abs(vertical_one[0] - bow_line[0]) / (1 + vertical_one[0] * bow_line[0]))))
+        
+        print('angle:', max(90 - angle_one, 90 - angle_two))
+        
+        if (max(angle_one, angle_two) < (90 - max_angle)):
+            return 1
+        
+        return 0
 
     def display_classification(self, result, opencv_frame):
         """
@@ -546,7 +575,7 @@ class Classification:
         
         
         """
-        return_dict = {"class": None, "bow": None, "string": None}
+        return_dict = {"class": None, "bow": None, "string": None, "angle": None}
         #expectation is that the frame is already resized to correct proportions
         classes = ["bow", "string"]
         model = YOLO('best.pt')  # Replace with your actual model file    
@@ -611,6 +640,7 @@ class Classification:
                 midlines = self.get_midline()
                 vert_lines = self.get_vertical_lines()
                 intersect_points = self.intersects_vertical(midlines, vert_lines)
+                return_dict["angle"] = self.bow_angle(midlines, vert_lines)
 
                 # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
                 result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
