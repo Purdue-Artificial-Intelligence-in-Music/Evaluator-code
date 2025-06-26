@@ -220,18 +220,25 @@ class Classification:
         self.string_points = None  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
         self.y_locked = False
         self.FRAME_COUNTER = 0
+        self.num_wait_frames = 11
+        self.y_avg = [0, 0]
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
-        print('bow:', bow_box_xyxyxyxy)
+        print('String points:', self.string_points)
 
         if string_box_xyxyxyxy is not None:
             if not self.y_locked:
                 self.string_points = string_box_xyxyxyxy
             else:
-                self.string_points = [
+                """
+                self.string_points = np.array([
                     (new_x, old_y) for (new_x, _), (_, old_y) in zip(string_box_xyxyxyxy, self.string_points)
-                ]
+                ])
+                """
+                self.string_points = string_box_xyxyxyxy
+                self.string_points[0][1] = self.y_avg[0]
+                self.string_points[1][1] = self.y_avg[1]
             self.last_valid_string = self.string_points  # save for fallback use
         else:
             print("No new string box detected. Reusing last known string box.")
@@ -249,7 +256,46 @@ class Classification:
             - (m, b): slope and intercept for y = mx + b (midline),
                     OR (inf, x) for vertical line
         """
-        topLeft, topRight, botRight, botLeft, = self.bow_points
+
+        def distance(pt1, pt2):
+            return (pt1[0] - pt2[0]) ** 2 + (pt1[1] - pt2[1]) ** 2
+
+        d1 = distance(self.bow_points[0], self.bow_points[1])
+        d2 = distance(self.bow_points[1], self.bow_points[2])
+        d3 = distance(self.bow_points[2], self.bow_points[3])
+        d4 = distance(self.bow_points[3], self.bow_points[0])
+        l = [d1, d2, d3, d4]
+        min_index = l.index(min(l))
+        #two shortest distances are the two ends of the bow, use to get midpoints for midline
+        if min_index == 0:
+            pair1 = self.bow_points[0], self.bow_points[1]
+            pair2 = self.bow_points[2], self.bow_points[3]
+        elif min_index == 1:
+            pair1 = self.bow_points[1], self.bow_points[2]
+            pair2 = self.bow_points[3], self.bow_points[0]
+        elif min_index == 2:
+            pair1 = self.bow_points[2], self.bow_points[3]
+            pair2 = self.bow_points[0], self.bow_points[1]
+        else:
+            pair1 = self.bow_points[3], self.bow_points[0]
+            pair2 = self.bow_points[1], self.bow_points[2]
+        
+        mid1 = (pair1[0][0] + pair1[1][0]) / 2, (pair1[0][1] + pair1[1][1]) / 2
+        mid2 = (pair2[0][0] + pair2[1][0]) / 2, (pair2[0][1] + pair2[1][1]) / 2
+        
+        dy = mid1[1] - mid2[1]
+        dx = mid1[0] - mid2[0]
+        if dy == 0:
+            return float('inf'), mid1[0]
+        slope = dy / dx
+        intercept = mid1[1] - slope * mid1[0]
+        
+        return slope, intercept
+
+        """topLeft, topRight, botRight, botLeft = pt1, pt2, pt3, pt4
+
+        if self.bow_points is None:
+            return None
 
         # Get slope and intercept of top edge
         dx_top = topRight[0] - topLeft[0]
@@ -269,7 +315,8 @@ class Classification:
         # Midline is average of intercepts
         intercept_mid = (intercept_top + intercept_bottom) / 2
 
-        return slope, intercept_mid
+        return slope, intercept_mid"""
+
 
 
     def get_vertical_lines(self):
@@ -429,21 +476,21 @@ class Classification:
         return 0
 
     def average_y_coordinates(self, string_box_xyxyxyxy):
-        Classification.frame_num += 1
+        self.frame_num += 1
         y_coords = [pt[1] for pt in string_box_xyxyxyxy]
-        Classification.string_ycoord_heights.append(y_coords)
+        self.string_ycoord_heights.append(y_coords)
 
-        if Classification.frame_num == 61:
-            top_y_avg = statistics.median([frame[0] for frame in Classification.string_ycoord_heights])  # top edge
-            bot_y_avg = statistics.median([frame[3] for frame in Classification.string_ycoord_heights])  # bottom edge
+        if self.frame_num == self.num_wait_frames:
+            top_left_avg = statistics.median([frame[0] for frame in self.string_ycoord_heights])
+            top_right_avg = statistics.median([frame[1] for frame in self.string_ycoord_heights])
+            #top_y_avg = statistics.median([frame[0] for frame in self.string_ycoord_heights])  # top edge
+            #bot_y_avg = statistics.median([frame[3] for frame in self.string_ycoord_heights])  # bottom edge
 
-            # Use original x-values, but lock Y-values at average top/bottom height
-            self.string_points = [
-                (string_box_xyxyxyxy[0][0], top_y_avg),  # top-left
-                (string_box_xyxyxyxy[1][0], top_y_avg),  # top-right
-                (string_box_xyxyxyxy[2][0], bot_y_avg),  # bottom-right
-                (string_box_xyxyxyxy[3][0], bot_y_avg),  # bottom-left
-            ]
+            # Use original x-values, but lock Y-values at average top height
+            self.string_points = string_box_xyxyxyxy
+            self.string_points[0][1] = top_left_avg
+            self.string_points[1][1] = top_right_avg
+            self.y_avg = [top_left_avg, top_right_avg]
             self.y_locked = True
 
 
@@ -499,7 +546,6 @@ class Classification:
         
         
         """
-        num_wait_frames = 10
         return_dict = {"class": None, "bow": None, "string": None}
         #expectation is that the frame is already resized to correct proportions
         classes = ["bow", "string"]
@@ -532,23 +578,19 @@ class Classification:
                 if bow_index != -1 and string_index != -1:
                     return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                     return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                    string_coords = self.sort_box_points_clockwise(return_dict["string"])
-                    bow_coords = self.sort_box_points_clockwise(return_dict["bow"])
+                    string_coords = np.array(return_dict["string"])
+                    bow_coords = np.array(return_dict["bow"])
                 else:
                     #only one object class detected
                     return_dict["class"] = -1
                     if bow_index != -1:
                         return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                        bow_coords = self.sort_box_points_clockwise(return_dict["bow"])
+                        bow_coords = np.array(return_dict["bow"])
                         string_coords = self.string_points
                     else:
                         return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                        string_coords = self.sort_box_points_clockwise(return_dict["string"])
+                        string_coords = np.array(return_dict["string"])
                         bow_coords = self.bow_points
-                        if self.FRAME_COUNTER <= num_wait_frames:
-                            self.FRAME_COUNTER += 1
-                            self.average_y_coordinates(return_dict["string"])
-                            return_dict["class"] = -3
 
                 # Update the classification object with the detected coordinates
                 #first check if there are any None values for bow or string points (means they havent been detected yet)
@@ -556,14 +598,14 @@ class Classification:
                 return_dict["class"] = -2
                 print("no detections")
                 return return_dict
-            if self.bow_points is None or self.string_points is None:
-                return_dict["class"] = -1
-            if (self.FRAME_COUNTER <= num_wait_frames and return_dict["string"] is not None):
-                self.average_y_coordinates(string_coords)
-                self.FRAME_COUNTER += 1
-                return_dict["class"] = -3
-                return return_dict
-            elif string_coords is not None and bow_coords is not None:
+            if (return_dict["string"] is not None):
+                if self.frame_num <= self.num_wait_frames:
+                    self.average_y_coordinates(string_coords)
+                    return_dict["class"] = -3
+                    return return_dict
+                
+            
+            if string_coords is not None and bow_coords is not None:
                 self.update_points(string_coords, bow_coords)
                 # Get bow midline and vertical lines
                 midlines = self.get_midline()
@@ -571,10 +613,7 @@ class Classification:
                 intersect_points = self.intersects_vertical(midlines, vert_lines)
 
                 # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
-                if intersect_points == 1:
-                    result = 1  # Outside bow zone
-                else:
-                    result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
+                result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
                 return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
                 return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
                 return_dict["class"] = result
