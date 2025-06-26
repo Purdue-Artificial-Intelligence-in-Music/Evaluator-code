@@ -532,6 +532,33 @@ class Classification:
 
         cv2.putText(opencv_frame, angle_label, (50,250), cv2.FONT_HERSHEY_SIMPLEX, 1.2, angle_color, 3, cv2.LINE_AA)
 
+        # drawing parabola 
+        if self.string_points.any() and len(self.string_points) == 4:
+            # sort points by y-coordinate to find top edge
+            sorted_by_y = sorted(self.string_points, key=lambda p: p[1])
+            top_candidates = sorted_by_y[:2]  # Two points with smallest y (i.e., highest on screen)
+
+            top_left, top_right = sorted(top_candidates, key=lambda p: p[0])
+
+            # finding midpoint 
+            mid_x = (top_left[0] + top_right[0]) / 2
+            mid_y = (top_left[1] + top_right[1]) / 2
+
+            width = abs(top_right[0] - top_left[0])
+            curvature = width * 0.25  # adjust if needed
+
+            # y increases downward, adjusting control point 
+            control_point = (mid_x, mid_y - curvature)
+
+            curve_pts = []
+            for t in np.linspace(0, 1, 50):
+                x = int((1 - t) ** 2 * top_left[0] + 2 * (1 - t) * t * control_point[0] + t ** 2 * top_right[0])
+                y = int((1 - t) ** 2 * top_left[1] + 2 * (1 - t) * t * control_point[1] + t ** 2 * top_right[1])
+                curve_pts.append([x, y])
+
+            curve_pts_np = np.array(curve_pts, np.int32).reshape((-1, 1, 2))
+            cv2.polylines(opencv_frame, [curve_pts_np], isClosed=False, color=(255, 0, 255), thickness=2)
+
         return opencv_frame
 """
     Main classification logic:
@@ -561,8 +588,8 @@ class Classification:
 def main():
     # Open video
     # Load YOLOv11 OBB model
-    model = YOLO('/Users/jacksonshields/Documents/Evaluator/runs/obb/train4/weights/best.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("/Users/jacksonshields/Downloads/right posture 2.mp4")
+    model = YOLO('best 5.pt')  # Replace with your actual model file    
+    cap = cv2.VideoCapture("Vertigo for Solo Cello - Cicely Parnas.mp4")
     # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
