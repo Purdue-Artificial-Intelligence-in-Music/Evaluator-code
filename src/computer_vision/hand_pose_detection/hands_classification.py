@@ -239,6 +239,7 @@ class Hands:
                         elbow_posture = 'Too High'
 
         #gets rid of the z coordinate and flips the x-coordinates
-        hand_coordinates = [(1 - lm.x, lm.y) for lm in hand_landmarks.landmark]
+        if hand_coordinates != "None Detected":
+            hand_coordinates = [(1 - lm.x, lm.y) for lm in hand_landmarks.landmark]
                 
         return (wrist_posture, elbow_posture, hand_coordinates)
