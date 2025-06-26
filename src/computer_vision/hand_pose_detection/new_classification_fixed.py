@@ -224,6 +224,7 @@ class Classification:
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
         print('bow:', bow_box_xyxyxyxy)
+        print('strings:', string_box_xyxyxyxy)
 
         if string_box_xyxyxyxy is not None:
             if not self.y_locked:
@@ -469,7 +470,7 @@ class Classification:
         angle_one = abs(math.degrees(math.atan(abs(bow_line[0] - vertical_two[0]) / (1 + bow_line[0] * vertical_two[0]))))
         angle_two = abs(math.degrees(math.atan(abs(vertical_one[0] - bow_line[0]) / (1 + vertical_one[0] * bow_line[0]))))
         
-        print('angle:', max(angle_one, angle_two))
+        print('angle:', max(90 - angle_one, 90 - angle_two))
         
         if (max(angle_one, angle_two) < (90 - max_angle)):
             return 1
@@ -561,7 +562,7 @@ def main():
     # Open video
     # Load YOLOv11 OBB model
     model = YOLO('/Users/jacksonshields/Documents/Evaluator/runs/obb/train4/weights/best.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("/Users/jacksonshields/Downloads/right posture.mp4")
+    cap = cv2.VideoCapture("/Users/jacksonshields/Downloads/right posture 2.mp4")
     # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
