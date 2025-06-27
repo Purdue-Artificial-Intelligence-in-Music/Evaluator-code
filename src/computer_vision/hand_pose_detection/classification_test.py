@@ -99,14 +99,12 @@ def main():
     ax.set_ylim(50, 130)
     ax.set_aspect('equal')
     ax.set_title('Two Angled Rectangles')
-    ax.grid(True)
+    ax.grid(True)    
 
     # classify the plot
     classifier = new_classification_fixed.Classification()
-    # [top-left, top-right, bottom-right, bottom-left]
-    string_box_xyxyxyxy = (strings_box[3], strings_box[2], strings_box[1], strings_box[0])
-    # [botLeft, topLeft, topRight, botRight]
-    bow_box_xyxyxyxy = (bow_box[3], bow_box[0], bow_box[2], bow_box[1])
+    string_box_xyxyxyxy = (strings_box[0], strings_box[1], strings_box[2], strings_box[3])
+    bow_box_xyxyxyxy = (bow_box[0], bow_box[1], bow_box[2], bow_box[3])
     classifier.update_points(string_box_xyxyxyxy, bow_box_xyxyxyxy)
     midline = classifier.get_midline()
     vertical_lines = classifier.get_vertical_lines()

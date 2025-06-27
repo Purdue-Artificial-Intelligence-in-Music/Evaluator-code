@@ -221,14 +221,49 @@ class Classification:
         self.string_points = []  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
         self.y_locked = False
 
+    def sort_points(self, box):
+        point = box[0]
+        dx = []
+        dy = []
+        # find the distances from first point to all others
+        for i in range(1, 4):
+            dx.append(abs(point[0] - box[i][0]))
+            dy.append(abs(point[1] - box[i][1]))
+        
+        # group the points based on x distance to first point (2 groups of 2)
+        group_one = [point, box[dx.index(min(dx)) + 1]]
+        group_two = []
+        for i in range(1, 4):
+            if ((dx.index(min(dx)) + 1) != i):
+                group_two.append(box[i])
+            
+        # extract left/right based on group's x values
+        if (group_one[0][0] < group_two[0][0]):
+            left = group_one
+            right = group_two
+        else:
+            left = group_two
+            right = group_one
+        
+        # sort by highest point first in each group
+        if left[0][1] < left[1][1]:
+            left[0][1], left[1][1] = left[1][1], left[0][1]
+
+        if right[0][1] < right[1][1]:
+            right[0][1], right[1][1] = right[1][1], right[0][1]
+
+        # return in order topLeft, topRight, botRight, botLeft
+        return (tuple(left[0]), tuple(right[0]), tuple(right[1]), tuple(left[1]))
+
+
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
-        self.bow_points = bow_box_xyxyxyxy
-        print('bow:', bow_box_xyxyxyxy)
-        print('strings:', string_box_xyxyxyxy)
+        self.bow_points = self.sort_points(bow_box_xyxyxyxy)
+        print('bow:', self.bow_points)
+        
 
         if string_box_xyxyxyxy is not None:
             if not self.y_locked:
-                self.string_points = string_box_xyxyxyxy
+                self.string_points = self.sort_points(string_box_xyxyxyxy)
             else:
                 self.string_points = [
                     (new_x, old_y) for (new_x, _), (_, old_y) in zip(string_box_xyxyxyxy, self.string_points)
@@ -238,6 +273,8 @@ class Classification:
             print("No new string box detected. Reusing last known string box.")
             if hasattr(self, 'last_valid_string'):
                 self.string_points = self.last_valid_string
+        
+        print('strings:', string_box_xyxyxyxy)
 
 
 
@@ -250,7 +287,7 @@ class Classification:
             - (m, b): slope and intercept for y = mx + b (midline),
                     OR (inf, x) for vertical line
         """
-        botLeft, topLeft, topRight, botRight = self.bow_points
+        topLeft, topRight, botRight, botLeft = self.bow_points
 
         # Get slope and intercept of top edge
         dx_top = topRight[0] - topLeft[0]
@@ -460,7 +497,7 @@ class Classification:
         - 1: Wrong Angle
         - 0: Correct Angle
         """
-        max_angle = 20
+        max_angle = 15
 
         vertical_one = vertical_lines[0]
         vertical_two = vertical_lines[1]
@@ -588,9 +625,9 @@ class Classification:
 def main():
     # Open video
     # Load YOLOv11 OBB model
-    model = YOLO('best 5.pt')  # Replace with your actual model file    
-    cap = cv2.VideoCapture("Vertigo for Solo Cello - Cicely Parnas.mp4")
-    # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
+    model = YOLO('/Users/jacksonshields/Documents/Evaluator/runs/obb/train4/weights/best.pt')  # Replace with your actual model file    
+    cap = cv2.VideoCapture("/Users/jacksonshields/Desktop/right posture 2.mp4")
+    #cap = cv2.VideoCapture("src/computer_vision/hand_pose_detection/bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
         h, w = image.shape[:2]
