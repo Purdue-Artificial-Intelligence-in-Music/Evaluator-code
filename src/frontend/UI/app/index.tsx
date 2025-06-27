@@ -9,6 +9,8 @@ import OpenCamera from '../assets/images/OpenCamera.png';
 import Back from '../assets/images/Back.png';
 import Record from '../assets/images/Record.png';
 import Recording from '../assets/images/Recording.png';
+import SendVideo from '../assets/images/SendVideo.png';
+import Download from '../assets/images/Download156x41.png';
 
 import { useWindowDimensions } from 'react-native';
 import { Platform } from 'react-native';
@@ -100,11 +102,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       clearInterval(intervalRef.current);
     }
  
-    if (!isCameraOpen) {
-      console.log("camera off");
-    } else {
-      console.log("camera on:", isCameraOpen);
-    }
 
     return () => clearInterval(intervalRef.current);
   }, [recording, loading]);
@@ -531,9 +528,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
 
       {videoUri ? (
-        <ScrollView 
-          contentContainerStyle={{ flexGrow: 1 }} 
-          showsVerticalScrollIndicator={true}
+        <View
+        //  contentContainerStyle={{ flexGrow: 1 }} 
+        //  showsVerticalScrollIndicator={true}
         >
         <Video
           source={{ uri: videoUri }}
@@ -544,7 +541,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
             height: videoDimensions ? videoDimensions.height * 0.2 : undefined
           }}
         />
-        </ScrollView>
+        </View>
       ) : (
         !sendVideo && <Text style={styles.placeholderText}>No video selected</Text>
       )}
@@ -558,8 +555,22 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
       {sendVideo && <ActivityIndicator size="large" color="#0000ff" />} 
 
-      <View style={{marginTop: 10,opacity: sendButton ? 1: 0}}>
-        <Button title="Send Video" onPress={sendVideoBackend} />
+      <View style={{opacity: sendButton ? 1: 0}}>
+        <TouchableOpacity
+          onPress = {sendVideoBackend}
+          style = {{
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 8,
+          }}
+        >
+          <Image
+            source = {SendVideo}
+            style = {{width: 140, height: 40}}
+
+           />
+        </TouchableOpacity>
+        
       </View>
 
       {/* download video */}
@@ -595,6 +606,18 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   );
 }
 
+const width = Dimensions.get('window').width;
+const height = Dimensions.get('window').height;
+console.log(width)
+console.log(height)
+let factor = 0.9;
+let factorTwo = 1;
+let factorThree = 0.9;
+if (Platform.OS === 'web') {
+  factor = 0.5;
+  factorTwo = 0.7;
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -603,7 +626,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
   },
   buttonStyle: {
-
     flexDirection: 'column',
     justifyContent: 'flex-start',
     alignItems: 'center',
@@ -632,11 +654,10 @@ const styles = StyleSheet.create({
   cameraContainer: {
     flex: 1,
     position: 'absolute',
-    marginVertical: 130,
-    top: 250,
-    width: 640 * 0.9, //can be changed
-    height: 440 * 0.9,
-    marginBottom: 20,
+   // marginVertical: 100,
+    width: width * factor, //can be changed
+    height: height * factorThree, //can be changed
+   // marginBottom: 20,
     borderRadius: 10,
     backgroundColor: 'transparent',
     justifyContent: 'center',
@@ -650,8 +671,8 @@ const styles = StyleSheet.create({
   },
   camera: {
     flex: 1,
-    width: '100%',
-    height: '100%',
+    width: width * factorTwo,
+    height: height,
     borderRadius: 10,
   },
   placeholderText: {
@@ -663,10 +684,12 @@ const styles = StyleSheet.create({
 
   videoDimensionsText: {
     marginTop: 10,
+    marginBottom: 10,
     fontSize: 16,
     color: '#333',
   },
   ipAddressText : {
+    marginBottom: 20,
     fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
@@ -676,11 +699,12 @@ const styles = StyleSheet.create({
   },
 
   cameraOverlay: {
+    flex: 1,
     position: 'absolute',
     top: 0,
     left: 0,
-    width: windowWidth,
-    height: windowHeight,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'rgba(0,0,0,0.9)', // Optional: Dim the background behind camera
     justifyContent: 'center',
     alignItems: 'center',
