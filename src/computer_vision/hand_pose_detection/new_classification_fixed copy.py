@@ -223,6 +223,8 @@ class Classification:
         self.FRAME_COUNTER = 0
         self.num_wait_frames = 11
         self.y_avg = [0, 0]
+        self.bow_repeat = 0
+        self.string_repeat = 0
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
@@ -591,6 +593,8 @@ class Classification:
                 #     pts = box.reshape((-1, 1, 2)).astype(int)
                 #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
             if len(result.obb.xyxyxyxy) >= 1:
+                #if there is at least one detection, we run through the for loop to find the detection of each class with the highest confidnece
+                #this is then used to update the actual coordinate of the points stored within the object
                 bow_conf = 0.0
                 bow_index = -1
                 string_conf = 0.0
@@ -609,25 +613,41 @@ class Classification:
                     return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                     string_coords = np.array(return_dict["string"])
                     bow_coords = np.array(return_dict["bow"])
+                    self.string_repeat = 0
+                    self.bow_repeat = 0
                 else:
                     #only one object class detected
                     return_dict["class"] = -1
                     if bow_index != -1:
+                        self.bow_repeat = 0
                         return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                         bow_coords = np.array(return_dict["bow"])
-                        string_coords = self.string_points
+                        if self.string_repeat <= 6:
+                            string_coords = self.string_points
+                            string_repeat += 1
+                        else:
+                            string_coords = None
                     else:
+                        self.string_repeat = 0
                         return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                         string_coords = np.array(return_dict["string"])
-                        bow_coords = self.bow_points
+                        if self.bow_repeat <= 6:  
+                            bow_coords = self.bow_points
+                            bow_coords += 1
+                        else:
+                            bow_coords = 0
 
-                # Update the classification object with the detected coordinates
-                #first check if there are any None values for bow or string points (means they havent been detected yet)
+                
             else:
+                #no detections, set class to -2
                 return_dict["class"] = -2
                 print("no detections")
                 return return_dict
+            
+            
             if (return_dict["string"] is not None):
+                #if string is detected, we use it for getting the average y coordinate of the top two string points
+                #return -3 until averaging is complete (should be 11 frames, or equivalent of self.num_wait_frames)
                 if self.frame_num <= self.num_wait_frames:
                     self.average_y_coordinates(string_coords)
                     return_dict["class"] = -3
@@ -635,6 +655,7 @@ class Classification:
                 
             
             if string_coords is not None and bow_coords is not None:
+                #runs only if detection of both objects in the last 6 frames
                 self.update_points(string_coords, bow_coords)
                 # Get bow midline and vertical lines
                 midlines = self.get_midline()
@@ -691,7 +712,7 @@ class Classification:
 def main():
     # Open video
     # Load YOLOv11 OBB model
-    model = YOLO('best.pt')  # Replace with your actual model file    
+    model = YOLO('best.pt')  # Replace with your actual model file     
     cap = cv2.VideoCapture("Vertigo for Solo Cello - Cicely Parnas.mp4")
     # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     def resize_keep_aspect(image, target_width=1200):
