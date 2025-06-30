@@ -583,6 +583,8 @@ class Classification:
         model = YOLO('best.pt')  # Replace with your actual model file    
         results = model(frame)
         avg_frame_counter = False
+        string_coords = None
+        bow_coords = None
         if len(results) == 0:
             return None
         #print("************", len(results[0].obb.xyxyxyxy), "************")
@@ -633,9 +635,9 @@ class Classification:
                         string_coords = np.array(return_dict["string"])
                         if self.bow_repeat <= 6:  
                             bow_coords = self.bow_points
-                            bow_coords += 1
+                            self.bow_repeat += 1
                         else:
-                            bow_coords = 0
+                            self.bow_repeat = 0
 
                 
             else:
@@ -713,8 +715,18 @@ def main():
     # Open video
     # Load YOLOv11 OBB model
     model = YOLO('best.pt')  # Replace with your actual model file     
-    cap = cv2.VideoCapture("Vertigo for Solo Cello - Cicely Parnas.mp4")
-    # cap = cv2.VideoCapture("bow too high-slow (3).mp4")
+    cap = cv2.VideoCapture("supination-slow.mp4")
+    #cap = cv2.VideoCapture("bow too high-slow (3).mp4")
+    
+    # Get video properties for output
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    # Define codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # You can also use 'XVID'
+    out = cv2.VideoWriter('annotated_output2.mp4', fourcc, fps, (frame_width, frame_height))
+    
     def resize_keep_aspect(image, target_width=1200):
         """Resize image while keeping aspect ratio"""
         h, w = image.shape[:2]
@@ -728,6 +740,9 @@ def main():
         success, frame = cap.read()
         if not success:
             break
+
+        # Rotate frame 180 degrees to correct orientation
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
 
         # Run YOLOv11 OBB inference
         annotated_frame = frame.copy()  # Initialize it safely with the original frame
@@ -758,6 +773,8 @@ def main():
 
         
 
+        # Write the annotated frame to output video (full resolution)
+        out.write(annotated_frame)
 
         # Resize frame for display
         resized_frame = resize_keep_aspect(annotated_frame, target_width=900)
@@ -769,8 +786,11 @@ def main():
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
+    # Release everything
     cap.release()
+    out.release()
     cv2.destroyAllWindows()
+    print("Video saved as 'annotated_output.mp4'")
 
 
 
