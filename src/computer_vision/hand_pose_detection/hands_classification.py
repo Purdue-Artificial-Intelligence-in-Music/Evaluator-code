@@ -166,6 +166,9 @@ class Hands:
         wrist_posture = 'None Detected'
         elbow_posture = 'None Detected'
         hand_coordinates = 'None Detected'
+        elbow_coordinate = 'None Detected'
+        shoulder_coordinate = 'None Detected'
+        wrist_coordinate = 'None Detected'
 
         with mp_hands.Hands(
             model_complexity=0,
@@ -226,6 +229,16 @@ class Hands:
 
                         landmarks = pose_results.pose_landmarks.landmark
 
+                        shoulder = landmarks[11]
+                        elbow = landmarks[13]
+                        wrist = landmarks[15]
+
+                        shoulder_x = shoulder.x
+                        shoulder_y = shoulder.y
+                        elbow_x = elbow.x
+                        elbow_y = elbow.y
+                        wrist_x = wrist.x
+                        wrist_y = wrist.y
                         
                     elbow_metrics = self.classify_elbow_posture(landmarks)
 
@@ -242,4 +255,4 @@ class Hands:
         if hand_coordinates != "None Detected":
             hand_coordinates = [(1 - lm.x, lm.y) for lm in hand_landmarks.landmark]
                 
-        return (wrist_posture, elbow_posture, hand_coordinates)
+        return (wrist_posture, elbow_posture, hand_coordinates, shoulder_x, shoulder_y, elbow_x, elbow_y, wrist_x, wrist_y)
