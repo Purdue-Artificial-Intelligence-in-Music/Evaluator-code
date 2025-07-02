@@ -626,7 +626,7 @@ class Classification:
                         bow_coords = np.array(return_dict["bow"])
                         if self.string_repeat <= 6:
                             string_coords = self.string_points
-                            string_repeat += 1
+                            self.string_repeat += 1
                         else:
                             string_coords = None
                     else:
