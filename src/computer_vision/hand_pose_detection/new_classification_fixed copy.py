@@ -404,17 +404,29 @@ class Classification:
         return self.bow_height_intersection((pt1, pt2), vertical_lines)
     
     @staticmethod
-    def sort_box_points_clockwise(pts):
+    def sort_string_points(pts):
         # Ensure numpy array for consistent indexing
-        pts = np.array(pts)
+        #sort in clockwise order around center, returns top left point first
+        #assumes only 4 points in a rectangle, with cello in upright position
+        #Since its upright rectangular, get top 2 points and the leftmost point will be the top left point. 
+        #get top 2 points
+        sorted_pts = sorted(pts, key=lambda x: x[1])
+        top_points = sorted_pts[2:]
+        bottom_points = sorted_pts[:2]
+        top_points = sorted(top_points, key=lambda x: x[0])
+        bottom_points = sorted(bottom_points, key=lambda x: x[0], reverse=True)
+        return np.array(top_points + bottom_points)
+
+
+        """pts = np.array(pts)
         center = np.mean(pts, axis=0)
 
         def angle_from_center(pt):
             return np.arctan2(pt[1] - center[1], pt[0] - center[0])
 
         # Sort points clockwise around center
-        sorted_pts = sorted(pts, key=angle_from_center)
-        return pts
+        sorted_pts = sorted(pts, key=angle_from_center)"""
+        #return pts
 
 
     def bow_height_intersection(self, intersection_points, vertical_lines):
@@ -613,7 +625,7 @@ class Classification:
                 if bow_index != -1 and string_index != -1:
                     return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                     return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                    string_coords = np.array(return_dict["string"])
+                    string_coords = self.sort_string_points(return_dict["string"])
                     bow_coords = np.array(return_dict["bow"])
                     self.string_repeat = 0
                     self.bow_repeat = 0
@@ -632,7 +644,7 @@ class Classification:
                     else:
                         self.string_repeat = 0
                         return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                        string_coords = np.array(return_dict["string"])
+                        string_coords = self.sort_string_points(return_dict["string"])
                         if self.bow_repeat <= 6:  
                             bow_coords = self.bow_points
                             self.bow_repeat += 1
@@ -715,7 +727,7 @@ def main():
     # Open video
     # Load YOLOv11 OBB model
     model = YOLO('best.pt')  # Replace with your actual model file     
-    cap = cv2.VideoCapture("supination-slow.mp4")
+    cap = cv2.VideoCapture("Cello_backend_test_v3.mp4")
     #cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     
     # Get video properties for output
@@ -742,7 +754,7 @@ def main():
             break
 
         # Rotate frame 180 degrees to correct orientation
-        frame = cv2.rotate(frame, cv2.ROTATE_180)
+        #frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
         # Run YOLOv11 OBB inference
         annotated_frame = frame.copy()  # Initialize it safely with the original frame
