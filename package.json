@@ -26,6 +26,7 @@
     "expo-font": "~13.0.1",
     "expo-image-picker": "~16.0.3",
     "expo-linking": "~7.0.3",
+    "expo-media-library": "~17.0.6",
     "expo-network": "~7.0.5",
     "expo-router": "~4.0.8",
     "expo-splash-screen": "~0.29.13",
@@ -44,8 +45,7 @@
     "react-native-svg": "^15.11.2",
     "react-native-vision-camera": "^4.6.4",
     "react-native-web": "~0.19.13",
-    "react-native-worklets-core": "^1.5.0",
-    "expo-media-library": "~17.0.6"
+    "react-native-worklets-core": "^1.5.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
