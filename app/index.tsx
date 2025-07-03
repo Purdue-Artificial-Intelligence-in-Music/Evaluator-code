@@ -68,12 +68,12 @@ export default function App() {
   const [ipAddress, setIpAddress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);  // State for camera permission
-  
 
-  
+
+
   const [points, setPoints] = useState([{x: 0, y: 0}]); // FOR THE POINTS WE NEED TO RENDER ON THE SCREEN
   const [linePoints, setLinePoints] = useState([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
-  const intervalRef = useRef<NodeJS.Timeout>();
+  const intervalRef = useRef<number | null>(null);
   const [recording, setRecording] = useState<boolean>(false);
   const [sendButton, setsendButton] = useState(false)
   const [sendVideo, setsendVideo] = useState(false)
@@ -98,7 +98,9 @@ const requestCameraPermission = async () => {
 type CameraComponentProps = {
   startDelay: number;
 };
-
+useEffect(() => {
+  console.log('Points updated:', points);
+}, [points]);
 const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   const device = useCameraDevice('back');
   if (device == null) {
@@ -110,7 +112,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     );
   }
   const cameraRef = useRef<Camera>(null);
-  const intervalRef = useRef<NodeJS.Timer | null>(null);
   const isTakingPhoto = useRef(false);
   const takePicture = async () => {
     if (cameraRef.current == null || isTakingPhoto.current) return;
@@ -125,8 +126,12 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       console.log("Photo taken, width: ", photo.width, "height: ", photo.height);
       const base64 = await RNFS.readFile(photo.path, 'base64');
       sendImageToBackend(`data:image/jpeg;base64,${base64}`);
-    } catch (err) {
-      console.error("Error taking photo:", err);
+    } catch (err: any) {
+      if (err?.message?.includes('Camera is closed')) {
+        console.warn('Camera was closed before photo could be taken.');
+      } else {
+        console.error("Error taking photo:", err);
+      }
     } finally {
       isTakingPhoto.current = false;
     }
@@ -136,17 +141,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       const timeout = setTimeout(() => {
         intervalRef.current = setInterval(() => {
           takePicture();
-        }, 500);
+        }, 500) as unknown as number;
       }, startDelay);
       return () => {
         clearTimeout(timeout);
-        if (intervalRef.current) clearInterval(intervalRef.current);
+        if (intervalRef.current !== null) clearInterval(intervalRef.current);
       };
     } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current !== null) clearInterval(intervalRef.current);
     }
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current !== null) clearInterval(intervalRef.current);
     };
   }, [recording, loading]);
 
@@ -176,35 +181,36 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         video={false}
         />
       
-      
-      {recording && isCameraOpen && (
         <Svg
-        viewBox={`0 0 ${imageWidth || 4080} ${imageHeight || 3060}`}
-        preserveAspectRatio="xMidYMid slice"
-        style={{ ...styles.cameraContainer, height: 440 - 20,  zIndex: 10 }}
+          viewBox={`0 0 ${imageWidth || 4080} ${imageHeight || 3060}`}
+          preserveAspectRatio="xMidYMid slice"
+          style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
         >
-          {points.map((item, index) => (
+          {recording && (
+            <>
+            {points.map((item, index) => (
             <Circle
-              r={10}
+              r={20}
               cx={item.x}
               cy={item.y}
               fill={`rgb(${255 - index * 30}, ${index * 30}, ${255 - index * 30})`}
               key={index}
             />
-          ))}
-          {linePoints.map((item, index) => (
-            <Line
-              x1={item.start.x}
-              y1={item.start.y}
-              x2={item.end.x}
-              y2={item.end.y}
-              strokeWidth={5}
-              stroke="red"
-              key={index}
-            />
-          ))}
+            ))}
+            {linePoints.map((item, index) => (
+              <Line
+                x1={item.start.x}
+                y1={item.start.y}
+                x2={item.end.x}
+                y2={item.end.y}
+                strokeWidth={5}
+                stroke="red"
+                key={index}
+              />
+            ))}
+            </>
+          )}
         </Svg>
-      )}
       </View>
       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
       <TouchableOpacity
@@ -298,8 +304,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         !isNaN(p.y)
       );
     });
-      setPoints(safePoints);
-    console.log('Points:', safePoints);
+    setPoints(safePoints);
+    // console.log('Points:', safePoints);
   }
 
   function modifyPoint(point: { x: number; y: number }, yFactor: number) {
@@ -723,7 +729,7 @@ const styles = StyleSheet.create({
 
   cameraContainer: {
     // flex: 1,
-    // position: 'absolute',
+    position: 'absolute',
    // marginVertical: 100,
     width: width * factor, //can be changed
     height: height * factorThree, //can be changed
