@@ -81,152 +81,10 @@ export default function App() {
 
   const [supinating, setSupinating] = useState<String>("none");
   
-  const [imageWidth, setImageWidth] = useState<number | null>(null);
-  const [imageHeight, setImageHeight] = useState<number | null>(null);
+  const [imageWidth, setImageWidth] = useState<number | null>(0);
+  const [imageHeight, setImageHeight] = useState<number | null>(0);
   
-  // CameraComponent to handle camera view
-// interface CameraComponentProps {
-//   startDelay: number;
-// }
-/*
-const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
-  const cameraRef = useRef<Camera | null>(null); // Ref to the Camera component
 
-  const takePicture = async () => {
-    if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync({
-        qualityPrioritization: 'speed',
-        quality: 85,
-        skipProcessing: true,
-        skipMetadata: true,
-        shutterSound: false,
-    });
-      sendImageToBackend(photo.base64 || '');
-      // console.log("photo dimensions: ", photo.width, photo.height);
-    }
-  };
-
-  useEffect(() => {
-    if (recording && !(loading)) {
-      setTimeout(() => {
-        intervalRef.current = setInterval(() => {
-          takePicture();
-        }, 500);
-      }, startDelay)
-    } else {
-      clearInterval(intervalRef.current);
-    }
- 
-
-    return () => clearInterval(intervalRef.current);
-  }, [recording, loading]);
-
-  return (
-    <View style={styles.cameraContainer}>
-       <TouchableOpacity
-          style={styles.closeCameraButton}
-          onPress={() => {
-           
-            setRecording(false); 
-            closeCamera();       // close the overlay
-            
-          }}
-         
-          activeOpacity = {1} // Prevents the button from being pressed when recording
-        >
-        <Image source={CloseCamera} style={styles.closeCameraButton} resizeMode="contain" />
-      </TouchableOpacity>
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        pictureSize={aspectRatio}
-        mirror={true}
-        onCameraReady={() => setLoading(false)}
-      />
-
-      <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-      <TouchableOpacity
-      onPress={() => {
-
-        if (recording) {
-          setRecording(false);
-          // reset old dots and lines
-          setPoints([{x: 0, y: 0}]);
-          setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
-        } else {
-          setRecording(true);
-        }
-      }} >
-
-      <Image
-        source = {recording ? Recording : Record}
-        style = {{width: 140, height: 40, marginTop: 10}}
-      />
-      </TouchableOpacity>
-      
-    </View>
-  );
-};
-*/
-
-
-// const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
-//   const device = useCameraDevice('back');
-//   if (device == null) return null;
-
-//   return (
-//     <View style={styles.cameraContainer}>
-//       <Camera
-//         style={{ flex: 1 }}
-//         device={device}
-//         isActive={true}
-//         photo={true}
-//         video={false}
-//       />
-//       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-//       <TouchableOpacity
-//       onPress={() => {
-
-//         if (recording) {
-//           setRecording(false);
-//           // reset old dots and lines
-//           setPoints([{x: 0, y: 0}]);
-//           setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
-//         } else {
-//           setRecording(true);
-//         }
-//       }} >
-
-//       <Image
-//         source = {recording ? Recording : Record}
-//         style = {{width: 140, height: 40, marginTop: 10}}
-//       />
-//       </TouchableOpacity>
-      
-//     </View>
-//   )
-// };
-
-
-
-// const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
-//   const device = useCameraDevice('back');
-//   if (device == null) return null;
-
-//   return (
-//     <View style={styles.cameraContainer}>
-//       <Camera
-//         style={{ flex: 1 }}
-//         device={device}
-//         isActive={true}
-//         photo={true}
-//         video={false}
-//       />
-//       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-//       <Button title="RECORD" onPress={() => setRecording(!recording)} />
-//     </View>
-//   )
-// };
 
 const requestCameraPermission = async () => {
   const status = await Camera.requestCameraPermission();
@@ -266,10 +124,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       setImageHeight(photo.height);
       console.log("Photo taken, width: ", photo.width, "height: ", photo.height);
       const base64 = await RNFS.readFile(photo.path, 'base64');
-      // const base64Data = `data:image/jpeg;base64,${base64}`;
       sendImageToBackend(`data:image/jpeg;base64,${base64}`);
-      // sendImageToBackend(`data:image/jpeg;base64,${base64}`)
-      // sendImageToBackend(photo.base64 || '');
     } catch (err) {
       console.error("Error taking photo:", err);
     } finally {
@@ -310,43 +165,47 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         >
         <Image source={CloseCamera} style={styles.closeCameraButton} resizeMode="contain" />
       </TouchableOpacity>
-      <View style={{ marginTop: 50 }}>
+      <View style={styles.cameraWrapper}>
         <Camera 
         ref={cameraRef}
-        style={{ marginTop: 50, width: width, height: height * 0.7 }}
+        style={StyleSheet.absoluteFill}
+        // style={{ marginTop: 50, width: width, height: height * 0.7 }}
         device={device}
         isActive={true}
         photo={true}
         video={false}
         />
-      </View>
       
-      <Svg
-        viewBox="0 0 3000 3000"
+      
+      {recording && isCameraOpen && (
+        <Svg
+        viewBox={`0 0 ${imageWidth || 4080} ${imageHeight || 3060}`}
         preserveAspectRatio="xMidYMid slice"
-        style={StyleSheet.absoluteFill}
-      >
-        {points.map((item, index) => (
-          <Circle
-            r={20}
-            cx={item.x}
-            cy={item.y}
-            fill={`rgb(${255 - index * 30}, ${index * 30}, ${255 - index * 30})`}
-            key={index}
-          />
-        ))}
-        {linePoints.map((item, index) => (
-          <Line
-            x1={item.start.x}
-            y1={item.start.y}
-            x2={item.end.x}
-            y2={item.end.y}
-            strokeWidth={5}
-            stroke="red"
-            key={index}
-          />
-        ))}
-      </Svg>
+        style={{ ...styles.cameraContainer, height: 440 - 20,  zIndex: 10 }}
+        >
+          {points.map((item, index) => (
+            <Circle
+              r={10}
+              cx={item.x}
+              cy={item.y}
+              fill={`rgb(${255 - index * 30}, ${index * 30}, ${255 - index * 30})`}
+              key={index}
+            />
+          ))}
+          {linePoints.map((item, index) => (
+            <Line
+              x1={item.start.x}
+              y1={item.start.y}
+              x2={item.end.x}
+              y2={item.end.y}
+              strokeWidth={5}
+              stroke="red"
+              key={index}
+            />
+          ))}
+        </Svg>
+      )}
+      </View>
       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
       <TouchableOpacity
       onPress={() => {
@@ -439,20 +298,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         !isNaN(p.y)
       );
     });
-    if (imageWidth && imageHeight) {
-      const scaleX = width / imageWidth;
-      const scaleY = height / imageHeight;
-
-      const scaledPoints = Object.values(safePoints).map(p => ({
-        x: p.x * scaleX,
-        y: p.y * scaleY,
-      }));
-      setPoints(scaledPoints);
-    } else {
       setPoints(safePoints);
-    }
-
-    console.log('Points:', points);
+    console.log('Points:', safePoints);
   }
 
   function modifyPoint(point: { x: number; y: number }, yFactor: number) {
@@ -886,19 +733,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // cameraContainer: {
-  //   width: width * 0.95,
-  //   maxWidth: 640,
-  //   height: height * 0.7,
-  //   marginBottom: 20,
-  //   borderRadius: 10,
-  //   overflow: 'hidden',
-  //   backgroundColor: 'transparent',
-  //   alignSelf: 'center',
-  //   marginTop: 100,
-  //   justifyContent: 'center',
-  //   alignItems: 'center', // 新增，让按钮居中
-  // },
+  cameraWrapper: {
+    width: width,
+    height: height * 0.7,
+    position: 'relative',
+    marginTop: 50,
+    overflow: 'hidden',
+  },
   point: {
     flex: 1,
     position: 'absolute',
@@ -935,7 +776,7 @@ const styles = StyleSheet.create({
   },
 
   cameraOverlay: {
-    flex: 1,
+    // flex: 1,
     position: 'absolute',
     top: 0,
     left: 0,
@@ -944,6 +785,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.9)', // Optional: Dim the background behind camera
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 5,
+    zIndex: 100,
   },
 });
