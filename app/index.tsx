@@ -57,11 +57,11 @@ if (Platform.OS === 'web') {
   factor = 0.5;
   factorTwo = 0.7;
 }
+
+
 // TODO: use ip address of your computer (the backend) here (use ipconfig or ifconfig to look up)
-
-
 export default function App() {
-  const [serverIP, setServerIP] = useState("10.186.24.147"); // Change this to your server's IP address
+  const [serverIP, setServerIP] = useState(""); // Change this to your server's IP address
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -531,7 +531,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
       <TouchableOpacity
         onPress={() => { 
-          console.log("Pressed open camera, isCameraOpen:", isCameraOpen);
+          console.log("Pressed open camera");
           if (!isCameraOpen) {
             openCamera();
           }
