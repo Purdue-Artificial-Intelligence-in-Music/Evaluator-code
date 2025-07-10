@@ -61,7 +61,7 @@ if (Platform.OS === 'web') {
 
 // TODO: use ip address of your computer (the backend) here (use ipconfig or ifconfig to look up)
 export default function App() {
-  const [serverIP, setServerIP] = useState(""); // Change this to your server's IP address
+  const [serverIP, setServerIP] = useState("10.186.25.110"); // Change this to your server's IP address
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -83,8 +83,8 @@ export default function App() {
   
   const [imageWidth, setImageWidth] = useState<number | null>(0);
   const [imageHeight, setImageHeight] = useState<number | null>(0);
-  
-
+  const socketRef = useRef<WebSocket | null>(null);
+  const isSending = useRef(false);
 
 const requestCameraPermission = async () => {
   const status = await Camera.requestCameraPermission();
@@ -95,12 +95,43 @@ const requestCameraPermission = async () => {
   }
   // console.log("camera permission status: ", status);
 };
+
 type CameraComponentProps = {
   startDelay: number;
 };
+
 useEffect(() => {
   console.log('Points updated:', points);
 }, [points]);
+
+useEffect(() => {
+    const socket = new WebSocket(`ws://${serverIP}:8000/ws`);
+    socketRef.current = socket;
+
+    socket.onopen = () => console.log("WebSocket connected");
+    socket.onmessage = (event) => {
+      try {
+        const responseData = JSON.parse(event.data);
+        console.log("Received:", responseData);
+        isSending.current = false;
+
+        processPoints(responseData);
+        setSupinating(responseData.supination.toString());
+      } catch (e) {
+        console.error("Error parsing server message:", e);
+      }
+    };
+    socket.onerror = (err) => {
+      console.error("WebSocket error:", err);
+      isSending.current = false;
+      socket.close();
+    };
+
+    socket.onclose = (event) => {
+      console.log("WebSocket closed", event.code, event.reason);
+    };
+}, []);
+
 const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   const device = useCameraDevice('back');
   if (device == null) {
@@ -114,7 +145,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   const cameraRef = useRef<Camera>(null);
   const isTakingPhoto = useRef(false);
   const takePicture = async () => {
-    if (cameraRef.current == null || isTakingPhoto.current) return;
+    if (cameraRef.current == null || isTakingPhoto.current || (socketRef.current?.readyState !== WebSocket.OPEN)) return;
     isTakingPhoto.current = true;
     try {
       const photo = await cameraRef.current.takePhoto({
@@ -331,48 +362,50 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   };
   // Send captured image to backend API
   const sendImageToBackend = async (imageBase64: string) => {
-    const jsonData = {
-      "title": "Test Image",
-      "content": "This is a test image",
-      "image": imageBase64,
-    }
-
-    try {
-      setLoading(true);
-      //django used /api/upload
-      const response = await fetch(`http://${serverIP}:8000/upload/`, {
-        method: 'POST',
-        body: JSON.stringify(jsonData),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        // console.log(response)
-
-        const responseData: ResponseData = await response.json(); // Type casting here
-
-        // console.log('Response Data:', responseData);
-        // console.log("All values in list: ", Object.values(responseData));
-
-        console.log(responseData)
-        processPoints(responseData)
-        // console.log('Points:', points);
-
-        
-        setSupinating(responseData["supination"].toString())
-      }
-
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Error: Failed to upload image.');
-
-    } finally {
-      setLoading(false);
+    if ((socketRef.current) && (socketRef.current.readyState === WebSocket.OPEN) && (!isSending.current)) {
+      isSending.current = true;
+      const message = {
+        type: "frame",
+        image: imageBase64,
+      };
+      socketRef.current.send(JSON.stringify(message));
     }
   };
 
+  // const sendImageToBackend = async (imageBase64: string) => {
+  //   const jsonData = {
+  //     "title": "Test Image",
+  //     "content": "This is a test image",
+  //     "image": imageBase64,
+  //   }
+  //   try {
+  //     setLoading(true);
+  //     const response = await fetch(`http://${serverIP}:8000/upload/`, {
+  //       method: 'POST',
+  //       body: JSON.stringify(jsonData),
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //       },
+  //     });
+
+  //     if (response.ok) {
+  //       const responseData: ResponseData = await response.json(); // Type casting here
+
+  //       console.log(responseData);
+  //       processPoints(responseData);  
+  //       setSupinating(responseData["supination"].toString());
+  //     }
+
+  //   } catch (error) {
+  //     console.error('Error uploading image:', error);
+  //     alert('Error: Failed to upload image.');
+
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+  
   // base64 + URL
   async function sendVideoBackend() {
     try {
