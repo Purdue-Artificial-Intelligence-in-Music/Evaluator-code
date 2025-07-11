@@ -228,7 +228,7 @@ class Classification:
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
-        print('String points:', self.string_points)
+        #print('String points:', self.string_points)
 
         if string_box_xyxyxyxy is not None:
             if not self.y_locked:
@@ -239,9 +239,14 @@ class Classification:
                     (new_x, old_y) for (new_x, _), (_, old_y) in zip(string_box_xyxyxyxy, self.string_points)
                 ])
                 """
+                string_box_xyxyxyxy = self.sort_string_points(string_box_xyxyxyxy)
                 self.string_points = string_box_xyxyxyxy
                 self.string_points[0][1] = self.y_avg[0]
                 self.string_points[1][1] = self.y_avg[1]
+                #self.string_points[2][1] = self.y_avg[2]
+                #self.string_points[3][1] = self.y_avg[3]
+                print("y_avg:",self.y_avg)
+                print(self.string_points)
             self.last_valid_string = self.string_points  # save for fallback use
         else:
             print("No new string box detected. Reusing last known string box.")
@@ -355,7 +360,7 @@ class Classification:
         return (leftSlope, leftYint, leftHT1, leftHT2), (rightSlope, rightYint, rightHT1, rightHT2)
 
     def intersects_vertical(self, linear_line, vertical_lines):
-        print('linear:', linear_line, '\nvertical:', vertical_lines)
+        #print('linear:', linear_line, '\nvertical:', vertical_lines)
 
         m, b = linear_line  # from get_midline()
         vertical_one = vertical_lines[0]
@@ -385,7 +390,7 @@ class Classification:
             ymax = max(top_y, bot_y)
 
             if not (ymin <= y <= ymax):
-                print(f"Intersection y={y} is outside vertical range ({ymin}, {ymax})")
+                #print(f"Intersection y={y} is outside vertical range ({ymin}, {ymax})")
                 return None
 
             return (x, y)
@@ -398,7 +403,7 @@ class Classification:
         pt2 = get_intersection(vertical_two, x_right)
 
         if pt1 is None or pt2 is None:
-            print("One or both intersections invalid")
+            #print("One or both intersections invalid")
             return 1
 
         return self.bow_height_intersection((pt1, pt2), vertical_lines)
@@ -410,9 +415,11 @@ class Classification:
         #assumes only 4 points in a rectangle, with cello in upright position
         #Since its upright rectangular, get top 2 points and the leftmost point will be the top left point. 
         #get top 2 points
+        #TOP LEFT CORNER IS (0,0)
+        #TOP LEFT POINT WILL BE SMALL Y, SMALL X
         sorted_pts = sorted(pts, key=lambda x: x[1])
-        top_points = sorted_pts[2:]
-        bottom_points = sorted_pts[:2]
+        top_points = sorted_pts[:2]
+        bottom_points = sorted_pts[2:]
         top_points = sorted(top_points, key=lambda x: x[0])
         bottom_points = sorted(bottom_points, key=lambda x: x[0], reverse=True)
         return np.array(top_points + bottom_points)
@@ -442,7 +449,7 @@ class Classification:
         - 2: Intersection is near bottom (hb1 or hb2)
         - 0: Intersection is in middle
         """
-        print('intersection:', intersection_points)
+        #print('intersection:', intersection_points)
         bot_scaling_factor = .25
         top_scaling_factor = .20
 
@@ -479,32 +486,34 @@ class Classification:
         height = ((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2
 
         min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
-        print('min:', min_y)
+        #print('min:', min_y)
         if (intersection_points[0][1] >= min_y or intersection_points[1][1] >= min_y):
             return 2
 
         max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
-        print('min:', max_y)
+        #print('min:', max_y)
         if (intersection_points[0][1] <= max_y or intersection_points[1][1] <= max_y):
             return 3
 
         return 0
 
     def average_y_coordinates(self, string_box_xyxyxyxy):
+        string_box_xyxyxyxy = self.sort_string_points(string_box_xyxyxyxy)
         self.frame_num += 1
         y_coords = [pt[1] for pt in string_box_xyxyxyxy]
         self.string_ycoord_heights.append(y_coords)
-
         if self.frame_num == self.num_wait_frames:
             top_left_avg = statistics.median([frame[0] for frame in self.string_ycoord_heights])
             top_right_avg = statistics.median([frame[1] for frame in self.string_ycoord_heights])
-            #top_y_avg = statistics.median([frame[0] for frame in self.string_ycoord_heights])  # top edge
-            #bot_y_avg = statistics.median([frame[3] for frame in self.string_ycoord_heights])  # bottom edge
+            #bot_right_avg = statistics.median([frame[2] for frame in self.string_ycoord_heights])  # top edge
+            #bot_left_avg = statistics.median([frame[3] for frame in self.string_ycoord_heights])  # bottom edge
 
             # Use original x-values, but lock Y-values at average top height
             self.string_points = string_box_xyxyxyxy
             self.string_points[0][1] = top_left_avg
             self.string_points[1][1] = top_right_avg
+            #self.string_points[2][1] = bot_right_avg
+            #self.string_points[3][1] = bot_left_avg
             self.y_avg = [top_left_avg, top_right_avg]
             self.y_locked = True
 
@@ -530,7 +539,7 @@ class Classification:
         angle_one = abs(math.degrees(math.atan(abs(bow_line[0] - vertical_two[0]) / (1 + bow_line[0] * vertical_two[0]))))
         angle_two = abs(math.degrees(math.atan(abs(vertical_one[0] - bow_line[0]) / (1 + vertical_one[0] * bow_line[0]))))
         
-        print('angle:', max(90 - angle_one, 90 - angle_two))
+        #print('angle:', max(90 - angle_one, 90 - angle_two))
         
         if (max(angle_one, angle_two) < (90 - max_angle)):
             return 1
@@ -625,6 +634,7 @@ class Classification:
                 if bow_index != -1 and string_index != -1:
                     return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                     return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                    #print(result.obb[string_index].xyxyxyxy)
                     string_coords = self.sort_string_points(return_dict["string"])
                     bow_coords = np.array(return_dict["bow"])
                     self.string_repeat = 0
@@ -671,6 +681,7 @@ class Classification:
             if string_coords is not None and bow_coords is not None:
                 #runs only if detection of both objects in the last 6 frames
                 self.update_points(string_coords, bow_coords)
+                #string_coords = self.string_points
                 # Get bow midline and vertical lines
                 midlines = self.get_midline()
                 vert_lines = self.get_vertical_lines()
@@ -682,6 +693,7 @@ class Classification:
                 return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
                 return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
                 return_dict["class"] = result
+                #print(self.string_points)
             else:
                 return_dict["class"] = -1
             return return_dict
@@ -726,7 +738,9 @@ class Classification:
 def main():
     # Open video
     # Load YOLOv11 OBB model
-    model = YOLO('best.pt')  # Replace with your actual model file     
+    #model_path = "newest_best.pt"
+    model_path = "/Users/paolowang/best_saved_model/best_float16.tflite"
+    model = YOLO(model_path, task="obb")  # Replace with your actual model file     
     cap = cv2.VideoCapture("Cello_backend_test_v3.mp4")
     #cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     
