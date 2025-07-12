@@ -502,7 +502,7 @@ class Classification:
         self.frame_num += 1
         y_coords = [pt[1] for pt in string_box_xyxyxyxy]
         self.string_ycoord_heights.append(y_coords)
-        if self.frame_num == self.num_wait_frames:
+        if self.frame_num % self.num_wait_frames:
             top_left_avg = statistics.median([frame[0] for frame in self.string_ycoord_heights])
             top_right_avg = statistics.median([frame[1] for frame in self.string_ycoord_heights])
             #bot_right_avg = statistics.median([frame[2] for frame in self.string_ycoord_heights])  # top edge
@@ -516,6 +516,7 @@ class Classification:
             #self.string_points[3][1] = bot_left_avg
             self.y_avg = [top_left_avg, top_right_avg]
             self.y_locked = True
+            self.string_ycoord_heights = []
 
     def bow_angle(self, bow_line, vertical_lines):
         """
@@ -639,6 +640,7 @@ class Classification:
                     bow_coords = np.array(return_dict["bow"])
                     self.string_repeat = 0
                     self.bow_repeat = 0
+                    self.average_y_coordinates(string_coords)
                 else:
                     #only one object class detected
                     return_dict["class"] = -1
@@ -655,6 +657,7 @@ class Classification:
                         self.string_repeat = 0
                         return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                         string_coords = self.sort_string_points(return_dict["string"])
+                        self.average_y_coordinates(string_coords)
                         if self.bow_repeat <= 6:  
                             bow_coords = self.bow_points
                             self.bow_repeat += 1
@@ -668,15 +671,6 @@ class Classification:
                 print("no detections")
                 return return_dict
             
-            
-            if (return_dict["string"] is not None):
-                #if string is detected, we use it for getting the average y coordinate of the top two string points
-                #return -3 until averaging is complete (should be 11 frames, or equivalent of self.num_wait_frames)
-                if self.frame_num <= self.num_wait_frames:
-                    self.average_y_coordinates(string_coords)
-                    return_dict["class"] = -3
-                    return return_dict
-                
             
             if string_coords is not None and bow_coords is not None:
                 #runs only if detection of both objects in the last 6 frames
