@@ -153,8 +153,8 @@ class Hands:
         theta_rad_3d = np.arccos(np.clip(cos_theta_3d, -1.0, 1.0))
         theta_deg_3d = np.degrees(theta_rad_3d)
 
-        shoulder_elbow_dist = np.sqrt(shoulder_elbow_dist_vec[0]**2 + shoulder_elbow_dist_vec[1]**2 + shoulder_elbow_dist_vec[2]**2)
-        hand_elbow_dist = np.sqrt(hand_elbow_dist_vec[0]**2 + hand_elbow_dist_vec[1]**2 + hand_elbow_dist_vec[2]**2)
+        shoulder_elbow_dist = np.linalg.norm(shoulder_elbow_dist_vec)
+        hand_elbow_dist = np.linalg.norm(hand_elbow_dist_vec)
 
         shoulder_elbow_dist_norm = shoulder_elbow_dist_vec / shoulder_elbow_dist
         hand_elbow_dist_norm = hand_elbow_dist_vec / hand_elbow_dist
