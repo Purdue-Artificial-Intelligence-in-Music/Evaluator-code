@@ -19,7 +19,7 @@ model_directory = os.path.join(base_directory, 'model', 'keypoint_classifier')
 
 # Model paths for hand and elbow models 
 model_file = 'keypoint_classifier_FINAL.tflite'
-model_file_elbow = 'keypoint_classifier (1).tflite'
+model_file_elbow = 'keypoint_classifier_shoulder.tflite'
 
 # Ensure the model file exists
 if not os.path.exists(model_file):
@@ -38,6 +38,9 @@ mp_hands = mp.solutions.hands
     
 #setup gesture options
 num_hands = 2
+
+finger_coords = {}
+
     
 # instantiate gesture classifier
 keypoint_classifier = KeyPointClassifier(model_path=model_file)
@@ -161,95 +164,87 @@ class Hands:
 
         return (shoulder_elbow_dist_norm[0], shoulder_elbow_dist_norm[1], shoulder_elbow_dist_norm[2], hand_elbow_dist_norm[0], hand_elbow_dist_norm[1], hand_elbow_dist_norm[2], theta_rad_3d, shoulder_elbow_dist, hand_elbow_dist)
     
-    def process_frame(self, image):
+    def process_frame(self, image, hands, pose):
 
         wrist_posture = 'None Detected'
         elbow_posture = 'None Detected'
         hand_coordinates = 'None Detected'
-        elbow_coordinate = 'None Detected'
-        shoulder_coordinate = 'None Detected'
-        wrist_coordinate = 'None Detected'
 
-        with mp_hands.Hands(
-            model_complexity=0,
-            max_num_hands=num_hands,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5) as hands, mp_pose.Pose(
-            model_complexity=0,
-            min_detection_confidence=0.4,
-            min_tracking_confidence=0.6) as pose:
+        # To improve performance, optionally mark the image as not writeable to
+        # pass by reference.
+        image.flags.writeable = False
 
-            # To improve performance, optionally mark the image as not writeable to
-            # pass by reference.
-            image.flags.writeable = False
+        image = cv2.flip(image, 1)
 
-            image = cv2.flip(image, 1)
-            #image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # mp hand model
+        results = hands.process(image)
 
-            # mp hand model
-            results = hands.process(image)
+        # mp pose model
+        pose_results = pose.process(image)
 
-            # mp pose model
-            pose_results = pose.process(image)
+        image_height, image_width, _ = image.shape
                 
-            # Draw hand landmarks
-            if results.multi_hand_landmarks is not None:
+        # Draw hand landmarks
+        if results.multi_hand_landmarks is not None:
 
-                for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                for ids, landmrk in enumerate(hand_landmarks.landmark):
+                    cx, cy = landmrk.x * image_width, landmrk.y * image_height
+                    self.store_finger_node_coords(ids, cx, cy, finger_coords)
                         
-                    # Check if the hand is the bow hand
-                    if handedness.classification[0].label == 'Right':
+                # Check if the hand is the bow hand
+                if handedness.classification[0].label == 'Right':
 
-                        hand_coordinates = hand_landmarks
+                    hand_coordinates = hand_landmarks
 
-                        # Landmark calculation
-                        landmark_list = self.calc_landmark_list(image, hand_landmarks)
+                    # Landmark calculation
+                    landmark_list = self.calc_landmark_list(image, hand_landmarks)
 
-                        # Conversion to relative coordinates / normalized coordinates
-                        pre_processed_landmark_list = self.pre_process_landmark(landmark_list)
+                    # Conversion to relative coordinates / normalized coordinates
+                    pre_processed_landmark_list = self.pre_process_landmark(landmark_list)
 
-                            # Hand sign classification
-                        hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                    # Hand sign classification
+                    hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
 
-                        if hand_sign_id == 0:
-                            wrist_posture = 'Normal'
-                        elif hand_sign_id == 1:
-                            wrist_posture = 'Supination'
-                        elif hand_sign_id == 2:
-                            wrist_posture = 'Pronation'
+                    if hand_sign_id == 0:
+                        wrist_posture = 'Normal'
+                    elif hand_sign_id == 1:
+                        wrist_posture = 'Supination'
+                    elif hand_sign_id == 2:
+                        wrist_posture = 'Pronation'
                         
-                    # Draw pose
-                    if pose_results.pose_landmarks:
+                # Draw pose
+                if pose_results.pose_landmarks:
                             
-                        landmark_subset = landmark_pb2.NormalizedLandmarkList(landmark=pose_results.pose_landmarks.landmark[11:15])
+                    landmark_subset = landmark_pb2.NormalizedLandmarkList(landmark=pose_results.pose_landmarks.landmark[11:15])
                         
-                    if pose_results.pose_landmarks:
+                if pose_results.pose_landmarks:
 
-                        landmarks = pose_results.pose_landmarks.landmark
+                    landmarks = pose_results.pose_landmarks.landmark
 
-                        shoulder = landmarks[11]
-                        elbow = landmarks[13]
-                        wrist = landmarks[15]
+                    shoulder = landmarks[11]
+                    elbow = landmarks[13]
+                    wrist = landmarks[15]
 
-                        shoulder_x = shoulder.x
-                        shoulder_y = shoulder.y
-                        elbow_x = elbow.x
-                        elbow_y = elbow.y
-                        wrist_x = wrist.x
-                        wrist_y = wrist.y
+                    shoulder_x = shoulder.x
+                    shoulder_y = shoulder.y
+                    elbow_x = elbow.x
+                    elbow_y = elbow.y
+                    wrist_x = wrist.x
+                    wrist_y = wrist.y
                         
-                    elbow_metrics = self.classify_elbow_posture(landmarks)
+                elbow_metrics = self.classify_elbow_posture(landmarks)
 
-                    elbow_classification_id = elbow_classifier(elbow_metrics)
+                elbow_classification_id = elbow_classifier(elbow_metrics)
 
-                    if elbow_classification_id == 0:
-                        elbow_posture = 'Normal'
-                    elif elbow_classification_id == 1:
-                        elbow_posture = 'Too Low'
-                    elif elbow_classification_id == 2:
-                        elbow_posture = 'Too High'
+                if elbow_classification_id == 0:
+                    elbow_posture = 'Normal'
+                elif elbow_classification_id == 1:
+                    elbow_posture = 'Too Low'
+                elif elbow_classification_id == 2:
+                    elbow_posture = 'Too High'
 
         #gets rid of the z coordinate and flips the x-coordinates
         if hand_coordinates != "None Detected":
