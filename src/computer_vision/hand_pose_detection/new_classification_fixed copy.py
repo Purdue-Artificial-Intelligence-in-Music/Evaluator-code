@@ -225,6 +225,7 @@ class Classification:
         self.y_avg = [0, 0]
         self.bow_repeat = 0
         self.string_repeat = 0
+        self.model = YOLO('nano_best.pt', task="obb")  # Replace with your actual model file    
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
@@ -602,8 +603,8 @@ class Classification:
         return_dict = {"class": None, "bow": None, "string": None, "angle": None}
         #expectation is that the frame is already resized to correct proportions
         classes = ["bow", "string"]
-        model = YOLO('best.pt')  # Replace with your actual model file    
-        results = model(frame)
+        #model_path = "newest_best_saved_model/newest_best_float16.tflite" 
+        results = self.model(frame)
         avg_frame_counter = False
         string_coords = None
         bow_coords = None
@@ -733,9 +734,9 @@ def main():
     # Open video
     # Load YOLOv11 OBB model
     #model_path = "newest_best.pt"
-    model_path = "/Users/paolowang/best_saved_model/best_float16.tflite"
-    model = YOLO(model_path, task="obb")  # Replace with your actual model file     
-    cap = cv2.VideoCapture("Cello_backend_test_v3.mp4")
+    #model_path = "/Users/paolowang/best_saved_model/best_float16.tflite"
+    #model = YOLO(model_path, task="obb")  # Replace with your actual model file     
+    cap = cv2.VideoCapture("good posture.MOV")
     #cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     
     # Get video properties for output
@@ -762,7 +763,7 @@ def main():
             break
 
         # Rotate frame 180 degrees to correct orientation
-        #frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
         # Run YOLOv11 OBB inference
         annotated_frame = frame.copy()  # Initialize it safely with the original frame
