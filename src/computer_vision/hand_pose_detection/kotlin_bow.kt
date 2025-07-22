@@ -71,9 +71,18 @@ class kotlin_bow {
             //need to do averaging of top two y coords
             return_bow.string = results.string
             average_y_coordinates(results.string)
+            if (results.bow == null && bowRepeat < 5 && bowPoints != null) {
+                return_bow.classification = -1
+                bowRepeat++
+                return_bow.bow = bowPoints
         }
         if (results.bow != null) {
             return_bow.bow = results.bow
+            if (results.string == null && stringRepeat < 5 && stringPoints != null) {
+                return_bow.classification = -1
+                stringRepeat++
+                return_bow.string = stringPoints
+            }
         }
         if (results.bow != null && results.string != null) {
             update_points(results.string, results.bow)
