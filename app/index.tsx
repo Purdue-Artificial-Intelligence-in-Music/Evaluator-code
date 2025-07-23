@@ -61,7 +61,7 @@ if (Platform.OS === 'web') {
 
 // TODO: use ip address of your computer (the backend) here (use ipconfig or ifconfig to look up)
 export default function App() {
-  const [serverIP, setServerIP] = useState("10.186.26.87"); // Change this to your server's IP address
+  const [serverIP, setServerIP] = useState("10.186.18.225"); // Change this to your server's IP address
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -335,36 +335,47 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   };
 
 
-  function processPoints(responseData: ResponseData) {
-
-    //modify the points such that the screen adjusts
-    responseData = correctPoints(responseData, 0.75)
-
-    let newLines = [{start: responseData["box bow top left"], end: responseData["box bow top right"]},
-                    {start: responseData["box bow top right"], end: responseData["box bow bottom right"]},
-                    {start: responseData["box bow bottom right"], end: responseData["box bow bottom left"]},
-                    {start: responseData["box bow bottom left"], end: responseData["box bow top left"]},
-
-                    {start: responseData["box string top left"], end: responseData["box string top right"]},
-                    {start: responseData["box string top right"], end: responseData["box string bottom right"]},
-                    {start: responseData["box string bottom right"], end: responseData["box string bottom left"]},
-                    {start: responseData["box string bottom left"], end: responseData["box string top left"]},
-                  ];
-
+  function processPoints(responseData: any) {
+    const coordList = responseData.coord_list || {};
+    const classificationList = responseData.classification_list || {};
+  
+    // transform box/box string points into coordinates {x, y}
+    function arrToPoint(arr: number[] | undefined) {
+      if (!arr || arr.length !== 2) return { x: 0, y: 0 };
+      return { x: arr[0], y: arr[1] };
+    }
+  
+    // get lines
+    const newLines = [
+      { start: arrToPoint(coordList["box bow top left"]), end: arrToPoint(coordList["box bow top right"]) },
+      { start: arrToPoint(coordList["box bow top right"]), end: arrToPoint(coordList["box bow bottom right"]) },
+      { start: arrToPoint(coordList["box bow bottom right"]), end: arrToPoint(coordList["box bow bottom left"]) },
+      { start: arrToPoint(coordList["box bow bottom left"]), end: arrToPoint(coordList["box bow top left"]) },
+  
+      { start: arrToPoint(coordList["box string top left"]), end: arrToPoint(coordList["box string top right"]) },
+      { start: arrToPoint(coordList["box string top right"]), end: arrToPoint(coordList["box string bottom right"]) },
+      { start: arrToPoint(coordList["box string bottom right"]), end: arrToPoint(coordList["box string bottom left"]) },
+      { start: arrToPoint(coordList["box string bottom left"]), end: arrToPoint(coordList["box string top left"]) },
+    ];
     setLinePoints(newLines);
-    console.log("newLines: ", newLines);
-    const safePoints = Object.values(responseData).filter(p => {
-      return (
-        typeof p === 'object' &&
-        p !== null &&
-        typeof p.x === 'number' &&
-        typeof p.y === 'number' &&
-        !isNaN(p.x) &&
-        !isNaN(p.y)
-      );
-    });
-    setPoints(safePoints);
-    // console.log('Points:', safePoints);
+  
+    const boxPoints = [
+      "box bow top left", "box bow top right", "box bow bottom right", "box bow bottom left",
+      "box string top left", "box string top right", "box string bottom right", "box string bottom left"
+    ].map(key => arrToPoint(coordList[key]));
+
+    const handPoints = Array.isArray(coordList["hand points"])
+      ? coordList["hand points"].map(arrToPoint)
+      : [];
+
+    setPoints([...boxPoints, ...handPoints]);
+
+    if (classificationList["wrist posture"]) {
+      setSupinating(classificationList["wrist posture"]);
+    }
+
+    console.log("New points:", points, "; lines: ", linePoints);
+    console.log("New supination: ", classificationList ? classificationList["wrist posture"] : 'None');
   }
 
   function modifyPoint(point: { x: number; y: number }, yFactor: number) {
