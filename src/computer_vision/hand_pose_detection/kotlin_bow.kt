@@ -107,7 +107,6 @@ class kotlin_bow {
     classifies bow angle relative to two vertical lines of string box
      */
     private fun bow_angle(bowLine: MutableList<Int>, verticalLines: MutableList<Int>): Int {
-]
         // flexibility of angle relative to 90 degrees
         val max_angle = 15
 
@@ -162,28 +161,156 @@ class kotlin_bow {
                 return_bow.classification = -1
                 bowRepeat++
                 return_bow.bow = bowPoints
-        }
-        if (results.bow != null) {
-            return_bow.bow = results.bow
-            if (results.string == null && stringRepeat < 5 && stringPoints != null) {
-                return_bow.classification = -1
-                stringRepeat++
-                return_bow.string = stringPoints
             }
-        }
-        if (results.bow != null && results.string != null) {
-            update_points(results.string, results.bow)
-            val midlines = get_midline()
-            val vert_lines = get_vertical_lines()
-            val intersect_points = intersects_vertical(midlines, vert_lines)
-            return_bow.angle = bow_angle(midlines, vert_lines)
-            return_bow.classification = intersect_points
-            return return_bow
+            if (results.bow != null) {
+                return_bow.bow = results.bow
+                if (results.string == null && stringRepeat < 5 && stringPoints != null) {
+                    return_bow.classification = -1
+                    stringRepeat++
+                    return_bow.string = stringPoints
+                }
+            }
+            if (results.bow != null && results.string != null) {
+                update_points(results.string, results.bow)
+                val midlines = get_midline()
+                val vert_lines = get_vertical_lines()
+                val intersect_points = intersects_vertical(midlines, vert_lines)
+                return_bow.angle = bow_angle(midlines, vert_lines)
+                return_bow.classification = intersect_points
+                return return_bow
 
-        } else {
-            return_bow.classification = -1
-            return return_bow
+            } else {
+                return_bow.classification = -1
+                return return_bow
+            }
+
+        }
+    }
+
+    val  model =
+        CompiledModel.create(
+            context.assets,
+            "/Users/jacksonshields/Documents/Evaluator/runs/obb/train4/weights/best_saved_model/best_float32.tflite",
+            CompiledModel.Options(Accelerator.CPU),
+            env,
+        )
+
+    /* takes in original image, a set size (default 640x640 p)
+     * Rescales the image while maintaining aspect ratio, then pads to be square
+     * Returns the padding and new image
+     */
+    fun letterbox(img: Mat, newShape: Size = Size(640.0, 640.0)): Pair<Mat, Pair<Double, Double>> {
+        val shape = Size(img.width().toDouble(), img.height().toDouble())
+        val r = min(newShape.width / shape.width, newShape.height / shape.height)
+        val newUnpad = Size(round(shape.width * r), round(shape.height * r))
+        val dw = (newShape.width - newUnpad.width) / 2
+        val dh = (newShape.height - newUnpad.height) / 2
+
+        val resized = Mat()
+        Imgproc.resize(img, resized, newUnpad)
+        val top = round(dh - 0.1).toInt()
+        val bottom = round(dh + 0.1).toInt()
+        val left = round(dw - 0.1).toInt()
+        val right = round(dw + 0.1).toInt()
+        val padded = Mat()
+        Core.copyMakeBorder(resized, padded, top, bottom, left, right, Core.BORDER_CONSTANT, Scalar(114.0, 114.0, 114.0))
+        return Pair(padded, Pair(top / padded.height().toDouble(), left / padded.width().toDouble()))
+    }
+
+    /*
+     * preprocesses the given image. Runs letterbox (rescales/packs).
+     * Converts the image to RGB
+     * Converts the image to float32 and normalizes it
+     * Returns the preprocessed image to be ran on the model
+     */
+    fun preprocess(img: Mat, newShape: Size = Size(640.0, 640.0)): Mat {
+        val (letterboxed, pad) = letterbox(img, newShape)
+        val rgb = Mat()
+        Imgproc.cvtColor(img, rgb, Imgproc.COLOR_BGR2RGB)
+        val floatImg = Mat()
+        rgb.convertTo(floatImg, CvType.CV_32FC3, 1.0 / 255.0)
+        return floatImg
+    }
+
+    /*
+     * postprocessing of the output
+     * requires the original image, the results, resized shape, and padding (from letterbox)
+     *
+     */
+    fun postprocess(
+        origImg: Mat,
+        outputs: Array<FloatArray>, // shape: [N, 7] (cx, cy, h, w, conf, cls, angle)
+        resizedShape: Size,
+        pad: Pair<Double, Double>
+    ): List<List<Float>> {
+        val results = mutableListOf<List<Float>>()
+        val targetH = origImg.height()
+        val targetW = origImg.width()
+        val r = min(resizedShape.height / targetH, resizedShape.width / targetW)
+        val targetScale = max(targetH, targetW).toFloat()
+
+        for (out in outputs) {
+            // Adjust coordinates
+            val cx = targetScale * (out[0] - pad.second)
+            val cy = targetScale * (out[1] - pad.first)
+            val w = targetScale * out[3]
+            val h = targetScale * out[2]
+            val conf = out[4]
+            val angleRad = out[6]
+
+            // Convert to 4 corner points (rotated rectangle)
+            val points = rotatedRectToPoints(cx, cy, w, h, angleRad)
+            // Add confidence to result
+            val result = points.map { listOf(it.first, it.second) }.flatten().toMutableList()
+            result.add(conf)
+            results.add(result)
+        }
+        return results
+    }
+
+    // Helper for rotated rectangle to points
+    fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float): List<Pair<Float, Float>> {
+        val halfW = w / 2
+        val halfH = h / 2
+        val cosA = cos(angleRad - Math.PI.toFloat() / 2)
+        val sinA = sin(angleRad - Math.PI.toFloat() / 2)
+        val corners = listOf(
+            Pair(-halfW, -halfH),
+            Pair(halfW, -halfH),
+            Pair(halfW, halfH),
+            Pair(-halfW, halfH)
+        )
+        return corners.map { (x, y) ->
+            val xRot = x * cosA - y * sinA + cx
+            val yRot = x * sinA + y * cosA + cy
+            Pair(xRot, yRot)
+        }
+    }
+
+    fun model(frame: Mat, targetShape: Size = Size(640, 640)):  List<List<Float>> {
+        val preprocessed = preprocess(frame, targetShape)
+
+        // Prepare input buffer
+        val inputBuffers = model.createInputBuffers()
+        // Flatten preprocessed Mat to float array
+        val inputArray = FloatArray((preprocessed.total() * preprocessed.channels()).toInt())
+        preprocessed.get(0, 0, inputArray)
+        inputBuffers[0].writeFloat(inputArray)
+
+        // Run inference
+        val outputBuffers = model.createOutputBuffers()
+        model.run(inputBuffers, outputBuffers)
+        val outputs = outputBuffers[0].readFloatArray() // shape: [N, 7]
+        // Convert output to Array<FloatArray>
+        val numDetections = outputs.size / 7
+        val outputArray = Array(numDetections) { i ->
+            outputs.sliceArray(i * 7 until (i + 1) * 7)
         }
 
+        // Postprocess
+        val results = postprocess(frame, outputArray, letterboxed.size(), pad)
+        println("Detections: $results")
+
+        return results
     }
 } 
