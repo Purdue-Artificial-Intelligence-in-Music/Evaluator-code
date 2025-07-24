@@ -86,18 +86,23 @@ class kotlin_bow {
     return mutableListOf(leftLine, rightLine)
 }
 
-    private fun intersects_vertical(linearLine: MutableList<Int>, verticalLines: MutableList<Int>): MutableList<Int> {
+private fun intersects_vertical(
+    linearLine: MutableList<Int>,
+    verticalLines: MutableList<Int>
+): MutableList<Int> {
     println("linear: $linearLine\nvertical: $verticalLines")
 
-    // slope and intercept from the linear line (midline)
-    val m = linearLine[0].toDouble()
-    val b = linearLine[1].toDouble()
+    // Midline parameters
+    val m = linearLine[0].toDouble() // slope of the midline
+    val b = linearLine[1].toDouble() // y-intercept of the midline
 
-    // Extract two vertical lines (each has 4 components)
+    // extracts the first vertical line (left side): [slope, yInt, topY, botY]
     val verticalOne = verticalLines.subList(0, 4).map { it.toDouble() }
+
+    // extracts the second vertical line (right side)
     val verticalTwo = verticalLines.subList(4, 8).map { it.toDouble() }
 
-    // Function to calculate intersection of a vertical line with the midline
+    // Calculates the intersection of the midline with a vertical line
     fun getIntersection(vLine: List<Double>, xRef: Double): Pair<Double, Double>? {
         val slopeV = vLine[0]
         val interceptV = vLine[1]
@@ -108,26 +113,25 @@ class kotlin_bow {
         val y: Double
 
         if (slopeV == Double.POSITIVE_INFINITY || interceptV == -1.0) {
-            // Vertical string line: x = constant
             x = xRef
-            if (m == Double.POSITIVE_INFINITY) return null
+            if (m == Double.POSITIVE_INFINITY) return null // both lines vertical
             y = m * x + b
         } else if (m == Double.POSITIVE_INFINITY) {
-            // Midline is vertical
+            // Case: vertical midline
             x = b
             y = slopeV * x + interceptV
         } else if (kotlin.math.abs(m - slopeV) < 1e-6) {
-            // Parallel lines
+            // parallel lines means no intersection
             return null
         } else {
-            // Intersection point
             x = (interceptV - b) / (m - slopeV)
             y = m * x + b
         }
 
-        // Ensure y is within the visible segment of the vertical line
+        // Makes sure intersection y-value is within the vertical segment's range
         val ymin = minOf(topY, botY)
         val ymax = maxOf(topY, botY)
+
         if (y !in ymin..ymax) {
             println("Intersection y=$y is outside vertical range ($ymin, $ymax)")
             return null
@@ -136,22 +140,22 @@ class kotlin_bow {
         return Pair(x, y)
     }
 
-    // Example: Get x coordinates from string points (assume defined elsewhere)
-    val xLeft = this.stringPoints[0][0].toDouble()  // top-left x
-    val xRight = this.stringPoints[1][0].toDouble() // top-right x
+    // Determine x positions from the bounding box 
+    val xLeft = this.stringPoints[0][0].toDouble()  
+    val xRight = this.stringPoints[1][0].toDouble() 
 
+    // Calculate intersections of midline with both vertical string lines
     val pt1 = getIntersection(verticalOne, xLeft)
     val pt2 = getIntersection(verticalTwo, xRight)
 
     if (pt1 == null || pt2 == null) {
         println("One or both intersections invalid")
-        return mutableListOf(1)  // Or some fallback/intended error value
+        return mutableListOf(1) 
     }
 
-    // You would implement this function elsewhere to get the result
+    // calls another function to evaluate the height between the intersections
     return bow_height_intersection(pt1, pt2, verticalLines)
 }
-
 
     private fun sort_string_points(pts: MutableList<Int>): MutableList<MutableList<Int>> {
     }
