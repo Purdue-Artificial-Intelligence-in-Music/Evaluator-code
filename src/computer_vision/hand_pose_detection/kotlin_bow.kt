@@ -154,13 +154,50 @@ private fun intersects_vertical(
     }
 
     // calls another function to evaluate the height between the intersections
-    return bow_height_intersection(pt1, pt2, verticalLines)
+    return bow_height_intersection(mutableListOf(pt1, pt2), verticalLines)
 }
 
     private fun sort_string_points(pts: MutableList<Int>): MutableList<MutableList<Int>> {
     }
 
-    private fun bow_height_intersection(intersectionPoints: MutableList<Int>, verticalLines: MutableList<Int>): Int {
+    /*
+     * Determines the height level at which the linear line intersects the vertical lines.
+
+        Returns:
+        - 3: Intersection is near top of the box (ht1 or ht2)
+        - 2: Intersection is near bottom (hb1 or hb2)
+        - 0: Intersection is in middle
+     */
+
+    private fun bow_height_intersection(intersectionPoints: MutableList<Pair<Double, Double>>, verticalLines: MutableList<Int>): Int {
+        val bot_scaling_factor = .25
+        val top_scaling_factor = .20
+
+        // Extracts the vertical lines from the list
+        val vertical_one = verticalLines[0]
+        val vertical_two = verticalLines[1]
+
+        // Extracts the bottom y-coordinates of the vertical lines
+        val bot_y1 = vertical_one[3].toDouble()
+        val bot_y2 = vertical_two[3].toDouble()
+        
+        // Extracts the top y-coordinates of the vertical lines
+        val top_y1 = vertical_one[2].toDouble()
+        val top_y2 = vertical_two[2].toDouble()
+
+        // Calculates the height of the bow based on the vertical lines
+        val height = ((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0
+
+        // Calculates the minimum and maximum y-coordinates for the intersections based on the scaling factors
+        val min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
+        if (intersection_points[0][1].toDouble() >= min_y || intersection_points[1][1].toDouble() >= min_y):
+            return 2
+
+        val max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
+        if (intersection_points[0][1].toDouble() <= max_y or intersection_points[1][1].toDouble() <= max_y):
+            return 3
+
+        return 0
     }
 
     private fun average_y_coordinates(stringBoxCoords: MutableList<Int>) {
