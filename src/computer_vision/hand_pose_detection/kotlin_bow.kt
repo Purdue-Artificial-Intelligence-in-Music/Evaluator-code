@@ -174,8 +174,8 @@ private fun intersects_vertical(
         val top_scaling_factor = .20
 
         // Extracts the vertical lines from the list
-        val vertical_one = verticalLines[0]
-        val vertical_two = verticalLines[1]
+        val vertical_one = verticalLines[0].toDouble()
+        val vertical_two = verticalLines[1].toDouble()
 
         // Extracts the bottom y-coordinates of the vertical lines
         val bot_y1 = vertical_one[3].toDouble()
