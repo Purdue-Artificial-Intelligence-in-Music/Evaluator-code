@@ -263,9 +263,9 @@ class kotlin_bow {
             val points = rotatedRectToPoints(cx, cy, w, h, angleRad)
             // Add confidence to result
             val result = points.map { listOf(it.first, it.second) }.flatten().toMutableList()
-            results.add(result)
             result.add(conf)
             result.add(cls)
+            results.add(result)
         }
         return results
     }
