@@ -32,11 +32,117 @@ class kotlin_bow {
     private fun get_midline(): MutableList<Int> {
     }
 
-    private fun get_vertical_lines(): MutableList<MutableList<Int>> {
+    private fun get_vertical_lines(): MutableList<MutableList<Double>> {
+    val topLeft = stringPoints[0]
+    val topRight = stringPoints[1]
+    val botRight = stringPoints[2]
+    val botLeft = stringPoints[3]
+
+    // Left vertical line (topLeft to botLeft)
+    val dxLeft = topLeft[0] - botLeft[0]
+    val leftSlope: Double
+    val leftYint: Double
+
+    if (dxLeft == 0) {
+        leftSlope = Double.POSITIVE_INFINITY
+        leftYint = -1.0  // We'll treat this as "undefined"
+    } else {
+        leftSlope = (topLeft[1] - botLeft[1]).toDouble() / dxLeft
+        leftYint = topLeft[1] - leftSlope * topLeft[0]
     }
 
-    private fun intersects_vertical(linearLine: MutableList<Int>, verticalLines: MutableList<Int>): MutableList<Int> {
+    // Right vertical line (topRight to botRight)
+    val dxRight = topRight[0] - botRight[0]
+    val rightSlope: Double
+    val rightYint: Double
+
+    if (dxRight == 0) {
+        rightSlope = Double.POSITIVE_INFINITY
+        rightYint = -1.0
+    } else {
+        rightSlope = (topRight[1] - botRight[1]).toDouble() / dxRight
+        rightYint = topRight[1] - rightSlope * topRight[0]
     }
+
+    // Heights (y-coordinates)
+    val leftTopY = topLeft[1].toDouble()
+    val leftBotY = botLeft[1].toDouble()
+    val rightTopY = topRight[1].toDouble()
+    val rightBotY = botRight[1].toDouble()
+
+    // Return as two vertical lines: each is a list of [slope, intercept, topY, botY]
+    val leftLine = mutableListOf(leftSlope, leftYint, leftTopY, leftBotY)
+    val rightLine = mutableListOf(rightSlope, rightYint, rightTopY, rightBotY)
+
+    return mutableListOf(leftLine, rightLine)
+}
+
+    private fun intersects_vertical(linearLine: MutableList<Int>, verticalLines: MutableList<Int>): MutableList<Int> {
+    println("linear: $linearLine\nvertical: $verticalLines")
+
+    // Unpack slope (m) and intercept (b) from the linear line (midline)
+    val m = linearLine[0].toDouble()
+    val b = linearLine[1].toDouble()
+
+    // Extract two vertical lines (each has 4 components)
+    val verticalOne = verticalLines.subList(0, 4).map { it.toDouble() }
+    val verticalTwo = verticalLines.subList(4, 8).map { it.toDouble() }
+
+    // Function to calculate intersection of a vertical line with the midline
+    fun getIntersection(vLine: List<Double>, xRef: Double): Pair<Double, Double>? {
+        val slopeV = vLine[0]
+        val interceptV = vLine[1]
+        val topY = vLine[2]
+        val botY = vLine[3]
+
+        val x: Double
+        val y: Double
+
+        if (slopeV == Double.POSITIVE_INFINITY || interceptV == -1.0) {
+            // Vertical string line: x = constant
+            x = xRef
+            if (m == Double.POSITIVE_INFINITY) return null
+            y = m * x + b
+        } else if (m == Double.POSITIVE_INFINITY) {
+            // Midline is vertical
+            x = b
+            y = slopeV * x + interceptV
+        } else if (kotlin.math.abs(m - slopeV) < 1e-6) {
+            // Parallel lines
+            return null
+        } else {
+            // Intersection point
+            x = (interceptV - b) / (m - slopeV)
+            y = m * x + b
+        }
+
+        // Ensure y is within the visible segment of the vertical line
+        val ymin = minOf(topY, botY)
+        val ymax = maxOf(topY, botY)
+        if (y !in ymin..ymax) {
+            println("Intersection y=$y is outside vertical range ($ymin, $ymax)")
+            return null
+        }
+
+        return Pair(x, y)
+    }
+
+    // Example: Get x coordinates from string points (assume defined elsewhere)
+    val xLeft = this.stringPoints[0][0].toDouble()  // top-left x
+    val xRight = this.stringPoints[1][0].toDouble() // top-right x
+
+    val pt1 = getIntersection(verticalOne, xLeft)
+    val pt2 = getIntersection(verticalTwo, xRight)
+
+    if (pt1 == null || pt2 == null) {
+        println("One or both intersections invalid")
+        return mutableListOf(1)  // Or some fallback/intended error value
+    }
+
+    // You would implement this function elsewhere to get the result
+    return bow_height_intersection(pt1, pt2, verticalLines)
+}
+
 
     private fun sort_string_points(pts: MutableList<Int>): MutableList<MutableList<Int>> {
     }
@@ -125,7 +231,89 @@ class kotlin_bow {
     }
 
     fun display_classification(result: Int, opencvFrame: Mat) {
+    // Maps for height and angle classification results with associated labels and colors (BGR format)
+    val heightLabelMap = mapOf(
+        0 to Pair("Correct Bow Height", Scalar(0.0, 255.0, 0.0)),    // Green
+        1 to Pair("Outside Bow Zone", Scalar(0.0, 0.0, 255.0)),     // Red
+        2 to Pair("Too Low", Scalar(0.0, 165.0, 255.0)),            // Orange
+        3 to Pair("Too High", Scalar(255.0, 0.0, 0.0))              // Blue
+    )
+
+    val angleLabelMap = mapOf(
+        0 to Pair("Correct Bow Angle", Scalar(0.0, 255.0, 0.0)),    // Green
+        1 to Pair("Improper Bow Angle", Scalar(0.0, 0.0, 255.0))    // Red
+    )
+
+    // Extract classification results from the combined input value
+    val heightResult = result / 10   // Tens place = height result
+    val angleResult = result % 10    // Units place = angle result
+
+    // Get label and color for height result; fallback to "Unknown" if not in map
+    val (heightLabel, heightColor) = heightLabelMap[heightResult]
+        ?: Pair("Unknown", Scalar(255.0, 255.0, 255.0))  // White
+
+    // Get label and color for angle result; fallback to "Unknown" if not in map
+    val (angleLabel, angleColor) = angleLabelMap[angleResult]
+        ?: Pair("Unknown", Scalar(255.0, 255.0, 255.0))  // White
+
+    // Draw height classification label at top-left of the image
+    Imgproc.putText(
+        opencvFrame, heightLabel, Point(50.0, 50.0),
+        Imgproc.FONT_HERSHEY_SIMPLEX, 1.2, heightColor, 3, Imgproc.LINE_AA
+    )
+
+    // Draw string polygon outline if 4 valid points exist
+    if (stringPoints.isNotEmpty() && stringPoints.size == 4) {
+        val points = stringPoints.map { Point(it[0].toDouble(), it[1].toDouble()) }
+        val matOfPoints = MatOfPoint(*points.toTypedArray())
+        Imgproc.polylines(opencvFrame, listOf(matOfPoints), true, heightColor, 2)
     }
+
+    // Draw bow polygon outline if 4 valid points exist
+    if (bowPoints.isNotEmpty() && bowPoints.size == 4) {
+        val points = bowPoints.map { Point(it[0].toDouble(), it[1].toDouble()) }
+        val matOfPoints = MatOfPoint(*points.toTypedArray())
+        Imgproc.polylines(opencvFrame, listOf(matOfPoints), true, angleColor, 2)
+    }
+
+    // Draw angle classification label below the first label
+    Imgproc.putText(
+        opencvFrame, angleLabel, Point(50.0, 250.0),
+        Imgproc.FONT_HERSHEY_SIMPLEX, 1.2, angleColor, 3, Imgproc.LINE_AA
+    )
+
+    // Draw a curved parabola connecting the top edge of the string box
+    if (stringPoints.isNotEmpty() && stringPoints.size == 4) {
+        // Sort by y-value (ascending) to get top-most two points
+        val sortedByY = stringPoints.sortedBy { it[1] }
+        val topCandidates = sortedByY.take(2).sortedBy { it[0] }
+        val topLeft = topCandidates[0]
+        val topRight = topCandidates[1]
+
+        // Calculate midpoint of the top edge
+        val midX = (topLeft[0] + topRight[0]) / 2.0
+        val midY = (topLeft[1] + topRight[1]) / 2.0
+
+        // Define curvature for control point (higher curvature → deeper arc)
+        val width = kotlin.math.abs(topRight[0] - topLeft[0])
+        val curvature = width * 0.25
+        val controlPoint = listOf(midX, midY - curvature)
+
+        // Create points along the quadratic Bézier curve
+        val curvePts = mutableListOf<Point>()
+        for (i in 0..49) {
+            val t = i / 49.0
+            val x = ((1 - t).pow(2) * topLeft[0] + 2 * (1 - t) * t * controlPoint[0] + t.pow(2) * topRight[0]).toInt()
+            val y = ((1 - t).pow(2) * topLeft[1] + 2 * (1 - t) * t * controlPoint[1] + t.pow(2) * topRight[1]).toInt()
+            curvePts.add(Point(x.toDouble(), y.toDouble()))
+        }
+
+        // Draw the curve in magenta (BGR: 255, 0, 255)
+        val curveMat = MatOfPoint(*curvePts.toTypedArray())
+        Imgproc.polylines(opencvFrame, listOf(curveMat), false, Scalar(255.0, 0.0, 255.0), 2)
+    }
+}
+
 
     data class bow_results(
         var classification: Int?,
