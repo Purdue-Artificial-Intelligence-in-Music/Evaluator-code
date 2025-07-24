@@ -190,7 +190,7 @@ class kotlin_bow {
         }
     }
 
-    val  model =
+    val model =
         CompiledModel.create(
             context.assets,
             "nano_best_float32.tflite",
