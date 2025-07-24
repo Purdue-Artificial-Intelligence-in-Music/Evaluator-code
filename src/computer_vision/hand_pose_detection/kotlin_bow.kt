@@ -24,13 +24,76 @@ class kotlin_bow {
     private var bowRepeat: Int = 0
     private var stringRepeat: Int = 0
     // TODO: Add TFLite model once available
+
+    private fun updatePoints(
+    stringBox: MutableList<MutableList<Float>>?,
+    bowBox: List<List<Float>>,
+    yLocked: Boolean,
+    yAvg: List<Float>
+) {
+        bowPoints = bowBox.map { it.toMutableList() } //change bow points to mutable list
     
+        if (stringBox != null) {
+            if (!yLocked) {
+                //just assign class variable string points to this
+                stringPoints = stringBox.map { it.toMutableList() }
+            } else {
+                //first sort strings if y is locked
+                val sortedString = sortStringPoints(stringBox)
+                stringPoints = sortedString
+    
+                stringPoints[0][1] = yAvg[0]
+                stringPoints[1][1] = yAvg[1]
+    
+                println("y_avg: $yAvg")
+                println("string_points: $stringPoints")
+            }
+            lastValidString = stringPoints
+        } else {
+            println("No new string box detected. Reusing last known string box.")
+            //if last valid string was initialized set string points to that
+            if (::lastValidString.isInitialized) {
+                stringPoints = lastValidString
+            }
+        }
+}
 
-    private fun update_points(stringBox: MutableList<Int>, bowBox: MutableList<Int>) {
+private fun getMidline(): Pair<Float, Float> {
+    fun distance(pt1: List<Float>, pt2: List<Float>): Float {
+        //just distance formula
+        return (pt1[0] - pt2[0]).let { it * it } + (pt1[1] - pt2[1]).let { it * it }
+    }
+    //find length of the sides of the bow rectangle
+    val d1 = distance(bowPoints[0], bowPoints[1])
+    val d2 = distance(bowPoints[1], bowPoints[2])
+    val d3 = distance(bowPoints[2], bowPoints[3])
+    val d4 = distance(bowPoints[3], bowPoints[0])
+    val distances = listOf(d1, d2, d3, d4)
+
+    val minIndex = distances.indexOf(distances.minOrNull()) //find the smallest distance
+
+    //find the two shortest distances to fin dthe end of teh bow and set those points as pair1 and pair2
+    val (pair1, pair2) = when (minIndex) {
+        0 -> Pair(bowPoints[0] to bowPoints[1], bowPoints[2] to bowPoints[3])
+        1 -> Pair(bowPoints[1] to bowPoints[2], bowPoints[3] to bowPoints[0])
+        2 -> Pair(bowPoints[2] to bowPoints[3], bowPoints[0] to bowPoints[1])
+        else -> Pair(bowPoints[3] to bowPoints[0], bowPoints[1] to bowPoints[2])
     }
 
-    private fun get_midline(): MutableList<Int> {
+    val mid1 = listOf((pair1.first[0] + pair1.second[0]) / 2, (pair1.first[1] + pair1.second[1]) / 2)
+    val mid2 = listOf((pair2.first[0] + pair2.second[0]) / 2, (pair2.first[1] + pair2.second[1]) / 2)
+
+    val dy = mid1[1] - mid2[1]
+    val dx = mid1[0] - mid2[0]
+
+    return if (dy == 0f) {
+        Pair(Float.POSITIVE_INFINITY, mid1[0])
+    } else {
+        val slope = dy / dx
+        val intercept = mid1[1] - slope * mid1[0]
+        Pair(slope, intercept)
     }
+}
 
    private fun get_vertical_lines(): MutableList<MutableList<Double>> {
     // Extracting corner points
@@ -157,8 +220,18 @@ private fun intersects_vertical(
     return bow_height_intersection(pt1, pt2, verticalLines)
 }
 
-    private fun sort_string_points(pts: MutableList<Int>): MutableList<MutableList<Int>> {
+    private fun sortStringPoints(pts: List<Pair<Float, Float>>): List<Pair<Float, Float>> {
+        // Sort points by y
+        val sortedPoints = pts.sortedBy { it.second }
+    
+        // Find first 2 and last pts
+        val topPoints = sortedPoints.take(2).sortedBy { it.first }  // Sort by X ascending
+        val bottomPoints = sortedPoints.drop(2).sortedByDescending { it.first }  // Sort by X descending
+    
+        return topPoints + bottomPoints
     }
+
+    
 
     private fun bow_height_intersection(intersectionPoints: MutableList<Int>, verticalLines: MutableList<Int>): Int {
     }
