@@ -128,10 +128,14 @@ class kotlin_bow {
     }
 
     data class BowResults(
-        val classification: Int?,
-        val bow: MutableList<MutableList<Int>>? ,
-        val string: MutableList<MutableList<Int>>?,
-        val angle: Int?
+        var classification: Int?,
+        var bow: MutableList<MutableList<Int>>? ,
+        var string: MutableList<MutableList<Int>>?,
+        var angle: Int?
+    )
+    data class yolo_results(
+        var bow: MutableList<MutableList<Int>>? ,
+        var string: MutableList<MutableList<Int>>?
     )
 
     fun processFrame(opencvFrame: Mat): BowResults {
@@ -141,10 +145,9 @@ class kotlin_bow {
             string = null,
             angle = null
         )
-        results = model(opencvFrame) //THIS IS NOT THE CORECT WAY< WILL NEED PREPROCESSING AND POSTPROCESSING + LiteRT
-        if (results.isEmpty()) {
-            return return_bow
-        }
+        results = convert_to_yolo_results(model(opencvFrame)) //NOT WORKING YET
+        var string_coords: MutableList<MutableList<Int>>? = results.string
+        var bow_coords: MutableList<MutableList<Int>>? = results.bow
         // ASSUMING RESULTS IS AN OBJECT WITH TWO NESTED ARRAYLISTS OF INTS
         // results.bow = [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
         // results.string = [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
@@ -172,9 +175,9 @@ class kotlin_bow {
             }
             if (results.bow != null && results.string != null) {
                 update_points(results.string, results.bow)
-                val midlines = get_midline()
-                val vert_lines = get_vertical_lines()
-                val intersect_points = intersects_vertical(midlines, vert_lines)
+                var midlines = get_midline()
+                var vert_lines = get_vertical_lines()
+                var intersect_points = intersects_vertical(midlines, vert_lines)
                 return_bow.angle = bow_angle(midlines, vert_lines)
                 return_bow.classification = intersect_points
                 return return_bow
@@ -190,7 +193,7 @@ class kotlin_bow {
     val  model =
         CompiledModel.create(
             context.assets,
-            "/Users/jacksonshields/Documents/Evaluator/runs/obb/train4/weights/best_saved_model/best_float32.tflite",
+            "nano_best_float32.tflite",
             CompiledModel.Options(Accelerator.CPU),
             env,
         )
@@ -314,5 +317,46 @@ class kotlin_bow {
         println("Detections: $results")
 
         return results
+    }
+
+    fun convert_to_yolo_results(results: List<List<Float>>): yolo_results {
+        val bowResults = BowResults(
+            bow = null,
+            string = null,
+        )
+        var largest_bow_conf = 0.0f
+        var largest_string_conf = 0.0f
+        var bow_index = -1
+        var string_index = -1
+        //0 is bow, 1 is string for cls
+        for (int i = 0; i < results.size; i++) {
+            if (results[i][8] == 1.0f) {
+                if (results[i][7] > largest_string_conf) {
+                    largest_string_conf = results[i][9]
+                    string_index = i
+                }
+            }
+            if (results[i][8] == 0.0f) {
+                if (results[i][7] > largest_bow_conf) {
+                    largest_bow_conf = results[i][9]
+                    bow_index = i
+                }
+            }
+        }
+        if (bow_index != -1) {
+            var bow_return = mutableListOf<MutableList<Int>>()
+            for (int i = 0; i < 4; i++) {
+                bow_return.add(mutableListOf(results[bow_index][2*i], results[bow_index][2*i +1]))
+            }
+            bowResults.bow = bow_return
+        }
+        if (string_index != -1) {
+            var string_return = mutableListOf<MutableList<Int>>()
+            for (int i = 0; i < 4; i++) {
+                string_return.add(mutableListOf(results[stirng_index][2*i], results[string_index][2*i +1]))
+            }
+            bowResults.string =  string_return
+        }
+        return bowResults
     }
 } 
