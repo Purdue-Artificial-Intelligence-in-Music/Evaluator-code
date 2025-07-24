@@ -127,7 +127,7 @@ class kotlin_bow {
     fun display_classification(result: Int, opencvFrame: Mat) {
     }
 
-    data class BowResults(
+    data class bow_results(
         var classification: Int?,
         var bow: MutableList<MutableList<Int>>? ,
         var string: MutableList<MutableList<Int>>?,
@@ -138,8 +138,8 @@ class kotlin_bow {
         var string: MutableList<MutableList<Int>>?
     )
 
-    fun processFrame(opencvFrame: Mat): BowResults {
-        reuturn_bow = BowResults(
+    fun process_frame(opencvFrame: Mat): bow_results {
+        reuturn_bow = bow_results(
             classification = null,
             bow = null,
             string = null,
