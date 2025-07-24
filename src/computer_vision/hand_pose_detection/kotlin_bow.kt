@@ -256,6 +256,7 @@ class kotlin_bow {
             val w = targetScale * out[3]
             val h = targetScale * out[2]
             val conf = out[4]
+            val cls = out[5]
             val angleRad = out[6]
 
             // Convert to 4 corner points (rotated rectangle)
@@ -263,6 +264,7 @@ class kotlin_bow {
             // Add confidence to result
             val result = points.map { listOf(it.first, it.second) }.flatten().toMutableList()
             result.add(conf)
+            result.add(cls)
             results.add(result)
         }
         return results
