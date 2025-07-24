@@ -32,26 +32,34 @@ class kotlin_bow {
     private fun get_midline(): MutableList<Int> {
     }
 
-    private fun get_vertical_lines(): MutableList<MutableList<Double>> {
+   private fun get_vertical_lines(): MutableList<MutableList<Double>> {
+    // Extracting corner points
     val topLeft = stringPoints[0]
     val topRight = stringPoints[1]
     val botRight = stringPoints[2]
     val botLeft = stringPoints[3]
 
-    // Left vertical line (topLeft to botLeft)
+    // Left vertical line (from topLeft to botLeft)
+
+    // Calculate the horizontal distance between the left points
     val dxLeft = topLeft[0] - botLeft[0]
+
+    // Initialize slope and y-intercept for the left side
     val leftSlope: Double
     val leftYint: Double
 
     if (dxLeft == 0) {
         leftSlope = Double.POSITIVE_INFINITY
-        leftYint = -1.0  // We'll treat this as "undefined"
+        leftYint = -1.0  // Use -1.0 as a flag for undefined intercept
     } else {
+        // Calculate slope 
         leftSlope = (topLeft[1] - botLeft[1]).toDouble() / dxLeft
+        // Calculate y-intercept 
         leftYint = topLeft[1] - leftSlope * topLeft[0]
     }
 
-    // Right vertical line (topRight to botRight)
+    // Right vertical line (from topRight to botRight) 
+
     val dxRight = topRight[0] - botRight[0]
     val rightSlope: Double
     val rightYint: Double
@@ -64,23 +72,24 @@ class kotlin_bow {
         rightYint = topRight[1] - rightSlope * topRight[0]
     }
 
-    // Heights (y-coordinates)
+    // Heights of each side (just the y-coordinates of top and bottom points)
     val leftTopY = topLeft[1].toDouble()
     val leftBotY = botLeft[1].toDouble()
     val rightTopY = topRight[1].toDouble()
     val rightBotY = botRight[1].toDouble()
 
-    // Return as two vertical lines: each is a list of [slope, intercept, topY, botY]
+    // Each line is a MutableList: [slope, intercept, topY, bottomY]
     val leftLine = mutableListOf(leftSlope, leftYint, leftTopY, leftBotY)
     val rightLine = mutableListOf(rightSlope, rightYint, rightTopY, rightBotY)
 
+    // return a list of both lines
     return mutableListOf(leftLine, rightLine)
 }
 
     private fun intersects_vertical(linearLine: MutableList<Int>, verticalLines: MutableList<Int>): MutableList<Int> {
     println("linear: $linearLine\nvertical: $verticalLines")
 
-    // Unpack slope (m) and intercept (b) from the linear line (midline)
+    // slope and intercept from the linear line (midline)
     val m = linearLine[0].toDouble()
     val b = linearLine[1].toDouble()
 
