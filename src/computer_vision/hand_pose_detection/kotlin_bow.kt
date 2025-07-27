@@ -157,8 +157,16 @@ private fun intersects_vertical(
     return bow_height_intersection(mutableListOf(pt1, pt2), verticalLines)
 }
 
-    private fun sort_string_points(pts: MutableList<Int>): MutableList<MutableList<Int>> {
-    }
+    private fun sortStringPoints(pts: List<Pair<Float, Float>>): List<Pair<Float, Float>> {
+        // Sort points by y
+        val sortedPoints = pts.sortedBy { it.second }
+    
+        // Find first 2 and last pts
+        val topPoints = sortedPoints.take(2).sortedBy { it.first }  // Sort by X ascending
+        val bottomPoints = sortedPoints.drop(2).sortedByDescending { it.first }  // Sort by X descending
+    
+        return topPoints + bottomPoints
+}
 
     /*
      * Determines the height level at which the linear line intersects the vertical lines.
