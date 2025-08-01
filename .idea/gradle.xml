@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleMigrationSettings" migrationVersion="1" />
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="IDE">
+            <builds>
+              <build path="$PROJECT_DIR$/src/app" name="app" />
+              <build path="$PROJECT_DIR$/src/EvaluatorKotlin" name="EvaluatorKotlin" />
+              <build path="$PROJECT_DIR$/src/EvaluatorKotlin/gradle/wrapper" name="wrapper" />
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
+        <option name="testRunner" value="CHOOSE_PER_TEST" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="gradleHome" value="/usr/local/Cellar/gradle/8.14.3/libexec" />
+        <option name="gradleJvm" value="#GRADLE_LOCAL_JAVA_HOME" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/app" />
+            <option value="$PROJECT_DIR$/cv" />
+            <option value="$PROJECT_DIR$/sdk" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+      <GradleProjectSettings>
+        <option name="testRunner" value="CHOOSE_PER_TEST" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$/src/EvaluatorKotlin" />
+        <option name="gradleHome" value="/usr/local/Cellar/gradle/8.14.3/libexec" />
+        <option name="gradleJvm" value="24" />
+      </GradleProjectSettings>
+      <GradleProjectSettings>
+        <option name="testRunner" value="CHOOSE_PER_TEST" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$/src/EvaluatorKotlin/gradle/wrapper" />
+        <option name="gradleHome" value="/usr/local/Cellar/gradle/8.14.3/libexec" />
+        <option name="gradleJvm" value="24" />
+      </GradleProjectSettings>
+      <GradleProjectSettings>
+        <option name="testRunner" value="CHOOSE_PER_TEST" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$/src/app" />
+        <option name="gradleHome" value="/usr/local/Cellar/gradle/8.14.3/libexec" />
+        <option name="gradleJvm" value="24" />
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project>

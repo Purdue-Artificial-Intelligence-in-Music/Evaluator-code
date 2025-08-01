@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "/Users/jacksonshields/AndroidStudioProjects/EvaluatorKotlin/cv/libcxx_helper/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/jacksonshields/AndroidStudioProjects/EvaluatorKotlin/cv/.cxx/RelWithDebInfo/242f4s08/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/jacksonshields/AndroidStudioProjects/EvaluatorKotlin/cv/.cxx/RelWithDebInfo/242f4s08/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "opencv_jni_shared::@6890427a1f51a3e7e1df": {
+      "artifactName": "opencv_jni_shared",
+      "abi": "x86",
+      "output": "/Users/jacksonshields/AndroidStudioProjects/EvaluatorKotlin/cv/.cxx/RelWithDebInfo/242f4s08/x86/libopencv_jni_shared.a",
+      "runtimeFiles": []
+    }
+  }
+}

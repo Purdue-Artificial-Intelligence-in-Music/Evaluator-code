@@ -1,0 +1,4 @@
+/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja \
+  -C \
+  /Users/jacksonshields/AndroidStudioProjects/EvaluatorKotlin/cv/.cxx/Debug/4u724431/arm64-v8a \
+  opencv_jni_shared
