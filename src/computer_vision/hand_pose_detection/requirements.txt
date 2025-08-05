@@ -1,8 +1,0 @@
-ipython==8.24.0
-mediapipe==0.10.11
-numpy==1.24.4
-opencv_contrib_python==4.10.0.82
-opencv_python==4.10.0.82
-opencv_python_headless==4.10.0.82
-supervision==0.21.0
-ultralytics==8.2.28
