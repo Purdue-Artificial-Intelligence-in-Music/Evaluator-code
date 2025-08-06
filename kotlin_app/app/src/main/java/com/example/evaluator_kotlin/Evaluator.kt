@@ -10,6 +10,7 @@ import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.support.common.FileUtil
 import java.util.concurrent.CountDownLatch
 import kotlin.math.*
+import org.opencv.core.Point
 
 
 class Evaluator {
@@ -187,10 +188,13 @@ class Evaluator {
         //        pad: Pair<Double, Double>
         val results = postprocess(origImg = frame, outputs = outputs,
             resizedShape = Size(targetHeight.toDouble(), targetWidth.toDouble()), pad = preprocessed.second)
-        println("Detections: $results")
+        //println("Detections: $results")
+        println("Detections: ${convertYolo(results)}")
 
         return results
     }
+
+
 
     fun drawDetections(img: Mat, box: List<Point>, score: Float, classId: Int) {
         // Define color palette and class labels
@@ -218,70 +222,111 @@ class Evaluator {
         var angle: Int?
     )
     data class YoloResults(
-        var bowResults: MutableList<MutableList<Int>>? ,
-        var strResults: MutableList<MutableList<Int>>?
+        var bowResults: MutableList<Point>? ,
+        var stringResults: MutableList<Point>?
     )
 
+
+    fun convertYolo(results: List<List<Float>>): YoloResults {
+        //Results are always this format: [[x1, y1, x2, y2, x3, y3, x4, y4, conf, cls], ...]
+        //First two will be highest conf bow and string boxes, will be two of same class if other is not detected
+        val yoloResults = YoloResults(
+            bowResults = null,
+            stringResults = null
+        )
+        var coordList = mutableListOf<Point>()
+        for (i in 0 until 4) {
+            coordList.add(
+                Point(
+                    results[0][2 * i].toDouble(),
+                    results[0][2 * i + 1].toDouble()
+                )
+            )
+        }
+        if (results[0][9] == 1.0f) {
+            yoloResults.stringResults = coordList
+        } else {
+            yoloResults.bowResults = coordList
+        }
+        if (results.size > 1 && results[1][9] != results[0][9]) {
+            coordList = mutableListOf<Point>()
+            for (i in 0 until 4) {
+                coordList.add(
+                    Point(
+                        results[1][2 * i].toDouble(),
+                        results[1][2 * i + 1].toDouble()
+                    )
+                )
+            }
+            if (results[1][9] == 1.0f) {
+                yoloResults.stringResults = coordList
+            } else {
+                yoloResults.bowResults = coordList
+            }
+
+        }
+        return yoloResults
+    }
+
+    /*
     fun convert_to_yolo_results(results: List<List<Float>>): YoloResults {
+        //Data class for storing bow box
         val bowResults = BoxResults(
             classification = 0,
             box = null,
             angle = 0
         )
 
+        //Data class for storing string box
         val strResults = BoxResults(
             classification = 0,
             box = null,
             angle = 0
         )
 
+        //Data class for storing bow and string results
         val yoloResults = YoloResults(
             bowResults = null,
             strResults = null
         )
 
 
-        var largest_bow_conf = 0.0f
-        var largest_string_conf = 0.0f
-        var bow_index = -1
-        var string_index = -1
+        var bowConf = 0.0f
+        var stringConf = 0.0f
+        var bowIndex = -1
+        var stringIndex = -1
         //0 is bow, 1 is string for cls
         for (i in results.indices) {
-            if (results[i][8] == 1.0f) {
-                if (results[i][7] > largest_string_conf) {
-                    largest_string_conf = results[i][9]
-                    string_index = i
+            if (results[i][9] == 1.0f) {
+                if (results[i][8] > stringConf) {
+                    stringConf = results[i][8]
+                    stringIndex = i
                 }
             }
-            if (results[i][8] == 0.0f) {
-                if (results[i][7] > largest_bow_conf) {
-                    largest_bow_conf = results[i][9]
-                    bow_index = i
+            if (results[i][9] == 0.0f) {
+                if (results[i][8] > bowConf) {
+                    bowConf = results[i][8]
+                    bowIndex = i
                 }
             }
         }
-        if (bow_index != -1) {
+        if (bowIndex != -1) {
             var bow_return = mutableListOf<MutableList<Int>>()
             for (i in 0 until 4) {
-                bow_return.add(mutableListOf(results[bow_index][2*i].toInt(),
-                    results[bow_index][2*i +1].toInt()))
+                bow_return.add(mutableListOf(results[bowIndex][2*i].toInt(),
+                    results[bowIndex][2*i +1].toInt()))
             }
             yoloResults.bowResults = bow_return
         }
-        if (string_index != -1) {
+        if (stringIndex != -1) {
             var string_return = mutableListOf<MutableList<Int>>()
             for (i in 0 until 4) {
-                string_return.add(mutableListOf(results[string_index][2*i].toInt(),
-                    results[string_index][2*i +1].toInt()))
+                string_return.add(mutableListOf(results[stringIndex][2*i].toInt(),
+                    results[stringIndex][2*i +1].toInt()))
             }
             yoloResults.strResults =  string_return
         }
         return yoloResults
     }
+    */
 }
-
-
-
-
-
-

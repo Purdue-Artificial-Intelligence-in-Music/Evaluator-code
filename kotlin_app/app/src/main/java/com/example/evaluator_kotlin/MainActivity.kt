@@ -92,11 +92,22 @@ fun runEvaluation(onComplete: (Bitmap) -> Unit) {
                 val results = evaluator.runModel(it)
 
                 // Draw detections on the image
+                /*
                 for (result in results) {
                     val points: List<Point> = result.slice(0..7).chunked(2).map { (x, y) ->
                         Point(x.toDouble(), y.toDouble())
                     }
                     evaluator.drawDetections(it, points, result[8], result[9].toInt())
+                }
+
+                 */
+
+                val yoloResults = evaluator.convertYolo(results)
+                if (yoloResults.stringResults != null) {
+                    evaluator.drawDetections(img, yoloResults.stringResults!!, 1.0f, 1)
+                }
+                if (yoloResults.bowResults != null) {
+                    evaluator.drawDetections(img, yoloResults.bowResults!!, 1.0f, 0)
                 }
 
                 // Convert from BGR to RGB for Android display
@@ -167,8 +178,8 @@ fun readImageFromPath(imagePath: String): Mat? {
 
 
 fun main() {
-    var evaluator = Evaluator()
-    var img = readImageFromPath("Sample Input.png")
+    val evaluator = Evaluator()
+    val img = readImageFromPath("Sample Input.png")
     var results: List<List<Float>>? = null
     evaluator.createInterpreter(MainActivity.applicationContext())
     Thread {
@@ -179,7 +190,7 @@ fun main() {
             // Now run inference
             img?.let {
                 evaluator.modelReadyLatch.await()
-                var results = evaluator.runModel(it)
+                results = evaluator.runModel(it)
             }
         } catch (e: Exception) {
             Log.e("Interpreter", "TfLite.initialize() threw an exception", e)
@@ -188,10 +199,24 @@ fun main() {
     }.start()
 
     if (results != null) {
-        for (result in results) {
+        val yoloResults = evaluator.convertYolo(results!!)
+        if (yoloResults.stringResults != null) {
+            evaluator.drawDetections(img!!, yoloResults.stringResults!!, 1.0f, 1)
+        }
+        if (yoloResults.bowResults != null) {
+            evaluator.drawDetections(img!!, yoloResults.bowResults!!, 1.0f, 0)
+        }
+
+    }
+
+    /*
+    if (results != null) {
+        for (result in results!!) {
             val points: List<Point> = result.slice(0..7).chunked(2).map { (x, y) -> Point(x.toDouble(), y.toDouble()) }
             evaluator.drawDetections(img!!, points, result[8], result[9].toInt())
         }
     }
+    */
+
 
 }
