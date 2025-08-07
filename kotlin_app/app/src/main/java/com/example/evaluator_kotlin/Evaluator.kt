@@ -46,20 +46,32 @@ class Evaluator {
      * Returns the padding and new image
      */
     fun letterbox(img: Mat, newShape: Size = Size(640.0, 640.0)): Pair<Mat, Pair<Double, Double>> {
-        val shape = Size(img.width().toDouble(), img.height().toDouble())
-        val r = min(newShape.width / shape.width, newShape.height / shape.height)
+        val shape = Size(img.width().toDouble(), img.height().toDouble()) // get original image
+        // calculates scaling factor (r) to preserve aspect ratio                      
+        val r = min(newShape.width / shape.width, newShape.height / shape.height) 
+
+        // calculates new unpadded shape
         val newUnpad = Size(round(shape.width * r), round(shape.height * r))
+
+        // computes padding on width and height to center the image
         val dw = (newShape.width - newUnpad.width) / 2
         val dh = (newShape.height - newUnpad.height) / 2
 
+        // resizes image to new unpadded dimensions
         val resized = Mat()
         Imgproc.resize(img, resized, newUnpad)
+
+        // computes border sizes 
         val top = round(dh - 0.1).toInt()
         val bottom = round(dh + 0.1).toInt()
         val left = round(dw - 0.1).toInt()
         val right = round(dw + 0.1).toInt()
+
+        // pads the resized image with constant, gray border 
         val padded = Mat()
         Core.copyMakeBorder(resized, padded, top, bottom, left, right, Core.BORDER_CONSTANT, Scalar(114.0, 114.0, 114.0))
+
+        // padded image is returned + padding ratio (used to reverse transformation)
         return Pair(padded, Pair(top / padded.height().toDouble(), left / padded.width().toDouble()))
     }
 
@@ -194,23 +206,24 @@ class Evaluator {
         return results
     }
 
-
-
+    // Draws a detection polygon (usually quadrilateral) on an img with class based coloring
     fun drawDetections(img: Mat, box: List<Point>, score: Float, classId: Int) {
         // Define color palette and class labels
         val colorPalette = mapOf(
             1 to Scalar(255.0, 255.0, 100.0), // BGR format
             0 to Scalar(100.0, 255.0, 255.0)
         )
+        // Define class ID to label mapping 
         val classes = mapOf(
             1 to "bow",
             0 to "string"
         )
 
-        val color = colorPalette[classId] ?: Scalar(255.0, 255.0, 255.0) // fallback color
+        val color = colorPalette[classId] ?: Scalar(255.0, 255.0, 255.0) // fallback color (white)
 
         // Draw bounding box if the box contains 4 points
         if (box.size == 4) {
+            // converts list of Points to OpenCV MatOfPoint
             val pointsArray = MatOfPoint(*box.map { Point(it.x, it.y) }.toTypedArray())
             Imgproc.polylines(img, listOf(pointsArray), true, color, 2)
         }
