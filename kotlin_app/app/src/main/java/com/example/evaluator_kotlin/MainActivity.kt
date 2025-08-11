@@ -109,6 +109,7 @@ fun runEvaluation(onComplete: (Bitmap) -> Unit) {
                 if (yoloResults.bowResults != null) {
                     evaluator.drawDetections(img, yoloResults.bowResults!!, 1.0f, 0)
                 }
+                println("CLASSIFICATION: " + evaluator.classify(yoloResults))
 
                 // Convert from BGR to RGB for Android display
                 val rgbMat = Mat()
