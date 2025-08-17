@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import org.opencv.imgproc.Imgproc
 import androidx.core.graphics.createBitmap
 
+private var detector : Detector? = null
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,10 +79,12 @@ fun MainScreen(modifier: Modifier = Modifier) {
 }
 
 fun runEvaluation(onComplete: (Bitmap) -> Unit) {
-    val evaluator = Evaluator()
+    //val evaluator = Evaluator()
+    detector = Detector()
     val img = readImageFromPath("Sample Input.png")
 
-    evaluator.createInterpreter(MainActivity.applicationContext())
+    //evaluator.createInterpreter(MainActivity.applicationContext())
+
 
     Thread {
         try {

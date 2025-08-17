@@ -1,6 +1,7 @@
 package com.example.evaluator_kotlin
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tflite.java.TfLite
@@ -11,6 +12,12 @@ import org.tensorflow.lite.support.common.FileUtil
 import java.util.concurrent.CountDownLatch
 import kotlin.math.*
 import org.opencv.core.Point
+import org.tensorflow.lite.DataType
+import org.tensorflow.lite.support.common.ops.CastOp
+import org.tensorflow.lite.support.common.ops.NormalizeOp
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 
 
 class Evaluator {
@@ -218,6 +225,7 @@ class Evaluator {
 
         val outputArray =
             Array(outputShape[0]) { Array(outputShape[1]) { FloatArray(outputShape[2]) } } // (1, 300, 7)
+
 
         model.run(inputArray, outputArray)
         val outputs = outputArray[0] // shape: [N, 7]

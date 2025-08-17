@@ -157,19 +157,6 @@
   },
   {
     "level_": 0,
-    "message_": "hard linked /Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv/.cxx/Debug/4u724431/arm64-v8a/compile_commands.json to /Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv/.cxx/tools/debug/arm64-v8a/compile_commands.json",
-    "file_": "/Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv/libcxx_helper/CMakeLists.txt",
-    "tag_": "debug|arm64-v8a",
-    "diagnosticCode_": 0,
-    "memoizedIsInitialized": 1,
-    "unknownFields": {
-      "fields": {}
-    },
-    "memoizedSize": -1,
-    "memoizedHashCode": 0
-  },
-  {
-    "level_": 0,
     "message_": "JSON generation completed without problems",
     "file_": "/Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv/libcxx_helper/CMakeLists.txt",
     "tag_": "debug|arm64-v8a",
