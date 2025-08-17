@@ -2,6 +2,7 @@ package com.example.evaluator_kotlin
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -28,8 +29,10 @@ import java.io.File
 import androidx.compose.ui.graphics.asImageBitmap
 import org.opencv.imgproc.Imgproc
 import androidx.core.graphics.createBitmap
+import java.io.IOException
+import java.io.InputStream
 
-private var detector : Detector? = null
+private var detector = Detector()
 
 
 class MainActivity : ComponentActivity() {
@@ -80,20 +83,22 @@ fun MainScreen(modifier: Modifier = Modifier) {
 
 fun runEvaluation(onComplete: (Bitmap) -> Unit) {
     //val evaluator = Evaluator()
-    detector = Detector()
-    val img = readImageFromPath("Sample Input.png")
+
+    val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
 
     //evaluator.createInterpreter(MainActivity.applicationContext())
 
 
-    Thread {
+
         try {
-            Tasks.await(evaluator.initializeTask)
+            //Tasks.await(detector.initializeTask)
             Log.d("Interpreter", "TfLite.initialize() completed successfully")
 
-            img?.let {
-                evaluator.modelReadyLatch.await()
-                val results = evaluator.runModel(it)
+            bitmapImage?.let {
+                detector.modelReadyLatch.await()
+                val results = detector.detect(it)
+                val newBitmap = detector.drawPointsOnBitmap(it, results)
+
 
                 // Draw detections on the image
                 /*
@@ -106,6 +111,8 @@ fun runEvaluation(onComplete: (Bitmap) -> Unit) {
 
                  */
 
+
+                /*
                 val yoloResults = evaluator.convertYolo(results)
                 if (yoloResults.stringResults != null) {
                     evaluator.drawDetections(img, yoloResults.stringResults!!, 1.0f, 1)
@@ -123,15 +130,17 @@ fun runEvaluation(onComplete: (Bitmap) -> Unit) {
                 val bitmap = createBitmap(rgbMat.cols(), rgbMat.rows())
                 Utils.matToBitmap(rgbMat, bitmap)
 
+                 */
+
                 // Pass the bitmap back to the UI thread
                 MainActivity.instance?.runOnUiThread {
-                    onComplete(bitmap)
+                    onComplete(newBitmap)
                 }
             }
         } catch (e: Exception) {
             Log.e("Interpreter", "Error during evaluation", e)
         }
-    }.start()
+
 }
 
 @Composable
@@ -142,6 +151,18 @@ fun Greeting(name: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
             Text("Run Evaluation")
         }
     }
+}
+
+fun getBitmapFromAssets(context: Context, fileName: String): Bitmap? {
+    val assetManager = context.assets
+    val inputStream: InputStream?
+    try {
+        inputStream = assetManager.open(fileName)
+        return BitmapFactory.decodeStream(inputStream)
+    } catch (e: IOException) {
+        e.printStackTrace()
+    }
+    return null
 }
 
 fun readImageFromAssets(context: Context, filename: String): Mat? {

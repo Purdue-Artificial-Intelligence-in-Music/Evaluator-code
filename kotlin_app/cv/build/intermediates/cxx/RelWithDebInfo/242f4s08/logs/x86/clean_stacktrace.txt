@@ -1,0 +1,31 @@
+org.gradle.process.internal.ExecException: A problem occurred starting process 'command '/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja''
+org.gradle.process.internal.ExecException: A problem occurred starting process 'command '/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja''
+	at org.gradle.process.internal.DefaultExecHandle.execExceptionFor(DefaultExecHandle.java:241)
+	at org.gradle.process.internal.DefaultExecHandle.setEndStateInfo(DefaultExecHandle.java:218)
+	at org.gradle.process.internal.DefaultExecHandle.failed(DefaultExecHandle.java:396)
+	at org.gradle.process.internal.ExecHandleRunner.lambda$run$3(ExecHandleRunner.java:102)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.process.internal.ExecHandleRunner.run(ExecHandleRunner.java:101)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(Unknown Source)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(Unknown Source)
+	at java.base/java.lang.Thread.run(Unknown Source)
+Caused by: net.rubygrapefruit.platform.NativeException: Could not start '/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja'
+	at net.rubygrapefruit.platform.internal.DefaultProcessLauncher.start(DefaultProcessLauncher.java:27)
+	at net.rubygrapefruit.platform.internal.WrapperProcessLauncher.start(WrapperProcessLauncher.java:36)
+	at org.gradle.process.internal.ExecHandleRunner.startProcess(ExecHandleRunner.java:122)
+	at org.gradle.process.internal.ExecHandleRunner.lambda$run$0(ExecHandleRunner.java:80)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.process.internal.ExecHandleRunner.run(ExecHandleRunner.java:79)
+	... 5 more
+Caused by: java.io.IOException: Cannot run program "/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja" (in directory "/Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv"): error=2, No such file or directory
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source)
+	at java.base/java.lang.ProcessBuilder.start(Unknown Source)
+	at net.rubygrapefruit.platform.internal.DefaultProcessLauncher.start(DefaultProcessLauncher.java:25)
+	... 10 more
+Caused by: java.io.IOException: error=2, No such file or directory
+	at java.base/java.lang.ProcessImpl.forkAndExec(Native Method)
+	at java.base/java.lang.ProcessImpl.<init>(Unknown Source)
+	at java.base/java.lang.ProcessImpl.start(Unknown Source)
+	... 13 more

@@ -7,7 +7,7 @@ import com.google.android.gms.tasks.Task
 import com.google.android.gms.tflite.java.TfLite
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
-import org.tensorflow.lite.InterpreterApi
+//import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.support.common.FileUtil
 import java.util.concurrent.CountDownLatch
 import kotlin.math.*
@@ -19,10 +19,15 @@ import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import android.os.SystemClock
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PointF
+import org.tensorflow.lite.Interpreter
 
 class Detector {
 
-    private var interpreter: InterpreterApi
+    private var interpreter: Interpreter
     private var labels = mutableListOf<String>()
 
     private var tensorWidth = 0
@@ -44,17 +49,21 @@ class Detector {
     }
 
     init {
-        val options = InterpreterApi.Options().apply{
+        val options = Interpreter.Options().apply{
             this.setNumThreads(8)
         }
-
-        interpreter = InterpreterApi.create(
+        /*
+        interpreter = Interpreter.create(
             FileUtil.loadMappedFile(
                 MainActivity.applicationContext(),
                 "nano_best_float32.tflite"
             ),
             options
         )
+         */
+        val model = FileUtil.loadMappedFile(MainActivity.applicationContext(), "nano_best_float32.tflite")
+        interpreter = Interpreter(model, options)
+
         modelReadyLatch.countDown()
 
         val inputShape = interpreter.getInputTensor(0)?.shape()
@@ -87,13 +96,17 @@ class Detector {
     )
 
 
-    fun detect(frame: Bitmap): List<Point>{
+    fun detect(frame: Bitmap): List<PointF>{
         if (tensorWidth == 0
             || tensorHeight == 0
             || numChannel == 0
             || numElements == 0) return emptyList()
 
+        println(tensorWidth)
+        println(tensorHeight)
         var inferenceTime = SystemClock.uptimeMillis()
+
+
 
         val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
 
@@ -103,42 +116,48 @@ class Detector {
         val imageBuffer = processedImage.buffer
 
         val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
+
         interpreter.run(imageBuffer, output.buffer)
 
+        println(output.floatArray.contentToString())
+
         val bestBoxes = newBestBox(output.floatArray)
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
-        println("TRUE INFERENCE TIME: $inferenceTime")
-        val newBoxes = mutableListOf<Point>()
+
+        val newBoxes = mutableListOf<PointF>()
         for (box in bestBoxes) {
             val points = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle)
             newBoxes.addAll(points)
         }
+        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
+        println("TRUE INFERENCE TIME: $inferenceTime")
         return newBoxes
     }
 
-    fun drawDetections(img: Mat, box: List<Point>, score: Float, classId: Int) {
-        // Define color palette and class labels
-        val colorPalette = mapOf(
-            1 to Scalar(255.0, 255.0, 100.0), // BGR format
-            0 to Scalar(100.0, 255.0, 255.0)
-        )
-        // Define class ID to label mapping
-        val classes = mapOf(
-            1 to "bow",
-            0 to "string"
-        )
+    fun drawPointsOnBitmap(
+        sourceBitmap: Bitmap,
+        points: List<PointF>,
+        color: Int = Color.RED,
+        radius: Float = 10f
+    ): Bitmap {
+        val resultBitmap = sourceBitmap.copy(Bitmap.Config.ARGB_8888, true)
 
-        val color = colorPalette[classId] ?: Scalar(255.0, 255.0, 255.0) // fallback color (white)
+        val canvas = Canvas(resultBitmap)
 
-        // Draw bounding box if the box contains 4 points
-        if (box.size == 4) {
-            // converts list of Points to OpenCV MatOfPoint
-            val pointsArray = MatOfPoint(*box.map { Point(it.x, it.y) }.toTypedArray())
-            Imgproc.polylines(img, listOf(pointsArray), true, color, 2)
+        val paint = Paint().apply {
+            this.color = color
+            style = Paint.Style.FILL
+            isAntiAlias = true
         }
+        for (point in points) {
+            canvas.drawCircle(point.x * sourceBitmap.width, point.y * sourceBitmap.height, radius, paint)
+        }
+
+        return resultBitmap
     }
 
-    private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float): List<Point> {
+
+
+    private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float): List<PointF> {
         val halfW = w / 2
         val halfH = h / 2
         val cosA = cos(angleRad - Math.PI.toFloat() / 2)
@@ -152,12 +171,13 @@ class Detector {
         return corners.map { (x, y) ->
             val xRot = x * cosA - y * sinA + cx
             val yRot = x * sinA + y * cosA + cy
-            Point(xRot.toDouble(), yRot.toDouble())
+            PointF(xRot, yRot)
         }
     }
 
     private fun newBestBox(array : FloatArray) : List<OrientedBoundingBox> {
         val boundingBoxes = mutableListOf<OrientedBoundingBox>()
+
         for (r in 0 until numElements) {
             val cnf = array[r * numChannel + 4]
             if (cnf > CONFIDENCE_THRESHOLD) {
@@ -167,11 +187,10 @@ class Detector {
                 val w = array[r * numChannel + 3]
                 val cls = array[r * numChannel + 5].toInt()
                 val angle = array[r * numChannel + 6]
-                val clsName = labels[cls]
                 boundingBoxes.add(
                     OrientedBoundingBox(
                         x = x, y = y, height = h, width = w,
-                        conf = cnf, cls = cls, angle = angle, clsName = clsName
+                        conf = cnf, cls = cls, angle = angle, clsName = "p"
                     )
                 )
             }

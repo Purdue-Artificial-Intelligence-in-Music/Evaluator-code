@@ -66,5 +66,8 @@ dependencies {
     // Optional: include LiteRT Support Library
     implementation(libs.play.services.tflite.support)
     implementation(libs.play.services.tflite.gpu)
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
 
 }
