@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Evaluator-Kotlin.iml" filepath="$PROJECT_DIR$/.idea/modules/Evaluator-Kotlin.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/Evaluator-Kotlin.app.iml" filepath="$PROJECT_DIR$/.idea/modules/app/Evaluator-Kotlin.app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/Evaluator-Kotlin.app.androidTest.iml" filepath="$PROJECT_DIR$/.idea/modules/app/Evaluator-Kotlin.app.androidTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/Evaluator-Kotlin.app.unitTest.iml" filepath="$PROJECT_DIR$/.idea/modules/app/Evaluator-Kotlin.app.unitTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.iml" filepath="$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.androidTest.iml" filepath="$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.androidTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.main.iml" filepath="$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.unitTest.iml" filepath="$PROJECT_DIR$/.idea/modules/cv/Evaluator-Kotlin.cv.unitTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/sdk/Evaluator-Kotlin.sdk.iml" filepath="$PROJECT_DIR$/.idea/modules/sdk/Evaluator-Kotlin.sdk.iml" />
+    </modules>
+  </component>
+</project>

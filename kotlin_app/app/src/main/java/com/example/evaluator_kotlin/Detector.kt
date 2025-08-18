@@ -61,7 +61,7 @@ class Detector {
             options
         )
          */
-        val model = FileUtil.loadMappedFile(MainActivity.applicationContext(), "nano_best_float32.tflite")
+        val model = FileUtil.loadMappedFile(MainActivity.applicationContext(), "nano_float16.tflite")
         interpreter = Interpreter(model, options)
 
         modelReadyLatch.countDown()
