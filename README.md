@@ -37,3 +37,9 @@
   ```bash
   npx expo run:android # This may take a while
   ```
+6. Testing: press "Fetch data" button, you should see "Status: Video Analyzer Module Connected"
+
+
+## Overview
+- Frontend file: app/index.tsx
+- Native Module: modules/expo-video-analyzer
