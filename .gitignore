@@ -10,6 +10,22 @@ npm-debug.*
 *.orig.*
 web-build/
 
+# Native module build outputs
+modules/*/android/build/
+modules/*/android/.gradle/
+modules/*/android/local.properties
+modules/*/android/.idea/
+modules/*/android/*.iml
+
+modules/*/ios/build/
+modules/*/ios/DerivedData/
+modules/*/ios/*.xcworkspace
+modules/*/ios/Pods/
+
+# Other build files
+**/*.dex
+**/*.class
+
 # macOS
 .DS_Store
 

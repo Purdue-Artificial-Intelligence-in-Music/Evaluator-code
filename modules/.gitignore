@@ -1,0 +1,33 @@
+# Build outputs
+android/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+android/*.iml
+
+ios/build/
+ios/DerivedData/
+ios/*.xcworkspace
+ios/Pods/
+
+# Dependencies
+node_modules/
+
+# Generated files
+*.dex
+*.class
+*.jar
+*.war
+*.ear
+*.aar
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

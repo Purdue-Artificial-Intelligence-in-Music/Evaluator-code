@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import * as VideoAnalyzer from '../modules/expo-video-analyzer/src/ExpoVideoAnalyzer';
 
 
 import { TouchableOpacity} from 'react-native';
@@ -17,7 +18,7 @@ import { Platform } from 'react-native';
 
 import * as MediaLibrary from 'expo-media-library';
 
-import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
+import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator, Alert } from 'react-native';
 
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
@@ -30,7 +31,6 @@ import { Svg, Circle, Line} from 'react-native-svg';
 import * as Network from 'expo-network';
 
 import * as FileSystem from 'expo-file-system';
-
 
 type Point = {
   x: number;
@@ -59,9 +59,7 @@ if (Platform.OS === 'web') {
 }
 
 
-// TODO: use ip address of your computer (the backend) here (use ipconfig or ifconfig to look up)
-export default function App() {
-  const [serverIP, setServerIP] = useState("10.186.18.225"); // Change this to your server's IP address
+export default function HomePage() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -86,6 +84,19 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null);
   const isSending = useRef(false);
 
+
+  const [analysisResult, setAnalysisResult] = useState<string>('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const testConnection = () => {
+    try {
+      const moduleStatus = VideoAnalyzer.getStatus();
+      Alert.alert('Connection Test', `Status: ${moduleStatus}`);
+    } catch (error) {
+      Alert.alert('Connection Failed', `Error: ${error.message}`);
+    }
+  };
+
 const requestCameraPermission = async () => {
   const status = await Camera.requestCameraPermission();
   if (status === 'granted') {
@@ -104,34 +115,6 @@ useEffect(() => {
   console.log('Points updated:', points);
 }, [points]);
 
-useEffect(() => {
-    const socket = new WebSocket(`ws://${serverIP}:8000/ws`);
-    socketRef.current = socket;
-
-    socket.onopen = () => console.log("WebSocket connected");
-    socket.onmessage = (event) => {
-      try {
-        const responseData = JSON.parse(event.data);
-        console.log("Received:", responseData);
-        isSending.current = false;
-
-        processPoints(responseData);
-        setSupinating(responseData.supination.toString());
-      } catch (e) {
-        console.error("Error parsing server message:", e);
-      }
-    };
-    socket.onerror = (err) => {
-      console.error("WebSocket error:", err);
-      isSending.current = false;
-      socket.close();
-    };
-
-    socket.onclose = (event) => {
-      console.log("WebSocket closed", event.code, event.reason);
-    };
-}, []);
-
 const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   const device = useCameraDevice('back');
   if (device == null) {
@@ -147,70 +130,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   // const format = useCameraFormat(device, [
   //   { photoResolution: { width: 640, height: 480 } }
   // ]);
-
-  const takePicture = async () => {
-    if (cameraRef.current == null || isTakingPhoto.current || (socketRef.current?.readyState !== WebSocket.OPEN)) return;
-    isTakingPhoto.current = true;
-    try {
-      const photo = await cameraRef.current.takePhoto({
-        flash: 'off',
-      });
-      setImageWidth(photo.width);
-      setImageHeight(photo.height);
-      console.log("Photo taken, width: ", photo.width, "height: ", photo.height);
-      const base64 = await RNFS.readFile(photo.path, 'base64');
-      sendImageToBackend(`data:image/jpeg;base64,${base64}`);
-    } catch (err: any) {
-      if (err?.message?.includes('Camera is closed')) {
-        console.warn('Camera was closed before photo could be taken.');
-      } else {
-        console.error("Error taking photo:", err);
-      }
-    } finally {
-      isTakingPhoto.current = false;
-    }
-  };
-
-  // const takeSnapshot = async () => {
-  //   if (cameraRef.current == null || isTakingPhoto.current || (socketRef.current?.readyState !== WebSocket.OPEN)) return;
-  //   isTakingPhoto.current = true;
-  
-  //   try {
-  //     const snapshot = await cameraRef.current.takeSnapshot({
-  //       quality: 50
-  //     });
-  
-  //     if (snapshot?.path) {
-  //       const base64 = await RNFS.readFile(snapshot.path, 'base64');
-  //       sendImageToBackend(`data:image/jpeg;base64,${base64}`);
-  //     }
-  //   } catch (err: any) {
-  //     console.error("Snapshot error:", err);
-  //   } finally {
-  //     isTakingPhoto.current = false;
-  //   }
-  // };
-
-
-  useEffect(() => {  
-    if (recording && !loading) {
-      const timeout = setTimeout(() => {
-        intervalRef.current = setInterval(() => {
-          takePicture();
-          // takeSnapshot();
-        }, 500) as unknown as number;
-      }, startDelay);
-      return () => {
-        clearTimeout(timeout);
-        if (intervalRef.current !== null) clearInterval(intervalRef.current);
-      };
-    } else {
-      if (intervalRef.current !== null) clearInterval(intervalRef.current);
-    }
-    return () => {
-      if (intervalRef.current !== null) clearInterval(intervalRef.current);
-    };
-  }, [recording, loading]);
+ 
 
   return (
     <View style={styles.cameraContainer}>
@@ -397,7 +317,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       setIsCameraOpen(false)
       setVideoUri(null)
       setsendButton(false)
-
+      setAnalysisResult('')
   };
   // Send captured image to backend API
   const sendImageToBackend = async (imageBase64: string) => {
@@ -410,192 +330,37 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       socketRef.current.send(JSON.stringify(message));
     }
   };
+  
 
-  // const sendImageToBackend = async (imageBase64: string) => {
-  //   const jsonData = {
-  //     "title": "Test Image",
-  //     "content": "This is a test image",
-  //     "image": imageBase64,
-  //   }
-  //   try {
-  //     setLoading(true);
-  //     const response = await fetch(`http://${serverIP}:8000/upload/`, {
-  //       method: 'POST',
-  //       body: JSON.stringify(jsonData),
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //     });
 
-  //     if (response.ok) {
-  //       const responseData: ResponseData = await response.json(); // Type casting here
+  const sendVideoBackend = async () => {
+    if (!videofile) {
+      Alert.alert('Error', 'Please select a video');
+      return;
+    }
 
-  //       console.log(responseData);
-  //       processPoints(responseData);  
-  //       setSupinating(responseData["supination"].toString());
-  //     }
-
-  //   } catch (error) {
-  //     console.error('Error uploading image:', error);
-  //     alert('Error: Failed to upload image.');
-
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
+    setIsAnalyzing(true);
+    try {
+      console.log('try:', videofile);
+      const result = await VideoAnalyzer.analyzeVideo(videofile);
+      console.log('Result:', result);
+      
+      if (result.success) {
+        Alert.alert('Success', `Video opened\nLength: ${result.duration}ms\nResolution: ${result.width}x${result.height}`);
+        setAnalysisResult(JSON.stringify(result, null, 2));
+      } else {
+        Alert.alert('Error', `Video could not be opened: ${result.error}`);
+      }
+      
+    } catch (error) {
+      console.error('Failed to open video:', error);
+      Alert.alert('Error', `Error: ${error.message}`);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   
-  async function sendVideoBackend() {
-    try {
-      if (!videofile) {
-        alert('No video selected');
-        return;
-      }
-
-      setsendVideo(true);
-      setVideoUri(null);
-      setsendButton(false);
-
-      const fileInfo = await FileSystem.getInfoAsync(videofile);
-      if (!fileInfo.exists) {
-        throw new Error('Video file not found');
-      }
-
-      const fileSize = fileInfo.size || 0;
-      const fileSizeMB = Math.round(fileSize / (1024 * 1024));
-      console.log(`File size: ${fileSizeMB} MB (${fileSize} bytes)`);
-
-      // Allow files up to 500MB
-      if (fileSize > 500 * 1024 * 1024) { // 500MB
-        alert(`Video file is too large (${fileSizeMB}MB). Please select a smaller video file (under 500MB).`);
-        setsendVideo(false);
-        return;
-      }
-      
-      try {
-        // use FormData as first choice for uploading
-        console.log('Attempting FormData upload...');
-        const formData = new FormData();
-        formData.append('video', {
-          uri: videofile,
-          type: 'video/mp4',
-          name: 'video.mp4'
-        } as any);
-
-        const response = await fetch(`http://${serverIP}:8000/send-video`, {
-          method: "POST",
-          body: formData,
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          console.log("Response from Backend", result);
-
-          if (!result.Video) {
-            throw new Error('No video data in response');
-          }
-
-          setVideoUri(result.Video);
-
-          if (result.Width && result.Height) {
-            setVideoDimensions({ width: result.Width, height: result.Height });
-          }
-
-          setsendVideo(false);
-          return;
-        }
-      } catch (formDataError: any) {
-        console.log('FormData upload failed, trying base64...');
-
-        const errorMessage = formDataError.message || '';
-        const errorName = formDataError.name || '';
-        
-        if (errorMessage.includes('413') || errorMessage.includes('Payload Too Large')) {
-          console.log('Server file size limit exceeded. ', errorName, errorMessage);
-        } else if (errorMessage.includes('Network') || errorMessage.includes('timeout')) {
-          console.log('Network connection issue. ', errorName, errorMessage);
-        } else {
-          console.log('Other FormData error:', errorName, errorMessage);
-        }
-      }
-
-      // fallback if FormData fails - use base64 encoding（only for small files）
-      if (fileSize > 100 * 1024 * 1024) { // upper limit 100MB
-        alert(`Video file is too large (${fileSizeMB}MB). Please select a smaller video file (under 100MB).`);
-        setsendVideo(false);
-        return;
-      }
-
-      console.log('Reading video file as base64...');
-      alert(`Uploading ${fileSizeMB}MB video file. This may take a while...`);
-      
-      try {
-        const base64Data = await FileSystem.readAsStringAsync(videofile, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        console.log('Base64 encoding completed successfully');
-        
-        const jsonData = {
-          video: base64Data
-        };
-
-        const base64Response = await fetch(`http://${serverIP}:8000/send-video`, {
-          method: "POST",
-          body: JSON.stringify(jsonData),
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!base64Response.ok) {
-          const errorData = await base64Response.json();
-          console.error('Server error:', errorData);
-          throw new Error(`Server error: ${base64Response.status}`);
-        }
-
-        const result = await base64Response.json();
-        console.log("Response from Backend", result);
-
-        if (!result.Video) {
-          throw new Error('No video data in response');
-        }
-        setVideoUri(result.Video);
-        if (result.Width && result.Height) {
-          setVideoDimensions({ width: result.Width, height: result.Height });
-        }
-        setsendVideo(false);
-      } catch (base64Error: any) {
-        console.error('Base64 processing error:', base64Error);
-        
-        // check for memory error
-        const errorMessage = base64Error.message || '';
-        const isMemoryError = errorMessage.includes('OutOfMemory') || 
-                             errorMessage.includes('memory') ||
-                             errorMessage.includes('allocation') ||
-                             errorMessage.includes('OOM') ||
-                             base64Error.name === 'OutOfMemoryError';
-        
-        if (isMemoryError) {
-          alert(`Memory error: Video file (${fileSizeMB}MB) is too large for your device to process.`);
-        } else if (errorMessage.includes('timeout') || errorMessage.includes('network')) {
-          alert(`Network error: Upload timed out. Please check your internet connection and try again.`);
-        } else {
-          alert(`Upload failed: ${errorMessage}\n\nPlease try again later with a smaller video file.`);
-        }
- 
-        setsendVideo(false);
-        return;
-      }
-    } catch (error: any) {
-      console.error('Error sending video:', error);
-      alert(`Failed to send video: ${error.message || 'Unknown error'}`);
-      setsendVideo(false);
-    }
-  }
 
   const downloadVideo = async (videoUrl: string) => {
     // Temporary part preventing crash on web platform
@@ -637,20 +402,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
   };
 
  
-
-  async function demoVideo() {
-    const jsonData = {
-      "title": "demo video",
-      "videouri": "this is a test",
-    }
-    const response = await fetch(`http://${serverIP}:8000/api/upload/`, {
-      method: 'POST',
-      body: JSON.stringify(jsonData),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-  }
   
   const openCamera = () => {
     requestCameraPermission()
@@ -716,7 +467,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       </TouchableOpacity>
 
      <TouchableOpacity
-      onPress={demoVideo}
+      onPress={testConnection}
       disabled={loading}
       style={{
         width:320,
