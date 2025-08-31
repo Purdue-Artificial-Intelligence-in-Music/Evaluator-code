@@ -156,7 +156,7 @@
         "rootBuildGradleFolder": "/Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app",
         "sdkFolder": "/Users/paolowang/Library/Android/sdk",
         "isBuildOnlyTargetAbiEnabled": true,
-        "ideBuildTargetAbi": "arm64-v8a,armeabi-v7a,armeabi",
+        "ideBuildTargetAbi": "arm64-v8a",
         "isCmakeBuildCohabitationEnabled": false,
         "isPrefabEnabled": false
       },

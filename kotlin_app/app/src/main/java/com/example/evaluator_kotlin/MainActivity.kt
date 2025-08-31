@@ -88,58 +88,27 @@ fun runEvaluation(onComplete: (Bitmap) -> Unit) {
 
     //evaluator.createInterpreter(MainActivity.applicationContext())
 
+    try {
+        //Tasks.await(detector.initializeTask)
+        Log.d("Interpreter", "TfLite.initialize() completed successfully")
+
+        bitmapImage?.let {
+            detector.modelReadyLatch.await()
+            val results = detector.detect(it)
+            val newBitmap = detector.drawPointsOnBitmap(it, results)
 
 
-        try {
-            //Tasks.await(detector.initializeTask)
-            Log.d("Interpreter", "TfLite.initialize() completed successfully")
-
-            bitmapImage?.let {
-                detector.modelReadyLatch.await()
-                val results = detector.detect(it)
-                val newBitmap = detector.drawPointsOnBitmap(it, results)
+            println("CLASSIFICATION: " + detector.classify(results))
 
 
-                // Draw detections on the image
-                /*
-                for (result in results) {
-                    val points: List<Point> = result.slice(0..7).chunked(2).map { (x, y) ->
-                        Point(x.toDouble(), y.toDouble())
-                    }
-                    evaluator.drawDetections(it, points, result[8], result[9].toInt())
-                }
-
-                 */
-
-
-                /*
-                val yoloResults = evaluator.convertYolo(results)
-                if (yoloResults.stringResults != null) {
-                    evaluator.drawDetections(img, yoloResults.stringResults!!, 1.0f, 1)
-                }
-                if (yoloResults.bowResults != null) {
-                    evaluator.drawDetections(img, yoloResults.bowResults!!, 1.0f, 0)
-                }
-                println("CLASSIFICATION: " + evaluator.classify(yoloResults))
-
-                // Convert from BGR to RGB for Android display
-                val rgbMat = Mat()
-                Imgproc.cvtColor(img, rgbMat, Imgproc.COLOR_BGR2RGB)
-
-                // Convert Mat to Bitmap
-                val bitmap = createBitmap(rgbMat.cols(), rgbMat.rows())
-                Utils.matToBitmap(rgbMat, bitmap)
-
-                 */
-
-                // Pass the bitmap back to the UI thread
-                MainActivity.instance?.runOnUiThread {
-                    onComplete(newBitmap)
-                }
+            // Pass the bitmap back to the UI thread
+            MainActivity.instance?.runOnUiThread {
+                onComplete(newBitmap)
             }
-        } catch (e: Exception) {
-            Log.e("Interpreter", "Error during evaluation", e)
         }
+    } catch (e: Exception) {
+        Log.e("Interpreter", "Error during evaluation", e)
+    }
 
 }
 

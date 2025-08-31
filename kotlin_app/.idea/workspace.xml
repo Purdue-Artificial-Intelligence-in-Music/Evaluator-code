@@ -1,10 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="AutoImportSettings">
-    <option name="autoReloadType" value="SELECTIVE" />
+    <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="5c17beba-285a-4c5d-8d92-1207395dc46c" name="Changes" comment="" />
+    <list default="true" id="5c17beba-285a-4c5d-8d92-1207395dc46c" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/example/evaluator_kotlin/Detector.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/example/evaluator_kotlin/Detector.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/example/evaluator_kotlin/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/example/evaluator_kotlin/MainActivity.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.cmake/api/v1/reply/index-2025-08-17T19-38-36-0293.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.cmake/api/v1/reply/index-2025-08-17T21-06-08-0957.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.ninja_deps" beforeDir="false" afterPath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.ninja_deps" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.ninja_deps 2" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.ninja_log" beforeDir="false" afterPath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.ninja_log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/.ninja_log 2" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/CMakeCache 2.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/CMakeFiles/3.22.1-g37088a8/CMakeSystem.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/CMakeFiles/3.22.1-g37088a8/CMakeSystem.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/CMakeFiles/CMakeOutput.log" beforeDir="false" afterPath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/CMakeFiles/CMakeOutput.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/additional_project_files 2.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/android_gradle_build 2.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/android_gradle_build_mini 2.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/build 2.ninja" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/build_file_index 2.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/cmake_install 2.cmake" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/compile_commands 2.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/compile_commands.json 2.bin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/configure_fingerprint 2.bin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/configure_fingerprint.bin" beforeDir="false" afterPath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/configure_fingerprint.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/libopencv_jni_shared 2.a" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/metadata_generation_command 2.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/prefab_config 2.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/cv/.cxx/Debug/4u724431/arm64-v8a/symbol_folder_index 2.txt" beforeDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -13,7 +39,7 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[DeviceId(pluginId=PhysicalDevice, isTemplate=false, identifier=serial=R5CY61JP30P)]" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[DeviceId(pluginId=LocalEmulator, isTemplate=false, identifier=path=/Users/paolowang/.android/avd/Medium_Phone.avd)]" />
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
@@ -43,13 +69,40 @@
       </list>
     </option>
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/Purdue-Artificial-Intelligence-in-Music/Evaluator-code.git",
+    "accountId": "d9112597-b5bb-4872-bc2f-5dbb28ffc01f"
+  }
+}]]></component>
   <component name="ProblemsViewState">
     <option name="selectedTabId" value="ProjectErrors" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 4
+}]]></component>
+  <component name="ProjectId" id="324Hn6d6quMIoiInPxCzQdaerzm" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "Android App.Unnamed.executor": "Run",
-    "com.google.services.firebase.aqiPopupShown": "true"
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "com.google.services.firebase.aqiPopupShown": "true",
+    "git-widget-placeholder": "paolo-kotlin-testing",
+    "kotlin-language-version-configured": "true"
   }
 }]]></component>
   <component name="RunManager">
@@ -127,6 +180,13 @@
     </configuration>
   </component>
   <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="5c17beba-285a-4c5d-8d92-1207395dc46c" name="Changes" comment="" />
+      <created>1756673089611</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1756673089611</updated>
+    </task>
     <servers />
   </component>
   <component name="XDebuggerManager">
