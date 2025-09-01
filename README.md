@@ -14,7 +14,7 @@
 - Download: OpenJDK (or Oracle JDK)
 - Verify installation:
   ```bash
-  java --version  # Should show Java 17.x.x
+  java -version  # Should show Java 17.x.x
   ```
 
 
