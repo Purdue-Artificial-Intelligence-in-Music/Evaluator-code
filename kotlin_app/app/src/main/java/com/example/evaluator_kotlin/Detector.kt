@@ -257,8 +257,8 @@ class Detector {
             val sortedString = sortStringPoints(stringBox)
             stringPoints = sortedString
 
-            stringPoints!![0].y = yAvg!![0].toDouble()
-            stringPoints!![1].y = yAvg!![1].toDouble()
+            stringPoints!![0].y = yAvg!![0]
+            stringPoints!![1].y = yAvg!![1]
 
             println("y_avg: $yAvg")
             println("string_points: $stringPoints")
@@ -268,7 +268,7 @@ class Detector {
 
     fun sortStringPoints(pts: MutableList<Point>): MutableList<Point> {
         // Sort points by y
-        val sortedPoints = pts.sortedBy { it.y }
+        val sortedPoints = pts.sortedBy {it.y }
 
         // Find first 2 and last pts
         val topPoints = sortedPoints.take(2).sortedBy { it.x }      // Sort by X ascending
@@ -449,7 +449,7 @@ class Detector {
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        //val bot_scaling_factor = .25
+        val bot_scaling_factor = .15
         val top_scaling_factor = .15
 
         // Extracts the vertical lines from the list
@@ -469,13 +469,15 @@ class Detector {
 
         // Calculates the minimum and maximum y-coordinates for the intersections based on the scaling factors
         val min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
-        if (intersectionPoints[0].y >= min_y || intersectionPoints[1].y >= min_y) {
+        if (intersectionPoints[0].y <= min_y || intersectionPoints[1].y <= min_y) {
             return 2
         }
 
-        //val max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
-        //if (intersectionPoints[0].y <= max_y or intersectionPoints[1][1].toDouble() <= max_y):
-        //return 3
+        val max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
+        if (intersectionPoints[0].y >= max_y || intersectionPoints[1].y >= max_y) {
+            return 3
+        }
+
 
         return 0
     }
@@ -545,7 +547,7 @@ class Detector {
      */
     private fun bowAngle(bowLine: MutableList<Int>, verticalLines: MutableList<MutableList<Double>>): Int {
         // flexibility of angle relative to 90 degrees
-        val max_angle = 15
+        val max_angle = 30
 
         // grab bow line and vertical lines
         val m_bow: Double = bowLine[0].toDouble()
@@ -556,7 +558,8 @@ class Detector {
         val angle_one: Double = abs(degrees(atan(abs(m_bow - m2) / (1 + m_bow * m2))))
         val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
 
-        val min_angle: Double = min(angle_one, angle_two)
+        val min_angle: Double = abs(90 - min(angle_one, angle_two))
+        println("ANGLE: $min_angle")
 
         return if (min_angle > max_angle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
     }
@@ -582,6 +585,7 @@ class Detector {
             return classResults
         }
         if (results.stringResults != null) {
+            results.stringResults = sortStringPoints(results.stringResults!!)
             //need to do averaging of top two y coords
             classResults.string = results.stringResults
             averageYCoordinate(results.stringResults!!)
