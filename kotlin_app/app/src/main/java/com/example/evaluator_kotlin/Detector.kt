@@ -7,7 +7,7 @@ import com.google.android.gms.tasks.Task
 import com.google.android.gms.tflite.java.TfLite
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
-//import org.tensorflow.lite.InterpreterApi
+import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.support.common.FileUtil
 import java.util.concurrent.CountDownLatch
 import kotlin.math.*
@@ -28,7 +28,7 @@ import org.tensorflow.lite.Interpreter
 
 class Detector {
 
-    private var interpreter: Interpreter
+    private var interpreter: InterpreterApi
     private var labels = mutableListOf<String>()
 
     private var tensorWidth = 0
@@ -45,6 +45,10 @@ class Detector {
     private var frameCounter = 0
     private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
     private val numWaitFrames = 10
+    private var ogWdith: Int = 0
+    private var ogHeight: Int = 0
+
+
 
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
@@ -107,6 +111,10 @@ class Detector {
 
 
     fun detect(frame: Bitmap): YoloResults{
+
+        ogWdith = frame.width
+        ogHeight = frame.height
+        var inferenceTime = SystemClock.uptimeMillis()
         var results = YoloResults(null, null)
         if (tensorWidth == 0
             || tensorHeight == 0
@@ -115,10 +123,6 @@ class Detector {
 
         println(tensorWidth)
         println(tensorHeight)
-        var inferenceTime = SystemClock.uptimeMillis()
-
-
-
         val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
 
         val tensorImage = TensorImage(INPUT_IMAGE_TYPE)
@@ -172,12 +176,12 @@ class Detector {
         }
         if (points.bowResults != null) {
             for (point in points.bowResults!!) {
-                canvas.drawCircle(point.x.toFloat() * sourceBitmap.width, point.y.toFloat() * sourceBitmap.height, radius, paint)
+                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), radius, paint)
             }
         }
         if (points.stringResults != null) {
             for (point in points.stringResults!!) {
-                canvas.drawCircle(point.x.toFloat() * sourceBitmap.width, point.y.toFloat() * sourceBitmap.height, radius, paint)
+                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), radius, paint)
             }
         }
 
@@ -200,14 +204,14 @@ class Detector {
         return corners.map { (x, y) ->
             val xRot = x * cosA - y * sinA + cx
             val yRot = x * sinA + y * cosA + cy
-            Point(xRot.toDouble(), yRot.toDouble())
+            Point(xRot.toDouble() * ogWdith, yRot.toDouble() * ogHeight)
         }
     }
 
     private fun newBestBox(array : FloatArray) : List<OrientedBoundingBox> {
         val boundingBoxes = mutableListOf<OrientedBoundingBox>()
 
-        for (r in 0 until numElements) {
+        for (r in 0 until 2) {
             val cnf = array[r * numChannel + 4]
             if (cnf > CONFIDENCE_THRESHOLD) {
                 val x = array[r * numChannel]
