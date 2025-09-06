@@ -11,7 +11,6 @@ import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.support.common.FileUtil
 import java.util.concurrent.CountDownLatch
 import kotlin.math.*
-import org.opencv.core.Point
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.support.common.ops.CastOp
 import org.tensorflow.lite.support.common.ops.NormalizeOp
@@ -22,7 +21,6 @@ import android.os.SystemClock
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.PointF
 import com.example.evaluator_kotlin.Evaluator.YoloResults
 import org.tensorflow.lite.Interpreter
 
@@ -107,6 +105,11 @@ class Detector {
     data class YoloResults(
         var bowResults: MutableList<Point>?,
         var stringResults: MutableList<Point>?
+    )
+
+    data class Point(
+        var x: Double,
+        var y: Double
     )
 
 

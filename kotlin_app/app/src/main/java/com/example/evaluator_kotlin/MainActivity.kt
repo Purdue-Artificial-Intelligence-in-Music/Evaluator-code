@@ -21,10 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.example.evaluator_kotlin.ui.theme.EvaluatorKotlinTheme
 import com.google.android.gms.tasks.Tasks
-import org.opencv.android.Utils
-import org.opencv.core.Mat
-import org.opencv.core.Point
-import org.opencv.imgcodecs.Imgcodecs
 import java.io.File
 import androidx.compose.ui.graphics.asImageBitmap
 import org.opencv.imgproc.Imgproc
@@ -133,7 +129,7 @@ fun getBitmapFromAssets(context: Context, fileName: String): Bitmap? {
     }
     return null
 }
-
+/*
 fun readImageFromAssets(context: Context, filename: String): Mat? {
     try {
         // Open the asset file
@@ -215,3 +211,5 @@ fun main() {
 
 
 }
+
+ */
