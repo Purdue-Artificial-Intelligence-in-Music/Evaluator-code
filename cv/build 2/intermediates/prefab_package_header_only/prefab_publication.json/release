@@ -1,0 +1,17 @@
+{
+  "installationFolder": "/Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv/build/intermediates/prefab_package/release/prefab",
+  "gradlePath": ":cv",
+  "packageInfo": {
+    "packageName": "cv",
+    "packageSchemaVersion": 2,
+    "packageDependencies": [],
+    "modules": [
+      {
+        "moduleName": "opencv_jni_shared",
+        "moduleHeaders": "/Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv/native/jni/include",
+        "moduleExportLibraries": [],
+        "abis": []
+      }
+    ]
+  }
+}

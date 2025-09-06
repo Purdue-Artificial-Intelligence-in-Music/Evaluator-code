@@ -1,0 +1,17 @@
+{
+  "installationFolder": "D:\\testing\\cv\\build\\intermediates\\prefab_package\\release\\prefab",
+  "gradlePath": ":cv",
+  "packageInfo": {
+    "packageName": "cv",
+    "packageSchemaVersion": 2,
+    "packageDependencies": [],
+    "modules": [
+      {
+        "moduleName": "opencv_jni_shared",
+        "moduleHeaders": "D:\\testing\\cv\\native\\jni\\include",
+        "moduleExportLibraries": [],
+        "abis": []
+      }
+    ]
+  }
+}

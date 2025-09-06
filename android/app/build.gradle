@@ -93,14 +93,6 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
-
-        ndkVersion "26.1.10909125"
-        
-        externalNativeBuild {
-            cmake {
-                arguments "-DCMAKE_OBJECT_PATH_MAX=150"
-            }
-        }
     }
     signingConfigs {
         debug {
@@ -132,7 +124,6 @@ android {
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
-
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`

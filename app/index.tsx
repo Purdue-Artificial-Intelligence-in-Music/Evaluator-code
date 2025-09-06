@@ -331,7 +331,52 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     }
   };
   
+  const testDetector = async () => {
+    try {
+      const initResult = await VideoAnalyzer.initialize();
+      
+      if (!initResult.success) {
+        Alert.alert('Initialization Fail', 'Initialization Failed');
+        return;
+      }
+      
+      Alert.alert('Initialization Success', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
+      
+    } catch (error) {
+      console.error('Initialization Fail:', error);
+      Alert.alert('Error', `Initialization Fail: ${error.message}`);
+    }
+  };
 
+  const testFrameProcessing = async () => {
+    if (!videofile) {
+      Alert.alert('Error', 'Please choose a video first.');
+      return;
+    }
+
+    try {
+      console.log('=== Test Logs ===');
+      console.log('Video file URI:', videofile);
+      console.log('URI type:', typeof videofile);
+      console.log('URI length:', videofile.length);
+      console.log('Start frame extraction...');
+      const result = await VideoAnalyzer.processFrame(videofile);
+      console.log('Frame processing result:', result);
+      
+      Alert.alert('Processing complete', 
+        `Classification: ${result.classification}\n` +
+        `Angle: ${result.angle}\n` +
+        `Detected bow: ${result.hasBow}\n` +
+        `Detected string: ${result.hasString}\n` +
+        `bowPoints: ${result.bowPoints}\n` +
+        `stringPoints: ${result.stringPoints}`
+      );
+      
+    } catch (error) {
+      console.error('Processing Failed:', error);
+      Alert.alert('Error', `Processing Failed: ${error.message}`);
+    }
+  };
 
   const sendVideoBackend = async () => {
     if (!videofile) {
@@ -342,7 +387,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     setIsAnalyzing(true);
     try {
       console.log('try:', videofile);
-      const result = await VideoAnalyzer.analyzeVideo(videofile);
+      const result = await VideoAnalyzer.openVideo(videofile);
       console.log('Result:', result);
       
       if (result.success) {
@@ -426,7 +471,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
 
       <View style={styles.buttonStyle}>
-      
+      {/* these two buttons are only for temp testing */}
+      <Button title="Test detector initialization" onPress={testDetector} />
+      <Button title="Test processing frame" onPress={testFrameProcessing} />
 
       <TouchableOpacity
         onPress={pickVideo}
