@@ -1,0 +1,2 @@
+ninja: Entering directory `D:\testing\cv\.cxx\Debug\275y1u6g\x86'
+ninja: no work to do.

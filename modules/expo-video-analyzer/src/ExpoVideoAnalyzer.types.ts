@@ -22,7 +22,6 @@ export type VideoAnalysisResult = {
 };
 
 export type ExpoVideoAnalyzerModuleEvents = {
-  // 为未来的进度事件预留
   onAnalysisProgress: (progress: { percentage: number }) => void;
   onAnalysisComplete: (result: VideoAnalysisResult) => void;
 };
