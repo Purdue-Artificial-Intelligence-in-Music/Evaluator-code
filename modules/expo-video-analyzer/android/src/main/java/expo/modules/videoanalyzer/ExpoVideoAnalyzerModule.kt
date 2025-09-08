@@ -246,4 +246,76 @@ class ExpoVideoAnalyzerModule : Module() {
             retriever.release()
         }
     }
+
+    // Currently will send bitmaps back to run on MainActivity.
+    // Will need adjusted to instead send back images somewhere else or to compose them into an array
+    private fun getVideoAnnotations(videoURI: String, targetFPS: Int = 30):
+            MutableList<Pair<Detector.YoloResults, Long>> {
+        val results = mutableListOf<Pair<Detector.YoloResults, Long>>()
+        // Set time delta using fps
+        var timeUs: Long = 0
+        val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
+        // Get frame by time (using time delta to loop over)
+        var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUs)
+        while (bitmapImage != null) {
+            //val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
+            //evaluator.createInterpreter(MainActivity.applicationContext())
+            try {
+                //Tasks.await(detector.initializeTask)
+                Log.d("Interpreter", "TfLite.initialize() completed successfully")
+                Log.d("Timing", "Current time is ${(timeUs.toDouble() / 1000000.0)}")
+                bitmapImage.let {
+                    detector!!.modelReadyLatch.await()
+
+                    results.add(Pair(detector!!.detect(it), timeUs))
+                }
+                timeUs += timeDelta
+                bitmapImage = extractFrameFromVideo(videoURI, timeUs)
+            } catch (e: Exception) {
+                Log.e("Interpreter", "Error during evaluation", e)
+            }
+        }
+
+        return results
+    }
+
+
+    /*
+     * Returns a list of <Bitmap, Long> pairs from a passed in video.
+     * Uses given FPS to determine how many frames to take
+     * WARNING: will store a lot of frames at once, only use for shorter videos/testing
+     *          need another function that updates a synchronized stack of frames
+     */
+    private fun getVideoBitmaps(videoURI: String, targetFPS: Int = 30, maxTime: Int = 3):
+            MutableList<Pair<Bitmap, Long>> {
+
+        val results = mutableListOf<Pair<Bitmap, Long>>()
+        // Set time delta using fps
+        var timeUs: Long = 0
+        var maxTimeLong: Long = 1000000L * maxTime
+        val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
+        // Get frame by time (using time delta to loop over)
+        var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUs)
+        while ((timeUs < maxTimeLong) && (bitmapImage != null)) {
+            //val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
+            //evaluator.createInterpreter(MainActivity.applicationContext())
+            try {
+                //Tasks.await(detector.initializeTask)
+                Log.d("Interpreter", "TfLite.initialize() completed successfully")
+                Log.d("Timing", "Current time is ${(timeUs.toDouble() / 1000000.0)}")
+                bitmapImage.let {
+                    detector!!.modelReadyLatch.await()
+
+                    val result = detector!!.detect(it)
+                    results.add(Pair(detector!!.drawPointsOnBitmap(it, result), timeUs))
+                }
+                timeUs += timeDelta
+                bitmapImage = extractFrameFromVideo(videoURI, timeUs)
+            } catch (e: Exception) {
+                Log.e("Interpreter", "Error during evaluation", e)
+            }
+        }
+
+        return results
+    }
 }
