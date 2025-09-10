@@ -28,3 +28,15 @@ export async function initialize(): Promise<any> {
 export async function processFrame(uri: string): Promise<any> {
   return await ExpoVideoAnalyzerModule.processFrame(uri);
 }
+
+export async function processVideoComplete(videoUri: String): Promise<any> {
+  return await ExpoVideoAnalyzerModule.processVideoComplete(videoUri);
+}
+
+export async function testFFmpeg(): Promise<any> {
+  return await ExpoVideoAnalyzerModule.testFFmpeg();
+}
+
+export async function checkFileExists(filePath: String): Promise<any> {
+  return await ExpoVideoAnalyzerModule.checkFileExists(filePath);
+}

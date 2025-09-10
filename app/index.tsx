@@ -360,17 +360,32 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       console.log('URI type:', typeof videofile);
       console.log('URI length:', videofile.length);
       console.log('Start frame extraction...');
-      const result = await VideoAnalyzer.processFrame(videofile);
+      // const result = await VideoAnalyzer.processFrame(videofile);
+      const result = await VideoAnalyzer.processVideoComplete(videofile);
+      // const result = await VideoAnalyzer.testFFmpeg();
+      console.log('Processing complete:', result);
       console.log('Frame processing result:', result);
-      
-      Alert.alert('Processing complete', 
-        `Classification: ${result.classification}\n` +
-        `Angle: ${result.angle}\n` +
-        `Detected bow: ${result.hasBow}\n` +
-        `Detected string: ${result.hasString}\n` +
-        `bowPoints: ${result.bowPoints}\n` +
-        `stringPoints: ${result.stringPoints}`
-      );
+
+      const fileCheck = await VideoAnalyzer.checkFileExists(result.outputPath);
+      console.log('File check:', fileCheck);
+
+      if (result.success) {
+        setvideofile(result.outputPath);
+        setVideoUri(result.outputPath);
+        setsendVideo(false);
+        Alert.alert('Processing complete', 
+        `Path: ${result.outputPath}\n`);
+      } else {
+        Alert.alert('Processing Error', 'Error occured processing.');
+      }
+      // Alert.alert('Processing complete', 
+      //   `Classification: ${result.classification}\n` +
+      //   `Angle: ${result.angle}\n` +
+      //   `Detected bow: ${result.hasBow}\n` +
+      //   `Detected string: ${result.hasString}\n` +
+      //   `bowPoints: ${result.bowPoints}\n` +
+      //   `stringPoints: ${result.stringPoints}`
+      // );
       
     } catch (error) {
       console.error('Processing Failed:', error);

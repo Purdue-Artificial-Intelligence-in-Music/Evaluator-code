@@ -20,6 +20,8 @@ node_modules/
 *.war
 *.ear
 *.aar
+# Allow specific AARs in libs folder
+!expo-video-analyzer/android/libs/*.aar
 
 # Logs
 *.log

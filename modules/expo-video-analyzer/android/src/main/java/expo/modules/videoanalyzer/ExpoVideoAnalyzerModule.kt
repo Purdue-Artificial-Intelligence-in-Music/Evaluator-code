@@ -8,6 +8,16 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import kotlinx.coroutines.*
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import java.io.InputStream
+import android.content.Context
+import android.content.res.AssetManager
+import java.io.File
+import java.io.FileOutputStream
+import android.graphics.Bitmap.CompressFormat
+import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.ReturnCode
+import android.os.Environment
 
 class ExpoVideoAnalyzerModule : Module() {
     private var detector: Detector? = null
@@ -79,12 +89,19 @@ class ExpoVideoAnalyzerModule : Module() {
                         }
                         return@launch
                     }
+                    val bitmapImage = getBitmapFromAssets(appContext.reactContext!!, "Sample Input.png")
+//                    val bitmapImage = extractFrameFromVideo(videoUri, 10_000_000L) // convert a frame to bitmap
+                    if (bitmapImage == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("ASSET_ERROR", "Failed to load image from assets", null)
+                        }
+                        Log.d("bitmapImage", "bitmapImage is null")
+                        return@launch
+                    }
+                    val result = detector!!.process_frame(bitmapImage)
                     
-                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
-                    val result = detector!!.process_frame(bitmap)
-                    
-                    println(result)
-                    Log.d("result", "$result")
+
+                    Log.d("result", "Detector result: $result")
                     val response = mapOf(
                         "success" to true,
                         "classification" to (result.classification ?: -1),
@@ -93,12 +110,12 @@ class ExpoVideoAnalyzerModule : Module() {
                         "hasString" to (result.string != null),
                         "bowPoints" to if (result.bow != null) result.bow!!.size else 0,
                         "stringPoints" to if (result.string != null) result.string!!.size else 0,
-                        "imageWidth" to bitmap.width,
-                        "imageHeight" to bitmap.height
+                        "imageWidth" to bitmapImage.width,
+                        "imageHeight" to bitmapImage.height
                     )
                     
                     // clear bitmap storage
-                    bitmap.recycle()
+                    bitmapImage.recycle()
                     
                     withContext(Dispatchers.Main) {
                         promise.resolve(response)
@@ -145,6 +162,143 @@ class ExpoVideoAnalyzerModule : Module() {
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
                         promise.reject("RESET_ERROR", "Failed to reset detector: ${e.message}", e)
+                    }
+                }
+            }
+        }
+
+        // This is the main function that is being called and used for video processing right now,
+        // NOT optimal. It loops through the video, extracts frames into bitmap format, calls
+        // detect() and drawPointsOnBitmap(), saves annotated frame, then uses FFmpeg to recollect
+        // back into a video.
+        AsyncFunction("processVideoComplete") { videoUri: String, promise: Promise ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    if (!isOpenCVInitialized || detector == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("NOT_INITIALIZED", "OpenCV or detector not initialized", null)
+                        }
+                        return@launch
+                    }
+
+                    // Create temp directory for annotated frames
+                    val tempDir = File(appContext.reactContext!!.cacheDir, "video_frames_${System.currentTimeMillis()}")
+                    tempDir.mkdirs()
+
+                    // Outputpath for final video. Use public directory to be able to access later.
+                    val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+                    val outputPath = File(publicMoviesDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+
+                    val framePaths = mutableListOf<String>()
+                    var frameIndex = 0
+
+                    Log.d("ProcessVideo", "Starting video processing for: $videoUri")
+                    Log.d("ProcessVideo", "Output path will be: $outputPath")
+
+                    // Use processVideoStream funciton to loop through and annotate frames, then
+                    // save processed frame to disk.
+                    val success = processVideoStream(videoUri, 15) { annotatedFrame, timeUs ->
+                        try {
+                            val framePath = File(tempDir, String.format("frame_%06d.jpg", frameIndex))
+
+                            FileOutputStream(framePath).use { out ->
+                                annotatedFrame.compress(CompressFormat.JPEG, 85, out)
+                            }
+
+                            // Track the path to which the file has been written to
+                            framePaths.add(framePath.absolutePath)
+                            frameIndex++
+
+                            Log.d("SaveFrame", "Saved frame $frameIndex")
+
+                        } catch (e: Exception) {
+                            Log.e("SaveFrame", "Failed to save frame $frameIndex: ${e.message}")
+                        } finally {
+                            annotatedFrame.recycle()
+                        }
+                    }
+
+                    if (success && framePaths.isNotEmpty()) {
+                        // Use FFmpeg to construct video from saved frames
+
+                        Log.d("ProcessVideo", "Combining ${framePaths.size} frames to video")
+                        val videoSuccess = combineFramesToVideo(tempDir, outputPath, 30)
+
+                        withContext(Dispatchers.Main) {
+                            val resultMap: Map<String, Any> = if (videoSuccess && File(outputPath).exists()) {
+                                mapOf(
+                                    "success" to true,
+                                    "outputPath" to outputPath,
+                                    "frameCount" to framePaths.size
+                                )
+                            } else {
+                                mapOf(
+                                    "success" to false,
+                                    "error" to "Failed to create video"
+                                )
+                            }
+                            if (resultMap["success"] as Boolean) {
+                                promise.resolve(resultMap)
+                            } else {
+                                promise.reject("VIDEO_CREATION_ERROR", "Failed to create video", null)
+                            }
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("FRAME_SAVE_ERROR", "Failed to save frames", null)
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("PROCESS_ERROR", "Video processing failed: ${e.message}", e)
+                    }
+                }
+            }
+        }
+
+        // Helper function
+        AsyncFunction("checkFileExists") { filePath: String, promise: Promise ->
+            try {
+                val file = File(filePath)
+                val resultMap: Map<String, Any> = mapOf(
+                    "exists" to file.exists(),
+                    "size" to file.length(),
+                    "path" to file.absolutePath,
+                    "canRead" to file.canRead()
+                )
+                promise.resolve(resultMap)
+            } catch (e: Exception) {
+                promise.reject("CHECK_ERROR", e.message, e)
+            }
+        }
+
+        // For testing. Verifies if FFmpeg works.
+        AsyncFunction("testFFmpeg") { promise: Promise ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    Log.d("FFmpegTest", "Testing FFmpeg availability...")
+
+                    // Verify that FFmpegKit works
+                    val session = FFmpegKit.execute("-version")
+
+                    Log.d("FFmpegTest", "FFmpeg version command completed")
+                    Log.d("FFmpegTest", "Return code: ${session.returnCode}")
+                    Log.d("FFmpegTest", "Output: ${session.output}")
+
+                    withContext(Dispatchers.Main) {
+                        promise.resolve(mapOf(
+                            "success" to true,
+                            "returnCode" to session.returnCode.value,
+                            "output" to session.output
+                        ))
+                    }
+                } catch (e: Exception) {
+                    Log.e("FFmpegTest", "FFmpeg test failed: ${e.message}")
+                    Log.e("FFmpegTest", "Stack trace: ${e.stackTrace.contentToString()}")
+
+                    withContext(Dispatchers.Main) {
+                        promise.reject("FFMPEG_TEST_ERROR", "FFmpeg test failed: ${e.message}", e)
                     }
                 }
             }
@@ -201,21 +355,24 @@ class ExpoVideoAnalyzerModule : Module() {
             retriever.release()
         }
     }
-    
-    private fun extractFrameFromVideo(videoUri: String, timeUs: Long = 5): Bitmap {
+
+    private fun extractFrameFromVideo(videoUri: String, timeUs: Long = 10_000_000L): Bitmap? {
         val retriever = MediaMetadataRetriever()
         var originalBitmap: Bitmap? = null
-        
+
         return try {
             println("Extracting frame from video: $videoUri at time: ${timeUs}μs")
             Log.d("VideoFrame", "Extracting frame from video: $videoUri at time: ${timeUs}μs")
 
-            val uri = Uri.parse(videoUri) ?: throw IllegalArgumentException("Invalid video URI")
+            val uri = Uri.parse(videoUri)
             retriever.setDataSource(appContext.reactContext, uri)
-            
+
             originalBitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                ?: throw Exception("Failed to extract frame from video at time ${timeUs}μs")
-            
+            if (originalBitmap == null) {
+                println("Failed to extract frame from video at time ${timeUs}μs")
+                return null
+            }
+
             println("Extracted frame: ${originalBitmap.width}x${originalBitmap.height}, config: ${originalBitmap.config}")
             Log.d("Extract frame", "Extracted frame: ${originalBitmap.width}x${originalBitmap.height}, config: ${originalBitmap.config}")
 
@@ -225,23 +382,20 @@ class ExpoVideoAnalyzerModule : Module() {
                 Log.d("bitmap8888", "Converting bitmap format from ${originalBitmap.config} to ARGB_8888")
                 val convertedBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, false)
                 originalBitmap.recycle()
-                originalBitmap = null
                 convertedBitmap
             } else {
-                val result = originalBitmap
-                originalBitmap = null
-                result
+                originalBitmap
             }
-            
+
             println("Frame ready for processing: ${processedBitmap.width}x${processedBitmap.height}")
             Log.d("extract frame", "Frame ready for processing: ${processedBitmap.width}x${processedBitmap.height}")
             processedBitmap
-            
+
         } catch (e: Exception) {
             originalBitmap?.recycle()
             println("Error extracting frame: ${e.message}")
             Log.d("extract frame", "Error extracting frame: ${e.message}")
-            throw Exception("Failed to extract frame from video: ${e.message}")
+            null
         } finally {
             retriever.release()
         }
@@ -318,4 +472,131 @@ class ExpoVideoAnalyzerModule : Module() {
 
         return results
     }
+
+    // Helper function. It loops through the video, extracts frames into bitmap format, calls
+    // detect() and drawPointsOnBitmap() from detector to get annotated frames.
+    private fun processVideoStream(
+        videoURI: String,
+        targetFPS: Int = 15, // testing with lower fps rate
+        onFrameProcessed: (Bitmap, Long) -> Unit
+    ): Boolean {
+        val retriever = MediaMetadataRetriever()
+
+        try {
+            retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
+            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+            val timeDelta = (1000 / targetFPS) * 1000L
+
+            // Loop through frames
+            var timeUs = 0L
+            while (timeUs < duration * 1000) {
+                try {
+                    // Extract specific frame
+                    val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (frame != null) {
+                        // convert format to ARGB_8888
+                        val processedFrame = if (frame.config != Bitmap.Config.ARGB_8888) {
+                            val convertedBitmap = frame.copy(Bitmap.Config.ARGB_8888, false)
+                            frame.recycle()
+                            convertedBitmap
+                        } else {
+                            frame
+                        }
+
+                        // Annotate frame using Detector
+                        val result = detector!!.detect(processedFrame)
+                        val annotatedFrame = detector!!.drawPointsOnBitmap(processedFrame, result)
+
+                        onFrameProcessed(annotatedFrame, timeUs)
+
+                        processedFrame.recycle()
+                    }
+                } catch (e: Exception) {
+                    Log.e("FrameProcess", "Error at time $timeUs: ${e.message}")
+                }
+                timeUs += timeDelta
+            }
+            return true
+        } catch (e: Exception) {
+            Log.e("VideoProcess", "Failed to process video: ${e.message}")
+            return false
+        } finally {
+            retriever.release()
+        }
+    }
+
+    // Helper function. Compines frames into video using FFmpeg
+    private fun combineFramesToVideo(
+        frameDir: File,
+        outputVideoPath: String,
+        fps: Int = 15
+    ): Boolean {
+        try {
+            // Check if file exists
+            val frameFiles = frameDir.listFiles { file -> file.name.endsWith(".jpg") }
+            Log.d("FFmpeg", "Found ${frameFiles?.size} frame files in ${frameDir.absolutePath}")
+            // Check permissions
+            val outputFile = File(outputVideoPath)
+            val parentDir = outputFile.parentFile
+            Log.d("FFmpeg", "Output directory writable: ${parentDir?.canWrite()}")
+            Log.d("FFmpeg", "Output path: $outputVideoPath")
+            // FFmpeg command：Combine the frame sequence into a video (order depends on filenames)
+            val command = "-y -r $fps -i ${frameDir.absolutePath}/frame_%06d.jpg -vcodec libx264 $outputVideoPath"
+//            val command = "-y -framerate $fps -i ${frameDir.absolutePath}/frame_%06d.jpg " +
+//                    "-c:v libx264 -pix_fmt yuv420p -crf 23 $outputVideoPath"
+
+            Log.d("FFmpeg", "Executing command: $command")
+
+            val session = FFmpegKit.execute(command)
+
+            Log.d("FFmpeg", "Return code: ${session.returnCode}")
+            Log.d("FFmpeg", "State: ${session.state}")
+            Log.d("FFmpeg", "Output: ${session.output}")
+            if (session.failStackTrace != null) {
+                Log.e("FFmpeg", "Fail stack trace: ${session.failStackTrace}")
+            }
+
+            return if (ReturnCode.isSuccess(session.returnCode)) {
+                Log.d("FFmpeg", "Video creation successful")
+                val outputExists = File(outputVideoPath).exists()
+                Log.d("FFmpeg", "Output file exists: $outputExists")
+                // !! Cleanup frames
+                cleanupFrames(frameDir)
+                outputExists
+            } else {
+                Log.e("FFmpeg", "Video creation failed with code: ${session.returnCode}")
+                Log.e("FFmpeg", "Video creation failed: ${session.failStackTrace}")
+                false
+            }
+
+        } catch (e: Exception) {
+            Log.e("FFmpeg", "Exception in combineFramesToVideo: ${e.message}")
+            Log.e("FFmpeg", "Stack trace: ${e.stackTrace.contentToString()}")
+            return false
+        }
+    }
+
+    private fun cleanupFrames(frameDir: File) {
+        try {
+            frameDir.listFiles()?.forEach { it.delete() }
+            frameDir.delete()
+            Log.d("Cleanup", "Cleaned up temporary frames")
+        } catch (e: Exception) {
+            Log.e("Cleanup", "Failed to cleanup frames: ${e.message}")
+        }
+    }
+
+    // This is a function from bow team, used for testing on an image
+    fun getBitmapFromAssets(context: Context, fileName: String): Bitmap? {
+        val assetManager = context.assets
+        val inputStream: InputStream?
+        try {
+            inputStream = assetManager.open(fileName)
+            return BitmapFactory.decodeStream(inputStream)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
 }
