@@ -1,3 +1,0 @@
-D:/testing/cv/.cxx/Debug/275y1u6g/x86/CMakeFiles/opencv_jni_shared.dir
-D:/testing/cv/.cxx/Debug/275y1u6g/x86/CMakeFiles/edit_cache.dir
-D:/testing/cv/.cxx/Debug/275y1u6g/x86/CMakeFiles/rebuild_cache.dir

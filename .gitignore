@@ -22,6 +22,10 @@ modules/*/ios/DerivedData/
 modules/*/ios/*.xcworkspace
 modules/*/ios/Pods/
 
+# Local build files
+cv/build/
+cv/.cxx/
+
 # Other build files
 **/*.dex
 **/*.class

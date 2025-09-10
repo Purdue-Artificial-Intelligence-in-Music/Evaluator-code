@@ -583,6 +583,7 @@ class Detector(private val context: Context) {
         bowPoints = results.bowResults
         if (stringPoints == null && bowPoints == null) {
             classResults.classification = -2
+            println("class results: $classResults")
             return classResults
         }
         if (results.stringResults != null) {
@@ -610,13 +611,16 @@ class Detector(private val context: Context) {
                 var intersect_points = intersectsVertical(midlines, vert_lines)
                 classResults.angle = bowAngle(midlines, vert_lines)
                 classResults.classification = intersect_points
+                println("class results: $classResults")
                 return classResults
 
             } else {
                 classResults.classification = -1
+                println("class results: $classResults")
                 return classResults
             }
         }
+        println("class results: $classResults")
         return classResults
     }
 
