@@ -5,13 +5,13 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tflite.java.TfLite
-import org.opencv.core.*
-import org.opencv.imgproc.Imgproc
+//import org.opencv.core.*
+//import org.opencv.imgproc.Imgproc
 import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.support.common.FileUtil
 import java.util.concurrent.CountDownLatch
 import kotlin.math.*
-import org.opencv.core.Point
+//import org.opencv.core.Point
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.support.common.ops.CastOp
 import org.tensorflow.lite.support.common.ops.NormalizeOp
@@ -21,6 +21,7 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 
 
 class Evaluator {
+    /*
     val initializeTask: Task<Void> by lazy {
         Log.d("InitDebug", "TfLite.initialize() is being called")
         TfLite.initialize(MainActivity.applicationContext())
@@ -700,4 +701,6 @@ class Evaluator {
         }
         return classResults
     }
+
+     */
 }

@@ -1,12 +1,6 @@
 package com.example.evaluator_kotlin
-import android.content.Context
-import android.gesture.OrientedBoundingBox
 import android.graphics.Bitmap
 import android.util.Log
-import com.google.android.gms.tasks.Task
-import com.google.android.gms.tflite.java.TfLite
-import org.opencv.core.*
-import org.opencv.imgproc.Imgproc
 import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.support.common.FileUtil
 import java.util.concurrent.CountDownLatch
@@ -21,12 +15,13 @@ import android.os.SystemClock
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import com.example.evaluator_kotlin.Evaluator.YoloResults
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.gpu.CompatibilityList
+import org.tensorflow.lite.gpu.GpuDelegate
 
 class Detector {
 
-    private var interpreter: InterpreterApi
+    private var interpreter: Interpreter
     private var labels = mutableListOf<String>()
 
     private var tensorWidth = 0
@@ -52,17 +47,28 @@ class Detector {
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
+
     companion object {
         private const val INPUT_MEAN = 0f
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.2F
+        private const val CONFIDENCE_THRESHOLD = 0.5F
     }
 
     init {
         val options = Interpreter.Options().apply{
-            this.setNumThreads(8)
+
+            if (CompatibilityList().isDelegateSupportedOnThisDevice) {
+                this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
+            } else {
+                this.setNumThreads(4)
+                this.setUseXNNPACK(true)
+            }
+
+
+
+            //this.setNumThreads(4)
         }
         /*
         interpreter = Interpreter.create(
@@ -73,13 +79,19 @@ class Detector {
             options
         )
          */
-        val model = FileUtil.loadMappedFile(MainActivity.applicationContext(), "nano_float16.tflite")
+        val model = FileUtil.loadMappedFile(MainActivity.applicationContext(), "best_nano_float16.tflite")
         interpreter = Interpreter(model, options)
 
         modelReadyLatch.countDown()
 
         val inputShape = interpreter.getInputTensor(0)?.shape()
         val outputShape = interpreter.getOutputTensor(0)?.shape()
+        println("output shape")
+        for (x in outputShape!!) {
+            println(x)
+        }
+
+
 
         if (inputShape != null) {
             tensorWidth = inputShape[1]
@@ -93,9 +105,11 @@ class Detector {
         }
 
         if (outputShape != null) {
-            numElements = outputShape[1]
-            numChannel = outputShape[2]
+            numElements = outputShape[2]
+            numChannel = outputShape[1]
         }
+
+        println("Numelements, numchannel: $numElements, $numChannel")
 
     }
     fun close() {
@@ -132,12 +146,13 @@ class Detector {
         tensorImage.load(resizedBitmap)
         val processedImage = imageProcessor.process(tensorImage)
         val imageBuffer = processedImage.buffer
-
         val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
 
         interpreter.run(imageBuffer, output.buffer)
+        for (x in output.shape) {
+            println(x)
+        }
 
-        println(output.floatArray.contentToString())
 
         val bestBoxes = newBestBox(output.floatArray)
         /*
@@ -147,16 +162,23 @@ class Detector {
             newBoxes.addAll(points)
         }
         */
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
-        println("TRUE INFERENCE TIME: $inferenceTime")
+
+        var bowConf = 0f
+        var stringConf = 0f
 
         for (box in bestBoxes) {
-            if (box.cls == 0) {
+            if (box.cls == 0 && box.conf > bowConf) {
                 results.bowResults = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle).toMutableList()
-            } else if (box.cls == 1) {
+                bowConf = box.conf
+            } else if (box.cls == 1 && box.conf > stringConf) {
                 results.stringResults = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle).toMutableList()
+                stringConf = box.conf
             }
         }
+        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
+        println("TRUE INFERENCE TIME: $inferenceTime")
+        println("NUMBER OF BOXES: ${bestBoxes.size}")
+        println("bow conf, string conf: $bowConf, $stringConf")
         return results
     }
 
@@ -214,15 +236,18 @@ class Detector {
     private fun newBestBox(array : FloatArray) : List<OrientedBoundingBox> {
         val boundingBoxes = mutableListOf<OrientedBoundingBox>()
 
-        for (r in 0 until 2) {
-            val cnf = array[r * numChannel + 4]
+        for (r in 0 until numElements) {
+            val stringCnf = array[5 * numElements + r]
+            val bowCnf = array[4 * numElements + r]
+            val cls = if (stringCnf > bowCnf) 1 else 0
+            val cnf = if (stringCnf > bowCnf) stringCnf else bowCnf
             if (cnf > CONFIDENCE_THRESHOLD) {
-                val x = array[r * numChannel]
-                val y = array[r * numChannel + 1]
-                val h = array[r * numChannel + 2]
-                val w = array[r * numChannel + 3]
-                val cls = array[r * numChannel + 5].toInt()
-                val angle = array[r * numChannel + 6]
+                val x = array[r]
+                val y = array[1 * numElements + r]
+                val h = array[2 * numElements + r]
+                val w = array[3 * numElements + r]
+
+                val angle = array[6 * numElements + r]
                 boundingBoxes.add(
                     OrientedBoundingBox(
                         x = x, y = y, height = h, width = w,
@@ -231,6 +256,8 @@ class Detector {
                 )
             }
         }
+
+
         return boundingBoxes
     }
 
@@ -604,6 +631,7 @@ class Detector {
                     stringRepeat++
                     classResults.string = stringPoints
                 }
+                //This logic is wrong, will need to fix
             }
             if (results.bowResults != null && results.stringResults != null) {
                 updatePoints(results.stringResults!!, results.bowResults!!)
@@ -618,8 +646,14 @@ class Detector {
                 classResults.classification = -1
                 return classResults
             }
+        } else if (results.bowResults != null) {
+            classResults.bow = results.bowResults
+            classResults.classification = -1
+            return classResults
+        } else {
+            classResults.classification = -2
+            return classResults
         }
-        return classResults
     }
 
     fun process_frame(bitmap: Bitmap): returnBow {

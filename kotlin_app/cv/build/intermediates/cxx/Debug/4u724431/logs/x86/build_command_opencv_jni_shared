@@ -1,4 +1,0 @@
-/Users/paolowang/Library/Android/sdk/cmake/3.22.1/bin/ninja \
-  -C \
-  /Users/paolowang/Documents/GitHub/Evaluator-code/kotlin_app/cv/.cxx/Debug/4u724431/x86 \
-  opencv_jni_shared

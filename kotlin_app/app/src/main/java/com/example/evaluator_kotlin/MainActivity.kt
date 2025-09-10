@@ -23,19 +23,18 @@ import com.example.evaluator_kotlin.ui.theme.EvaluatorKotlinTheme
 import com.google.android.gms.tasks.Tasks
 import java.io.File
 import androidx.compose.ui.graphics.asImageBitmap
-import org.opencv.imgproc.Imgproc
 import androidx.core.graphics.createBitmap
 import java.io.IOException
 import java.io.InputStream
 
-private var detector = Detector()
+//private var detector = Detector()
 
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        System.loadLibrary("opencv_java4")
+        //System.loadLibrary("opencv_java4")
         setContent {
             EvaluatorKotlinTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -81,6 +80,7 @@ fun runEvaluation(onComplete: (Bitmap) -> Unit) {
     //val evaluator = Evaluator()
 
     val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
+    val detector = Detector()
 
     //evaluator.createInterpreter(MainActivity.applicationContext())
 
