@@ -661,3 +661,24 @@ class Detector {
     }
 
 }
+class Data() {
+    val dict: MutableMap<String, MutableList<MutableList<FrameResult>>> = mutableMapOf()
+
+    fun getHashedInfo(userId: String): MutableList<MutableList<FrameResult>>> 
+    {
+        return dict[userId]
+    }
+
+    fun createNewID(userId: string) {
+        dict[userId] = []
+    }
+
+    fun addSession(userId: String, data: MutableList<FrameResult>) {
+        if (userId in dict) {
+            dict[userId].add(data)   
+        } else {
+            createNewID()
+            dict[userId].add(data)   
+        }
+    }
+}
