@@ -366,8 +366,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       console.log('Processing complete:', result);
       console.log('Frame processing result:', result);
 
-      const fileCheck = await VideoAnalyzer.checkFileExists(result.outputPath);
-      console.log('File check:', fileCheck);
+      // const fileCheck = await VideoAnalyzer.checkFileExists(result.outputPath);
+      // console.log('File check:', fileCheck);
 
       if (result.success) {
         setvideofile(result.outputPath);
