@@ -115,9 +115,20 @@ class ExpoVideoAnalyzerModule : Module() {
                         Log.d("bitmapImage", "bitmapImage is null")
                         return@launch
                     }
-                    val result = detector!!.process_frame(bitmapImage)
+                    
+                    //val result = detector!!.process_frame(bitmapImage)
 
-                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
+                    //val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
+                    //val result = detector!!.process_frame(bitmap)
+
+                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L)
+                    if (bitmap == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("FRAME_ERROR", "Failed to extract frame", null)
+                        }
+                        return@launch
+                    }
+
                     val result = detector!!.process_frame(bitmap)
                     
                     println(result)
