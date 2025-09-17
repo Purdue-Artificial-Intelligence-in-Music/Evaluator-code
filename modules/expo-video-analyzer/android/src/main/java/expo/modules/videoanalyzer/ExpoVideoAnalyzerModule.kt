@@ -1,5 +1,8 @@
 package expo.modules.videoanalyzer
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.collections.ArrayDeque
 import android.util.Log
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -19,11 +22,25 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import android.os.Environment
 
+import kotlin.time.measureTime
+
 class ExpoVideoAnalyzerModule : Module() {
     private var detector: Detector? = null
     private var isOpenCVInitialized = false
     private var initializationAttempted = false
-    
+
+    // Input for one detector (likely going to be an array later for abstraction)
+    var inputBitmaps: Array<ArrayDeque<Bitmap>>? = null
+    // Results from async processing videos
+    //var resultsAsync: Array<Pair<Detector.returnBow, Long>?>? = null
+    // Boolean for when done reading more bitmaps
+    var readingBitmaps = false
+    // Mutexes for accessing async aspects
+    var inputMutexes: Array<Mutex>? = null
+    val outputMutex = Mutex()
+    val readingBitmapsMutex = Mutex()
+
+
     override fun definition() = ModuleDefinition {
         Name("ExpoVideoAnalyzer")
         
@@ -98,10 +115,24 @@ class ExpoVideoAnalyzerModule : Module() {
                         Log.d("bitmapImage", "bitmapImage is null")
                         return@launch
                     }
-                    val result = detector!!.process_frame(bitmapImage)
                     
+                    //val result = detector!!.process_frame(bitmapImage)
 
-                    Log.d("result", "Detector result: $result")
+                    //val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
+                    //val result = detector!!.process_frame(bitmap)
+
+                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L)
+                    if (bitmap == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("FRAME_ERROR", "Failed to extract frame", null)
+                        }
+                        return@launch
+                    }
+
+                    val result = detector!!.process_frame(bitmap)
+                    
+                    println(result)
+                    Log.d("result", "$result")
                     val response = mapOf(
                         "success" to true,
                         "classification" to (result.classification ?: -1),
@@ -352,6 +383,7 @@ class ExpoVideoAnalyzerModule : Module() {
                 Log.d("bitmap8888", "Converting bitmap format from ${originalBitmap.config} to ARGB_8888")
                 val convertedBitmap = originalBitmap.copy(Bitmap.Config.ARGB_8888, false)
                 originalBitmap.recycle()
+                originalBitmap = null
                 convertedBitmap
             } else {
                 originalBitmap
@@ -373,15 +405,19 @@ class ExpoVideoAnalyzerModule : Module() {
 
     // Currently will send bitmaps back to run on MainActivity.
     // Will need adjusted to instead send back images somewhere else or to compose them into an array
-    private fun getVideoAnnotations(videoURI: String, targetFPS: Int = 30):
-            MutableList<Pair<Detector.YoloResults, Long>> {
-        val results = mutableListOf<Pair<Detector.YoloResults, Long>>()
+    // maxTime is in seconds
+    private fun getVideoAnnotations(videoURI: String, targetFPS: Int = 30, maxTime: Float = -1.0f):
+            MutableList<Pair<Detector.returnBow, Long>> {
+        var maxTimeLong: Long = 1000000L * maxTime.toLong()
+        Log.d("maxTimeLong:", "$maxTimeLong")
+        var overMaxTime: Boolean = false
+        val results = mutableListOf<Pair<Detector.returnBow, Long>>()
         // Set time delta using fps
         var timeUs: Long = 0
         val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
         // Get frame by time (using time delta to loop over)
         var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUs)
-        while (bitmapImage != null) {
+        while ((!overMaxTime) && (bitmapImage != null)) {
             //val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
             //evaluator.createInterpreter(MainActivity.applicationContext())
             try {
@@ -390,17 +426,166 @@ class ExpoVideoAnalyzerModule : Module() {
                 Log.d("Timing", "Current time is ${(timeUs.toDouble() / 1000000.0)}")
                 bitmapImage.let {
                     detector!!.modelReadyLatch.await()
-
-                    results.add(Pair(detector!!.detect(it), timeUs))
+                    val timeTaken = measureTime {
+                        results.add(Pair(detector!!.classify(detector!!.detect(it)), timeUs))
+                    }
+                    Log.d("InferenceTime", "Time Taken: $timeTaken")
                 }
                 timeUs += timeDelta
                 bitmapImage = extractFrameFromVideo(videoURI, timeUs)
             } catch (e: Exception) {
                 Log.e("Interpreter", "Error during evaluation", e)
             }
+            // Check over max time (including -1 as whole video)
+            if ((maxTime > 0) && (timeUs > maxTimeLong)) {
+                Log.d("OverMaxTime", "timeUs: $timeUs maxTimeLong: $maxTimeLong")
+                overMaxTime = true
+            }
         }
 
         return results
+    }
+
+    private suspend fun getVideoAnnotationsAsync(videoURI: String, targetFPS: Int = 30,
+                                         maxTime: Float = -1.0f, numDetectors: Int = 2): Boolean {
+        val maxTimeLong: Long = 1000000L * maxTime.toLong()
+        Log.d("maxTimeLong:", "$maxTimeLong")
+
+        // Initialize results
+        val results = mutableListOf<Pair<Detector.returnBow, Long>>()
+
+        // Set time delta using fps
+        val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
+
+        val jobs = mutableListOf<Job>()
+
+        // Set awaiting for bitmaps to be done reading
+        readingBitmapsMutex.withLock {
+            readingBitmaps = true
+        }
+
+        // Continuously add bitmaps to the input for the detectors to run inference on
+        jobs.add(CoroutineScope(Dispatchers.Default).launch {
+            val timeTaken = measureTime {
+                var bitmapOverTime: Boolean = false
+                var timeUsBitmap: Long = 0
+                var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUsBitmap)
+                var bitmapIndex = 0
+                while ((!bitmapOverTime) && (bitmapImage != null)) {
+                    // Add bitmap image to inputs
+                    val arrayMember = inputBitmaps!![bitmapIndex]
+                    val arrayMutex = inputMutexes!![bitmapIndex]
+                    arrayMutex.withLock {
+                        arrayMember.addFirst(bitmapImage!!)
+                    }
+
+                    timeUsBitmap += timeDelta
+                    bitmapIndex++
+                    if (bitmapIndex >= numDetectors) {
+                        bitmapIndex = 0
+                    }
+
+                    // might add a sleep or something here to prevent over blocking access to bitmaps
+
+                    // Check over max time (including -1 as whole video)
+                    if (timeUsBitmap > maxTimeLong) {
+                        Log.d(
+                            "OverMaxTime",
+                            "timeUsBitmap: $timeUsBitmap maxTimeLong: $maxTimeLong"
+                        )
+                        bitmapOverTime = true
+                    }
+
+                    bitmapImage = extractFrameFromVideo(videoURI, timeUsBitmap)
+                }
+
+                // Mark reading bitmaps as done
+                readingBitmapsMutex.withLock {
+                    readingBitmaps = false
+                }
+            }
+            Log.d("OverMaxTime", "Bitmap total time: $timeTaken")
+        })
+
+        // Launch both detectors to do inference on their sets of images
+        repeat(numDetectors) { index ->
+            jobs.add(CoroutineScope(Dispatchers.Default).launch {
+                val timeTaken = measureTime {
+                    var overTime: Boolean = false
+                    var timeUs: Long = (index) * timeDelta
+                    var isBitmapEmpty = true
+                    // get this detector's mutex
+                    var inputMutex = inputMutexes!![index]
+                    // get this detector's input bitmap array
+                    var inputArray = inputBitmaps!![index]
+                    // Await first bitmap
+                    while (isBitmapEmpty) {
+                        delay(10)
+                        inputMutex.withLock {
+                            isBitmapEmpty = inputArray.isEmpty()
+                        }
+                    }
+                    // Get first bitmap image
+                    var bitmapImage: Bitmap? = null
+                    inputMutex.withLock {
+                        bitmapImage = inputArray.removeFirst()
+                    }
+                    var isReadingBitmaps = true
+                    while ((!overTime) || ((isReadingBitmaps) && (bitmapImage != null))) {
+                        try {
+                            Log.d("Interpreter", "TfLite.initialize() completed successfully")
+                            Log.d(
+                                "Timing",
+                                "Index: $index time is ${(timeUs.toDouble() / 1000000.0)}"
+                            )
+                            bitmapImage.let {
+                                val index = (timeUs / timeDelta).toInt()
+                                detector!!.modelReadyLatch.await()
+                                val result: Pair<Detector.returnBow, Long>
+                                val timeTaken = measureTime {
+                                    result =
+                                        Pair(detector!!.classify(detector!!.detect(it!!)), timeUs)
+                                }
+                                /*outputMutex.withLock {
+                                    resultsAsync!![index] = result
+                                }*/
+                                Log.d("InferenceTime", "Time Taken: $timeTaken")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("Interpreter", "Error during evaluation", e)
+                        }
+                        timeUs += numDetectors.toLong() * timeDelta
+
+                        if (timeUs > (maxTimeLong - numDetectors.toLong() * timeDelta)) {
+                            Log.d(
+                                "OverMaxTime",
+                                "index: $index timeUs: $timeUs maxTimeLong: $maxTimeLong"
+                            )
+                            overTime = true
+                        }
+
+                        // Check if still waiting for more bitmaps
+                        readingBitmapsMutex.withLock {
+                            isReadingBitmaps = readingBitmaps
+                        }
+                        // If bitmaps are still being read in, wait
+                        while (isBitmapEmpty && isReadingBitmaps) {
+                            delay(10)
+                            inputMutex.withLock {
+                                isBitmapEmpty = inputArray.isEmpty()
+                            }
+                        }
+                        // Get next bitmap
+                        inputMutex.withLock {
+                            bitmapImage = inputArray.removeFirst()
+                        }
+                    }
+                }
+                Log.d("OverMaxTime", "Index: $index Total Time: $timeTaken")
+            })
+        }
+
+        return true
     }
 
 
@@ -410,17 +595,18 @@ class ExpoVideoAnalyzerModule : Module() {
      * WARNING: will store a lot of frames at once, only use for shorter videos/testing
      *          need another function that updates a synchronized stack of frames
      */
-    private fun getVideoBitmaps(videoURI: String, targetFPS: Int = 30, maxTime: Int = 3):
+    private fun getVideoBitmaps(videoURI: String, targetFPS: Int = 30, maxTime: Float = 3.0f):
             MutableList<Pair<Bitmap, Long>> {
 
         val results = mutableListOf<Pair<Bitmap, Long>>()
         // Set time delta using fps
         var timeUs: Long = 0
-        var maxTimeLong: Long = 1000000L * maxTime
+        var maxTimeLong: Long = 1000000L * maxTime.toLong()
+        var overMaxTime: Boolean = false
         val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
         // Get frame by time (using time delta to loop over)
         var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUs)
-        while ((timeUs < maxTimeLong) && (bitmapImage != null)) {
+        while ((!overMaxTime) && (bitmapImage != null)) {
             //val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
             //evaluator.createInterpreter(MainActivity.applicationContext())
             try {
@@ -437,6 +623,10 @@ class ExpoVideoAnalyzerModule : Module() {
                 bitmapImage = extractFrameFromVideo(videoURI, timeUs)
             } catch (e: Exception) {
                 Log.e("Interpreter", "Error during evaluation", e)
+            }
+            // Check over max time (including -1 as whole video)
+            if ((maxTime > 0) && (timeUs > maxTimeLong)) {
+                overMaxTime = true
             }
         }
 
