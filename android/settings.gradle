@@ -35,7 +35,10 @@ apply from: new File(["node", "--print", "require.resolve('expo/package.json')"]
 useExpoModules()
 
 include ':app'
-include ':cv'
-project(':cv').projectDir = new File(rootProject.projectDir, '../cv')
-
 includeBuild(new File(["node", "--print", "require.resolve('@react-native/gradle-plugin/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile())
+
+include(':expo-video-analyzer')
+project(':expo-video-analyzer').projectDir = new File(rootProject.projectDir, '../modules/expo-video-analyzer/android')
+
+include(':cv')
+project(':cv').projectDir = new File(rootProject.projectDir, '../cv')

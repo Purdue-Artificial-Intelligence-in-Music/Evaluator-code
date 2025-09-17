@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as VideoAnalyzer from '../modules/expo-video-analyzer/src/ExpoVideoAnalyzer';
 
-
 import { TouchableOpacity} from 'react-native';
 import ChooseVideoIcon from '../assets/images/ChooseVideo.png';
 import CloseCamera from '../assets/images/CloseCamera.png';
@@ -20,7 +19,7 @@ import * as MediaLibrary from 'expo-media-library';
 
 import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator, Alert } from 'react-native';
 
-import { ResizeMode, Video } from 'expo-av';
+import { Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
 
 import { Camera, useCameraDevice, useCameraPermission, useCameraFormat } from 'react-native-vision-camera';
@@ -592,13 +591,12 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         //  showsVerticalScrollIndicator={true}
         >
         <Video
+	  resizeMode="contain"
+	  style={{ width: '100%', aspectRatio: 9/16, backgroundColor: 'black' }}
           source={{ uri: videoUri }}
           shouldPlay
-          resizeMode={ResizeMode.COVER}
-          style={{
-            width: videoDimensions ? videoDimensions.width * 0.2 : undefined,
-            height: videoDimensions ? videoDimensions.height * 0.2 : undefined
-          }}
+          resizeMode="contain"
+          
         />
         </View>
       ) : (
