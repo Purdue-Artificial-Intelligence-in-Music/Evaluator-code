@@ -401,26 +401,50 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
     setIsAnalyzing(true);
     try {
-      console.log('try:', videofile);
-      const result = await VideoAnalyzer.openVideo(videofile);
-      console.log('Result:', result);
-      
-      if (result.success) {
-        Alert.alert('Success', `Video opened\nLength: ${result.duration}ms\nResolution: ${result.width}x${result.height}`);
-        setAnalysisResult(JSON.stringify(result, null, 2));
-      } else {
-        Alert.alert('Error', `Video could not be opened: ${result.error}`);
+      // 1. open video
+      const open = await VideoAnalyzer.openVideo(videofile);
+      if (!open.success) {
+        Alert.alert('Error', `Video could not be opened: ${open.error}`);
       }
-      
+      // Alert.alert('Success', `Video opened\nLength: ${open.duration}ms\nResolution: ${open.width}x${open.height}`);
+      setAnalysisResult(JSON.stringify(open, null, 2));
+
+      // 2. initialize video analyzer
+      const initResult = await VideoAnalyzer.initialize();
+      if (!initResult.success) {
+        Alert.alert('Error: Initialization fail', 'Initialization Failed');
+        return;
+      }
+      // Alert.alert('Initialization Success', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
+      Alert.alert('Video processing starting...', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
+
+      // 3. process video
+      console.log('=== Test Logs ===');
+      console.log('Video file URI:', videofile);
+      console.log('URI type:', typeof videofile);
+      console.log('URI length:', videofile.length);
+      console.log('Start frame extraction...');
+      const proc = await VideoAnalyzer.processVideoComplete(videofile);
+      console.log('Processing complete:', proc);
+      console.log('Frame processing result:', proc);
+
+      if (!proc.success) {
+        Alert.alert('Processing Error', 'An error occured processing.');
+        return;
+      }
+      setvideofile(proc.outputPath);
+      setVideoUri(proc.outputPath);
+      setsendVideo(false);
+      Alert.alert('Processing complete', 
+      `Path: ${proc.outputPath}\n`);
+
     } catch (error) {
-      console.error('Failed to open video:', error);
+      console.error('sendVideoBackend failed:', error);
       Alert.alert('Error', `Error: ${error.message}`);
     } finally {
       setIsAnalyzing(false);
     }
   };
-
-  
 
   const downloadVideo = async (videoUrl: string) => {
     // Temporary part preventing crash on web platform
@@ -487,8 +511,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
       <View style={styles.buttonStyle}>
       {/* these two buttons are only for temp testing */}
-      <Button title="Test detector initialization" onPress={testDetector} />
-      <Button title="Test processing frame" onPress={testFrameProcessing} />
+      {/* <Button title="Test detector initialization" onPress={testDetector} />
+      <Button title="Test processing frame" onPress={testFrameProcessing} /> */}
 
       <TouchableOpacity
         onPress={pickVideo}
