@@ -240,7 +240,7 @@ class ExpoVideoAnalyzerModule : Module() {
                                 "success" to true,
                                 "frameCount" to processedFrameCount,
                                 "message" to "Video processing completed successfully",
-                                "outputPath" to outputpath
+                                "outputPath" to "file://$outputpath"
                             )
                             promise.resolve(resultMap)
                         } else {
@@ -663,8 +663,11 @@ class ExpoVideoAnalyzerModule : Module() {
 
             val timeDelta = 1_000_000L / targetFPS // microsecond，30fps = 33,333 microseconds
 
-            val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            val outputPath = File(publicMoviesDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+            //val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+            //val outputPath = File(publicMoviesDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+            val cacheDir = appContext.reactContext!!.cacheDir
+            val outputPath = File(cacheDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+
             Log.d("Encode", "Encoded video path: $outputPath")
 
             val totalFrames = (duration * 1000L / timeDelta).toInt()
