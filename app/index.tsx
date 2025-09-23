@@ -92,7 +92,7 @@ export default function HomePage() {
     try {
       const moduleStatus = VideoAnalyzer.getStatus();
       Alert.alert('Connection Test', `Status: ${moduleStatus}`);
-    } catch (error) {
+    } catch (error: any) {
       Alert.alert('Connection Failed', `Error: ${error.message}`);
     }
   };
@@ -342,7 +342,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       
       Alert.alert('Initialization Success', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Initialization Fail:', error);
       Alert.alert('Error', `Initialization Fail: ${error.message}`);
     }
@@ -386,8 +386,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       //   `bowPoints: ${result.bowPoints}\n` +
       //   `stringPoints: ${result.stringPoints}`
       // );
-      
-    } catch (error) {
+    } catch (error: any) {
       console.error('Processing Failed:', error);
       Alert.alert('Error', `Processing Failed: ${error.message}`);
     }
@@ -435,10 +434,42 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       setvideofile(proc.outputPath);
       setVideoUri(proc.outputPath);
       setsendVideo(false);
-      Alert.alert('Processing complete', 
-      `Path: ${proc.outputPath}\n`);
 
-    } catch (error) {
+      // 4. give user option of saving resulting video to photos
+      Alert.alert(
+        "Processing complete",
+        `Do you want to save the processed video to Photos?`,
+        [
+          {
+            text: "No",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await FileSystem.deleteAsync(proc.outputPath, { idempotent: true });
+                console.log("Temporary file deleted:", proc.outputPath);
+                setvideofile(null);
+                setVideoUri(null);
+            } catch (err) {
+                console.error("Failed to delete temp file:", err);
+            }
+            },
+          },
+          {
+            text: "Yes",
+            onPress: async () => {
+              const { status } = await MediaLibrary.requestPermissionsAsync();
+              if (status === "granted") {
+                await MediaLibrary.saveToLibraryAsync(proc.outputPath);
+                Alert.alert("Saved", "Video saved to Photos.");
+              } else {
+                Alert.alert("Permission denied", "Could not save video.");
+                return;
+              }
+            },
+          },
+        ]
+      );
+    } catch (error: any) {
       console.error('sendVideoBackend failed:', error);
       Alert.alert('Error', `Error: ${error.message}`);
     } finally {
