@@ -115,9 +115,20 @@ class ExpoVideoAnalyzerModule : Module() {
                         Log.d("bitmapImage", "bitmapImage is null")
                         return@launch
                     }
-                    val result = detector!!.process_frame(bitmapImage)
+                    
+                    //val result = detector!!.process_frame(bitmapImage)
 
-                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
+                    //val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
+                    //val result = detector!!.process_frame(bitmap)
+
+                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L)
+                    if (bitmap == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("FRAME_ERROR", "Failed to extract frame", null)
+                        }
+                        return@launch
+                    }
+
                     val result = detector!!.process_frame(bitmap)
                     
                     println(result)
@@ -201,75 +212,45 @@ class ExpoVideoAnalyzerModule : Module() {
                         return@launch
                     }
 
-                    // Create temp directory for annotated frames
-                    val tempDir = File(appContext.reactContext!!.cacheDir, "video_frames_${System.currentTimeMillis()}")
-                    tempDir.mkdirs()
-
-                    // Outputpath for final video. Use public directory to be able to access later.
-                    val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-                    val outputPath = File(publicMoviesDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
-
-                    val framePaths = mutableListOf<String>()
-                    var frameIndex = 0
-
                     Log.d("ProcessVideo", "Starting video processing for: $videoUri")
-                    Log.d("ProcessVideo", "Output path will be: $outputPath")
 
-                    // Use processVideoStream funciton to loop through and annotate frames, then
-                    // save processed frame to disk.
-                    val success = processVideoStream(videoUri, 15) { annotatedFrame, timeUs ->
+                    var processedFrameCount = 0
+
+                    // Use processVideoStream function to loop through and annotate frames
+                    val outputpath = processVideoStream(videoUri, 15) { annotatedFrame, timeUs ->
                         try {
-                            val framePath = File(tempDir, String.format("frame_%06d.jpg", frameIndex))
+                            processedFrameCount++
+                            Log.d("ProcessFrame", "Processed frame $processedFrameCount at time ${timeUs}μs")
 
-                            FileOutputStream(framePath).use { out ->
-                                annotatedFrame.compress(CompressFormat.JPEG, 85, out)
-                            }
-
-                            // Track the path to which the file has been written to
-                            framePaths.add(framePath.absolutePath)
-                            frameIndex++
-
-                            Log.d("SaveFrame", "Saved frame $frameIndex")
+                            // Frame processing is complete, just count and log
 
                         } catch (e: Exception) {
-                            Log.e("SaveFrame", "Failed to save frame $frameIndex: ${e.message}")
+                            Log.e("ProcessFrame", "Failed to process frame $processedFrameCount: ${e.message}")
                         } finally {
+                            // Always recycle the bitmap to prevent memory leaks
                             annotatedFrame.recycle()
                         }
                     }
 
-                    if (success && framePaths.isNotEmpty()) {
-                        // Use FFmpeg to construct video from saved frames
+                    withContext(Dispatchers.Main) {
+                        if ((outputpath != null) && processedFrameCount > 0) {
+                            Log.d("ProcessVideo", "Successfully processed $processedFrameCount frames")
 
-                        Log.d("ProcessVideo", "Combining ${framePaths.size} frames to video")
-                        val videoSuccess = combineFramesToVideo(tempDir, outputPath, 30)
-
-                        withContext(Dispatchers.Main) {
-                            val resultMap: Map<String, Any> = if (videoSuccess && File(outputPath).exists()) {
-                                mapOf(
-                                    "success" to true,
-                                    "outputPath" to outputPath,
-                                    "frameCount" to framePaths.size
-                                )
-                            } else {
-                                mapOf(
-                                    "success" to false,
-                                    "error" to "Failed to create video"
-                                )
-                            }
-                            if (resultMap["success"] as Boolean) {
-                                promise.resolve(resultMap)
-                            } else {
-                                promise.reject("VIDEO_CREATION_ERROR", "Failed to create video", null)
-                            }
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            promise.reject("FRAME_SAVE_ERROR", "Failed to save frames", null)
+                            val resultMap: Map<String, Any> = mapOf(
+                                "success" to true,
+                                "frameCount" to processedFrameCount,
+                                "message" to "Video processing completed successfully",
+                                "outputPath" to "file://$outputpath"
+                            )
+                            promise.resolve(resultMap)
+                        } else {
+                            Log.e("ProcessVideo", "Failed to process video or no frames processed")
+                            promise.reject("PROCESSING_ERROR", "Failed to process video frames", null)
                         }
                     }
 
                 } catch (e: Exception) {
+                    Log.e("ProcessVideo", "Video processing failed: ${e.message}", e)
                     withContext(Dispatchers.Main) {
                         promise.reject("PROCESS_ERROR", "Video processing failed: ${e.message}", e)
                     }
@@ -656,49 +637,128 @@ class ExpoVideoAnalyzerModule : Module() {
     // detect() and drawPointsOnBitmap() from detector to get annotated frames.
     private fun processVideoStream(
         videoURI: String,
-        targetFPS: Int = 15, // testing with lower fps rate
+        targetFPS: Int = 15,
         onFrameProcessed: (Bitmap, Long) -> Unit
-    ): Boolean {
+    ): String? {
         val retriever = MediaMetadataRetriever()
 
         try {
             retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-            val timeDelta = (1000 / targetFPS) * 1000L
 
-            // Loop through frames
+            val videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() ?: 1920
+            val videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 1080
+
+            val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toInt() ?: 0
+
+            // Adjust width and height by rotating
+            val (outputWidth, outputHeight) = if (rotation == 90 || rotation == 270) {
+                Pair(videoHeight, videoWidth)
+            } else {
+                Pair(videoWidth, videoHeight)
+            }
+
+            Log.d("Encode", "Original video: ${videoWidth}x${videoHeight}, rotation: $rotation")
+            Log.d("Encode", "Output video: ${outputWidth}x${outputHeight}")
+
+            val timeDelta = 1_000_000L / targetFPS // microsecond，30fps = 33,333 microseconds
+
+            //val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+            //val outputPath = File(publicMoviesDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+            val cacheDir = appContext.reactContext!!.cacheDir
+            val outputPath = File(cacheDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+
+            Log.d("Encode", "Encoded video path: $outputPath")
+
+            val totalFrames = (duration * 1000L / timeDelta).toInt()
+            Log.d("Encode", "Target frame interval: ${timeDelta}μs, Total frames: $totalFrames")
+
+            // Use the original video's resolution and the same FPS
+            val encoder = VideoEncoder(File(outputPath), outputWidth, outputHeight, fps = targetFPS)
+
             var timeUs = 0L
+            var frameIndex = 0
+
             while (timeUs < duration * 1000) {
+                var frame: Bitmap? = null
+                var processedFrame: Bitmap? = null
+                var annotatedFrame: Bitmap? = null
+
                 try {
                     // Extract specific frame
-                    val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    if (frame != null) {
+                    frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    frame?.let { originalFrame ->
                         // convert format to ARGB_8888
-                        val processedFrame = if (frame.config != Bitmap.Config.ARGB_8888) {
-                            val convertedBitmap = frame.copy(Bitmap.Config.ARGB_8888, false)
-                            frame.recycle()
+                        processedFrame = if (originalFrame.config != Bitmap.Config.ARGB_8888) {
+                            val convertedBitmap = originalFrame.copy(Bitmap.Config.ARGB_8888, false)
+                            originalFrame.recycle()
+                            frame = null // Avoid repeated recycling
                             convertedBitmap
                         } else {
-                            frame
+                            originalFrame
                         }
 
-                        // Annotate frame using Detector
-                        val result = detector!!.detect(processedFrame)
-                        val annotatedFrame = detector!!.drawPointsOnBitmap(processedFrame, result)
+                        processedFrame?.let { pFrame ->
+                            // Annotate frame using Detector
+                            val result = detector!!.detect(pFrame)
+                            // TODO: important! Potential memory leak in Detector
+                            annotatedFrame = detector!!.drawPointsOnBitmap(pFrame, result)
 
-                        onFrameProcessed(annotatedFrame, timeUs)
+                            annotatedFrame?.let { aFrame ->
+                                if (frameIndex == 0) {
+                                    Log.d("Encode", "bitmap size = ${aFrame.height}x${aFrame.width}")
+                                }
 
-                        processedFrame.recycle()
+                                // TODO: Logs. Remove later
+                                val currentSeconds = timeUs / 1_000_000.0
+                                Log.d("Encode", "Encode frame $frameIndex at ${String.format("%.3f", currentSeconds)}s (${timeUs}μs)")
+
+                                encoder.encodeFrame(aFrame)
+                                Log.d("Encode", "Frame $frameIndex encoded")
+
+                                onFrameProcessed(aFrame, timeUs)
+                                frameIndex++
+
+                                // Ensure timely memory cleanup
+                                if (pFrame != aFrame) {
+                                    pFrame.recycle()
+                                }
+                            }
+                        }
                     }
                 } catch (e: Exception) {
-                    Log.e("FrameProcess", "Error at time $timeUs: ${e.message}")
+                    Log.e("FrameProcess", "Error at frame $frameIndex, time $timeUs: ${e.message}")
+                    // Ensure memory is reclaimed even if error occurs
+                    frame?.recycle()
+                    processedFrame?.let { pf ->
+                        if (pf != frame) {
+                            pf.recycle()
+                        }
+                    }
+                    annotatedFrame?.let { af ->
+                        if (af != processedFrame) {
+                            af.recycle()
+                        }
+                    }
                 }
+
                 timeUs += timeDelta
             }
-            return true
+
+            encoder.finish()
+            Log.d("Encode", "Video encoding completed. Total frames processed: $frameIndex")
+
+            // Check output file was generated
+            val fileExists = File(outputPath).exists() && File(outputPath).length() > 0
+            if (fileExists) {
+                return outputPath
+            } else {
+                return null
+            }
+
         } catch (e: Exception) {
             Log.e("VideoProcess", "Failed to process video: ${e.message}")
-            return false
+            return null
         } finally {
             retriever.release()
         }
