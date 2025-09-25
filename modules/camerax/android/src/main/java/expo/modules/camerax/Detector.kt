@@ -6,12 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.SystemClock
-import android.util.Log
-// import android.graphics.PointF
-// import android.gesture.OrientedBoundingBox
-// import com.google.android.gms.tasks.Task
-// import com.google.android.gms.tflite.java.TfLite
-// import org.tensorflow.lite.InterpreterApi
+
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.nnapi.NnApiDelegate
@@ -25,12 +20,11 @@ import java.util.concurrent.CountDownLatch
 import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
 import kotlin.math.*
-import android.graphics.Typeface
 
 
 class Detector (
     private val context: Context,
-    private val listener: DetectorListener? = null
+    private val listener: DetectorListener
 ){
 
     private var interpreter: Interpreter
@@ -51,8 +45,6 @@ class Detector (
     private var frameCounter = 0
     private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
     private val numWaitFrames = 5
-    private var ogWidth: Int = 0
-    private var ogHeight: Int = 0
     //private var ogWidth: Int = 1
     //private var ogHeight: Int = 1
 
@@ -85,8 +77,7 @@ class Detector (
                 println("Gpu delegate failed")
             }
             */
-
-            //this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
+            
 
             if (CompatibilityList().isDelegateSupportedOnThisDevice) {
                 this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
@@ -94,10 +85,6 @@ class Detector (
                 this.setNumThreads(4)
                 this.setUseXNNPACK(true)
             }
-
-
-
-
 
 
             //this.setNumThreads(4)
@@ -171,7 +158,7 @@ class Detector (
      */
 
 
-    fun detect(frame: Bitmap): YoloResults{
+    fun detect(frame: Bitmap){
 
         //ogWdith = frame.width
         //ogHeight = frame.height
@@ -215,11 +202,7 @@ class Detector (
                 results.bowResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
                 bowConf = box.conf
             } else if (box.cls == 1 && box.conf > stringConf) {
-                if (box.width > box.height) {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle + Math.PI.toFloat() / 2).toMutableList())
-                } else {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList())
-                }
+                results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
                 stringConf = box.conf
             }
         }
@@ -229,167 +212,42 @@ class Detector (
         //println("bow conf, string conf: $bowConf, $stringConf")
 
         if (results.bowResults == null && results.stringResults == null) {
-            listener?.noDetect()
+            listener.noDetect()
         } else {
-            listener?.detected(results, frame.width, frame.height)
+            listener.detected(results, frame.width, frame.height)
             print(results)
         }
-        return results
     }
 
 
 
     fun drawPointsOnBitmap(
-        bitmap: Bitmap,
+        sourceBitmap: Bitmap,
         points: YoloResults,
-        classification: Int?,
-        angle: Int?
+        color: Int = Color.RED,
+        radius: Float = 10f
     ): Bitmap {
-        val canvas = Canvas(bitmap)
+        val resultBitmap = sourceBitmap.copy(Bitmap.Config.ARGB_8888, true)
 
-        // Determine if there's an issue with classification or angle
-        // 0 = correct, anything else is an issue
-        val hasIssue = (classification != null && classification != 0) ||
-                (angle != null && angle == 1)
-
-        // Choose colors based on classification
-        val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Orange or Blue
+        val canvas = Canvas(resultBitmap)
 
         val paint = Paint().apply {
-            color = boxColor
-            style = Paint.Style.STROKE
-            strokeWidth = 8f
-            isAntiAlias = true
-        }
-
-        // Draw string box (rectangle)
-        if (points.stringResults != null && points.stringResults!!.size >= 4) {
-            val stringBox = points.stringResults!!
-            // Draw four lines connecting the corners
-            canvas.drawLine(
-                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
-                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
-                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
-                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
-                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
-                paint
-            )
-        }
-
-        // Draw bow box (rectangle)
-        if (points.bowResults != null && points.bowResults!!.size >= 4) {
-            val bowBox = points.bowResults!!
-            // Draw four lines connecting the corners
-            canvas.drawLine(
-                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
-                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
-                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
-                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
-                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
-                paint
-            )
-        }
-
-        // Classification labels mapping
-        // -2: No detection, -1: Partial, 0: Correct, 1: Outside, 2: Too high, 3: Too low
-        val classificationLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Bow outside zone",
-            2 to "Bow too high",
-            3 to "Bow too low"
-        )
-
-        // Angle labels: 0 = correct, 1 = wrong
-        val angleLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Incorrect bow angle"
-        )
-
-        // Prepare text paint styles
-        val textPaint = Paint().apply {
-            color = Color.rgb(255, 140, 0) // Orange
+            this.color = color
             style = Paint.Style.FILL
-            textSize = 56f
             isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
         }
-
-        val strokePaint = Paint().apply {
-            color = Color.rgb(204, 85, 0) // Dark orange
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-            textSize = 56f
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
+        if (points.bowResults != null) {
+            for (point in points.bowResults!!) {
+                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), radius, paint)
+            }
         }
-
-        // Fixed positions from top - below the hand/pose classifications
-        val topMargin = 300f  // Below hand (160f) and pose (230f) messages
-        val lineSpacing = 70f
-        val centerX = bitmap.width / 2f
-
-        var currentY = topMargin
-
-        // Draw classification message if there's an issue
-        if (classification != null && classification != 0) {
-            val message = classificationLabels[classification] ?: ""
-            if (message.isNotEmpty()) {
-                canvas.drawText(message, centerX, currentY, strokePaint)
-                canvas.drawText(message, centerX, currentY, textPaint)
-                currentY += lineSpacing
+        if (points.stringResults != null) {
+            for (point in points.stringResults!!) {
+                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), radius, paint)
             }
         }
 
-        // Draw angle message if there's an issue
-        if (angle != null && angle == 1) {
-            val message = angleLabels[angle] ?: ""
-            if (message.isNotEmpty()) {
-                canvas.drawText(message, centerX, currentY, strokePaint)
-                canvas.drawText(message, centerX, currentY, textPaint)
-            }
-        }
-
-        return bitmap
-    }
-
-    fun process_frame(bitmap: Bitmap): Bitmap {
-        val classificationResult = classify(detect(bitmap))
-        val annotatedBitmap = drawPointsOnBitmap(
-            bitmap,
-            YoloResults(
-                bowResults = classificationResult.bow?.toMutableList(),
-                stringResults = classificationResult.string?.toMutableList()
-            ),
-            classificationResult.classification,
-            classificationResult.angle
-        )
-        return annotatedBitmap
+        return resultBitmap
     }
 
 
@@ -526,7 +384,6 @@ class Detector (
     }
 
     private fun getVerticalLines(): MutableList<MutableList<Double>> {
-        System.out.println(stringPoints)
         // Extracting corner points
         val topLeft = stringPoints!![0]
         val topRight = stringPoints!![1]
@@ -547,7 +404,7 @@ class Detector (
             // Calculate slope
             leftSlope = (topLeft.y - botLeft.y) / dxLeft
             // Calculate y-intercept
-            leftYint = topLeft.y - leftSlope * topLeft.x
+            leftYint = topLeft.y - leftSlope * topLeft.y
         }
 
         // Right vertical line (from topRight to botRight)
@@ -561,7 +418,7 @@ class Detector (
             rightYint = -1.0
         } else {
             rightSlope = (topRight.y - botRight.y) / dxRight
-            rightYint = topRight.y - rightSlope * topRight.x
+            rightYint = topRight.y - rightSlope * topRight.y
         }
 
         // Heights of each side (just the y-coordinates of top and bottom points)
@@ -623,12 +480,10 @@ class Detector (
             val yMin = minOf(topY, botY)
             val yMax = maxOf(topY, botY)
 
-            if (yMin > y || y > yMax) {
+            if (y !in yMin..yMax) {
                 //println("Intersection y=$y is outside vertical range ($yMin, $yMax)")
                 return null
             }
-
-
 
             return Point(x,y)
         }
@@ -638,21 +493,14 @@ class Detector (
         val xRight = stringPoints!![1].x
 
         // Calculate intersections of midline with both vertical string lines
-        var pt1 = getIntersection(verticalOne, xLeft)
-        var pt2 = getIntersection(verticalTwo, xRight)
+        val pt1 = getIntersection(verticalOne, xLeft)
+        val pt2 = getIntersection(verticalTwo, xRight)
 
-        if (pt1 == null && pt2 == null) {
+        if (pt1 == null || pt2 == null) {
             //println("One or both intersections invalid")
-            Log.d("BOW", "INVALID INTERSECTION")
             return 1
         }
-        if (pt1 == null) {
-            pt1 = pt2
-        }
-        if (pt2 == null){
-            pt2 = pt1
-        }
-        return bowHeightIntersection(mutableListOf(pt1!!, pt2!!), mutableListOf(verticalOne, verticalTwo))
+        return bowHeightIntersection(mutableListOf(pt1, pt2), mutableListOf(verticalOne, verticalTwo))
     }
 
 
@@ -665,40 +513,39 @@ class Detector (
         - 0: Intersection is in middle
      */
 
-
     private fun bowHeightIntersection(
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val top_zone_percentage = 0.15
-        val bottom_zone_percentage = 0.15
+        val bot_scaling_factor = .15
+        val top_scaling_factor = .15
 
+        // Extracts the vertical lines from the list
         val vertical_one = verticalLines[0]
         val vertical_two = verticalLines[1]
 
-        val top_y1 = vertical_one[2]
-        val top_y2 = vertical_two[2]
+        // Extracts the bottom y-coordinates of the vertical lines
         val bot_y1 = vertical_one[3]
         val bot_y2 = vertical_two[3]
 
-        val height = abs(((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0)
-        if (height == 0.0) return 0
+        // Extracts the top y-coordinates of the vertical lines
+        val top_y1 = vertical_one[2]
+        val top_y2 = vertical_two[2]
 
-        val avg_top_y = (top_y1 + top_y2) / 2.0
-        val avg_bot_y = (bot_y1 + bot_y2) / 2.0
+        // Calculates the height of the bow based on the vertical lines
+        val height = ((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0
 
-        val too_high_threshold = avg_top_y + height * top_zone_percentage
-        val too_low_threshold = avg_bot_y - height * bottom_zone_percentage
-
-        val intersection_y = intersectionPoints.map { it.y }.average()
-
-        if (intersection_y <= too_high_threshold) {
+        // Calculates the minimum and maximum y-coordinates for the intersections based on the scaling factors
+        val min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
+        if (intersectionPoints[0].y <= min_y || intersectionPoints[1].y <= min_y) {
             return 2
         }
 
-        if (intersection_y >= too_low_threshold) {
+        val max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
+        if (intersectionPoints[0].y >= max_y || intersectionPoints[1].y >= max_y) {
             return 3
         }
+
 
         return 0
     }
@@ -759,6 +606,7 @@ class Detector (
      */
     private fun degrees(radians: Double): Double {
         return radians * (180.0 / PI)
+
     }
 
     /*
@@ -766,7 +614,7 @@ class Detector (
      */
     private fun bowAngle(bowLine: MutableList<Int>, verticalLines: MutableList<MutableList<Double>>): Int {
         // flexibility of angle relative to 90 degrees
-        val max_angle = 15
+        val max_angle = 30
 
         // grab bow line and vertical lines
         val m_bow: Double = bowLine[0].toDouble()
@@ -822,27 +670,37 @@ class Detector (
             classResults.classification = -2
             return classResults
         }
-        if (results.stringResults == null) {
-            classResults.classification = -1
+        if (results.stringResults != null) {
+            results.stringResults = sortStringPoints(results.stringResults!!)
+            //need to do averaging of top two y coords
+            //averageYCoordinate(results.stringResults!!)
             classResults.bow = results.bowResults
-            return classResults
-        } else if (results.bowResults == null) {
-            classResults.classification = -1
-            classResults.string = results.stringResults
-            return classResults
+            if (results.bowResults != null) {
+                classResults.bow = results.bowResults
+            }
+            if (results.bowResults != null && results.stringResults != null) {
+                updatePoints(results.stringResults!!, results.bowResults!!)
+                val midlines = getMidline()
+                val vert_lines = getVerticalLines()
+                val intersect_points = intersectsVertical(midlines, vert_lines)
+                classResults.angle = bowAngle(midlines, vert_lines)
+                classResults.classification = intersect_points
+                return classResults
+
+            } else {
+                classResults.classification = -1
+                return classResults
+            }
         } else {
-            classResults.string = results.stringResults
-            classResults.bow = results.bowResults
-            updatePoints(results.stringResults!!, results.bowResults!!)
-            val midlines = getMidline()
-            val vert_lines = getVerticalLines()
-            val intersect_points = intersectsVertical(midlines, vert_lines)
-            classResults.angle = bowAngle(midlines, vert_lines)
-            classResults.classification = intersect_points
-            Log.d("BOW", classResults.classification.toString())
+            classResults.classification = -2
             return classResults
         }
     }
+    /*
+    fun process_frame(bitmap: Bitmap): returnBow {
+        return classify(detect(bitmap))
+    }
+     */
 
     interface DetectorListener {
         fun noDetect()
