@@ -1,0 +1,17 @@
+{
+  "platforms": [
+    "apple",
+    "android",
+    "web"
+  ],
+  "apple": {
+    "modules": [
+      "CameraxModule"
+    ]
+  },
+  "android": {
+    "modules": [
+      "expo.modules.camerax.CameraxModule"
+    ]
+  }
+}

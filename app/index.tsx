@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as VideoAnalyzer from '../modules/expo-video-analyzer/src/ExpoVideoAnalyzer';
-
+import { requireNativeViewManager } from 'expo-modules-core';
+import CameraComponent from './CameraComponent';
 
 import { TouchableOpacity} from 'react-native';
 import ChooseVideoIcon from '../assets/images/ChooseVideo.png';
@@ -115,105 +116,105 @@ useEffect(() => {
   console.log('Points updated:', points);
 }, [points]);
 
-const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
-  const device = useCameraDevice('back');
-  if (device == null) {
-    console.log("device = null");
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Loading camera device...</Text>
-      </View>
-    );
-  }
-  const cameraRef = useRef<Camera>(null);
-  const isTakingPhoto = useRef(false);
-  // const format = useCameraFormat(device, [
-  //   { photoResolution: { width: 640, height: 480 } }
-  // ]);
+// const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
+//   const device = useCameraDevice('back');
+//   if (device == null) {
+//     console.log("device = null");
+//     return (
+//       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+//         <Text>Loading camera device...</Text>
+//       </View>
+//     );
+//   }
+//   const cameraRef = useRef<Camera>(null);
+//   const isTakingPhoto = useRef(false);
+//   // const format = useCameraFormat(device, [
+//   //   { photoResolution: { width: 640, height: 480 } }
+//   // ]);
  
 
-  return (
-    <View style={styles.cameraContainer}>
-      <TouchableOpacity
-          style={styles.closeCameraButton}
-          onPress={() => {
+//   return (
+//     <View style={styles.cameraContainer}>
+//       <TouchableOpacity
+//           style={styles.closeCameraButton}
+//           onPress={() => {
           
-            setRecording(false); 
-            closeCamera();       // close the overlay
+//             setRecording(false); 
+//             closeCamera();       // close the overlay
             
-          }}
+//           }}
         
-          activeOpacity = {1} // Prevents the button from being pressed when recording
-        >
-        <Image source={CloseCamera} style={styles.closeCameraButton} resizeMode="contain" />
-      </TouchableOpacity>
-      <View style={styles.cameraWrapper}>
-        <Camera 
-        ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        // style={{ marginTop: 50, width: width, height: height * 0.7 }}
-        device={device}
-        isActive={true}
-        photoQualityBalance="speed"
-        photo={true}
-        video={false}
-        // format={format}
-        />
+//           activeOpacity = {1} // Prevents the button from being pressed when recording
+//         >
+//         <Image source={CloseCamera} style={styles.closeCameraButton} resizeMode="contain" />
+//       </TouchableOpacity>
+//       <View style={styles.cameraWrapper}>
+//         <Camera 
+//         ref={cameraRef}
+//         style={StyleSheet.absoluteFill}
+//         // style={{ marginTop: 50, width: width, height: height * 0.7 }}
+//         device={device}
+//         isActive={true}
+//         photoQualityBalance="speed"
+//         photo={true}
+//         video={false}
+//         // format={format}
+//         />
       
-        <Svg
-          viewBox={`0 0 ${imageWidth || 4080} ${imageHeight || 3060}`}
-          preserveAspectRatio="xMidYMid slice"
-          style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
-        >
-          {recording && (
-            <>
-            {points.map((item, index) => (
-            <Circle
-              r={20}
-              cx={item.x}
-              cy={item.y}
-              fill={`rgb(${255 - index * 30}, ${index * 30}, ${255 - index * 30})`}
-              key={index}
-            />
-            ))}
-            {linePoints.map((item, index) => (
-              <Line
-                x1={item.start.x}
-                y1={item.start.y}
-                x2={item.end.x}
-                y2={item.end.y}
-                strokeWidth={5}
-                stroke="red"
-                key={index}
-              />
-            ))}
-            </>
-          )}
-        </Svg>
-      </View>
-      <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-      <TouchableOpacity
-      onPress={() => {
+//         <Svg
+//           viewBox={`0 0 ${imageWidth || 4080} ${imageHeight || 3060}`}
+//           preserveAspectRatio="xMidYMid slice"
+//           style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
+//         >
+//           {recording && (
+//             <>
+//             {points.map((item, index) => (
+//             <Circle
+//               r={20}
+//               cx={item.x}
+//               cy={item.y}
+//               fill={`rgb(${255 - index * 30}, ${index * 30}, ${255 - index * 30})`}
+//               key={index}
+//             />
+//             ))}
+//             {linePoints.map((item, index) => (
+//               <Line
+//                 x1={item.start.x}
+//                 y1={item.start.y}
+//                 x2={item.end.x}
+//                 y2={item.end.y}
+//                 strokeWidth={5}
+//                 stroke="red"
+//                 key={index}
+//               />
+//             ))}
+//             </>
+//           )}
+//         </Svg>
+//       </View>
+//       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
+//       <TouchableOpacity
+//       onPress={() => {
 
-        if (recording) {
-          setRecording(false);
-          // reset old dots and lines
-          setPoints([{x: 0, y: 0}]);
-          setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
-        } else {
-          setRecording(true);
-        }
-      }} >
+//         if (recording) {
+//           setRecording(false);
+//           // reset old dots and lines
+//           setPoints([{x: 0, y: 0}]);
+//           setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
+//         } else {
+//           setRecording(true);
+//         }
+//       }} >
 
-      <Image
-        source = {recording ? Recording : Record}
-        style = {{width: 140, height: 40, marginTop: 10}}
-      />
-      </TouchableOpacity>
+//       <Image
+//         source = {recording ? Recording : Record}
+//         style = {{width: 140, height: 40, marginTop: 10}}
+//       />
+//       </TouchableOpacity>
       
-    </View>
-  )
-};
+//     </View>
+//   )
+// };
 
   // Fetch IP address on mount
   useEffect(() => {
@@ -571,9 +572,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       </View>
 
       
-      {(isCameraOpen && hasPermission) ? (
+      {(isCameraOpen) ? (
         <View style={styles.cameraOverlay}>
-          <CameraComponent startDelay={0} />
+          <CameraComponent startDelay={0} onClose={closeCamera} />
 
 
         </View>
@@ -752,16 +753,25 @@ const styles = StyleSheet.create({
 
   },
 
+  // cameraOverlay: {
+  //   // flex: 1,
+  //   position: 'absolute',
+  //   top: 0,
+  //   left: 0,
+  //   width: '100%',
+  //   height: '100%',
+  //   backgroundColor: 'rgba(0,0,0,0.9)', // Optional: Dim the background behind camera
+  //   justifyContent: 'center',
+  //   alignItems: 'center',
+  //   zIndex: 100,
+  // },
   cameraOverlay: {
-    // flex: 1,
     position: 'absolute',
     top: 0,
     left: 0,
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0,0,0,0.9)', // Optional: Dim the background behind camera
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    zIndex: 1000,
   },
 });
