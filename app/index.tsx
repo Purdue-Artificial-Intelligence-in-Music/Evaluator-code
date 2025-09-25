@@ -311,14 +311,33 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
     return correctedData;
   }
 
-  
-
   const returnBack = async () => {
-      setIsCameraOpen(false)
-      setVideoUri(null)
-      setsendButton(false)
-      setAnalysisResult('')
+    setIsCameraOpen(false);
+    setVideoUri(null);
+    setsendButton(false);
+    setIsAnalyzing(false);
+    setAnalysisResult('');
+    try {
+      await VideoAnalyzer.cancelProcessing();
+      Alert.alert('Video processing cancelled.');
+      console.log("Video processing cancelled.");
+
+      if (videofile) {
+        try {
+          await FileSystem.deleteAsync(videofile, { idempotent: true });
+          console.log("Deleted partial video file:", videofile);
+        } catch (err) {
+          console.error("Failed to delete partial file:", err);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to cancel processing:", err);
+    }
+
+    setsendVideo(false);
+    setvideofile(null);
   };
+
   // Send captured image to backend API
   const sendImageToBackend = async (imageBase64: string) => {
     if ((socketRef.current) && (socketRef.current.readyState === WebSocket.OPEN) && (!isSending.current)) {
@@ -405,7 +424,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
       if (!open.success) {
         Alert.alert('Error', `Video could not be opened: ${open.error}`);
       }
-      // Alert.alert('Success', `Video opened\nLength: ${open.duration}ms\nResolution: ${open.width}x${open.height}`);
       setAnalysisResult(JSON.stringify(open, null, 2));
 
       // 2. initialize video analyzer
@@ -414,7 +432,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         Alert.alert('Error: Initialization fail', 'Initialization Failed');
         return;
       }
-      // Alert.alert('Initialization Success', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
       Alert.alert('Video processing starting...', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
 
       // 3. process video
@@ -641,7 +658,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
 
 
 
-      {videoUri ? (
+      {/* {videoUri ? (
         <View
         //  contentContainerStyle={{ flexGrow: 1 }} 
         //  showsVerticalScrollIndicator={true}
@@ -658,14 +675,36 @@ const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
         </View>
       ) : (
         !sendVideo && <Text style={styles.placeholderText}>No video selected</Text>
+      )} */}
+
+      {videoUri ? (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Video
+            source={{ uri: videoUri }}
+            shouldPlay
+            resizeMode={ResizeMode.CONTAIN}
+            style={{
+              width: videoDimensions ? Math.min(videoDimensions.width, width) : width,
+              height: videoDimensions ? Math.min(videoDimensions.height, height * 0.6) : height * 0.6,
+            }}
+          />
+        </ScrollView>
+      ) : (
+        !sendVideo && <Text style={styles.placeholderText}>No video selected</Text>
       )}
+
 
       {videoDimensions && (
         <Text style={styles.videoDimensionsText}>
           Video Dimensions: {videoDimensions.width}x{videoDimensions.height}
         </Text>
       )}
-
 
       {sendVideo && <ActivityIndicator size="large" color="#0000ff" />} 
 
