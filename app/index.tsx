@@ -42,10 +42,6 @@ type ResponseData = {
   [key: string]: { x: number; y: number };
 };
 
-// const windowWidth = Dimensions.get('window').width;
-// const windowHeight = Dimensions.get('window').height;
-// const aspectRatio = windowWidth + "x" + windowHeight;
-
 const width = Dimensions.get('window').width;
 const height = Dimensions.get('window').height;
 const aspectRatio = width + "x" + height;
@@ -116,106 +112,6 @@ useEffect(() => {
   console.log('Points updated:', points);
 }, [points]);
 
-// const CameraComponent: React.FC<CameraComponentProps> = ({ startDelay }) => {
-//   const device = useCameraDevice('back');
-//   if (device == null) {
-//     console.log("device = null");
-//     return (
-//       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-//         <Text>Loading camera device...</Text>
-//       </View>
-//     );
-//   }
-//   const cameraRef = useRef<Camera>(null);
-//   const isTakingPhoto = useRef(false);
-//   // const format = useCameraFormat(device, [
-//   //   { photoResolution: { width: 640, height: 480 } }
-//   // ]);
- 
-
-//   return (
-//     <View style={styles.cameraContainer}>
-//       <TouchableOpacity
-//           style={styles.closeCameraButton}
-//           onPress={() => {
-          
-//             setRecording(false); 
-//             closeCamera();       // close the overlay
-            
-//           }}
-        
-//           activeOpacity = {1} // Prevents the button from being pressed when recording
-//         >
-//         <Image source={CloseCamera} style={styles.closeCameraButton} resizeMode="contain" />
-//       </TouchableOpacity>
-//       <View style={styles.cameraWrapper}>
-//         <Camera 
-//         ref={cameraRef}
-//         style={StyleSheet.absoluteFill}
-//         // style={{ marginTop: 50, width: width, height: height * 0.7 }}
-//         device={device}
-//         isActive={true}
-//         photoQualityBalance="speed"
-//         photo={true}
-//         video={false}
-//         // format={format}
-//         />
-      
-//         <Svg
-//           viewBox={`0 0 ${imageWidth || 4080} ${imageHeight || 3060}`}
-//           preserveAspectRatio="xMidYMid slice"
-//           style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
-//         >
-//           {recording && (
-//             <>
-//             {points.map((item, index) => (
-//             <Circle
-//               r={20}
-//               cx={item.x}
-//               cy={item.y}
-//               fill={`rgb(${255 - index * 30}, ${index * 30}, ${255 - index * 30})`}
-//               key={index}
-//             />
-//             ))}
-//             {linePoints.map((item, index) => (
-//               <Line
-//                 x1={item.start.x}
-//                 y1={item.start.y}
-//                 x2={item.end.x}
-//                 y2={item.end.y}
-//                 strokeWidth={5}
-//                 stroke="red"
-//                 key={index}
-//               />
-//             ))}
-//             </>
-//           )}
-//         </Svg>
-//       </View>
-//       <Text style={styles.placeholderText}> Forearm posture: {supinating} </Text> 
-//       <TouchableOpacity
-//       onPress={() => {
-
-//         if (recording) {
-//           setRecording(false);
-//           // reset old dots and lines
-//           setPoints([{x: 0, y: 0}]);
-//           setLinePoints([{start: {x: 0, y: 0}, end: {x: 0, y: 0}}]);
-//         } else {
-//           setRecording(true);
-//         }
-//       }} >
-
-//       <Image
-//         source = {recording ? Recording : Record}
-//         style = {{width: 140, height: 40, marginTop: 10}}
-//       />
-//       </TouchableOpacity>
-      
-//     </View>
-//   )
-// };
-
   // Fetch IP address on mount
   useEffect(() => {
     const fetchIpAddress = async () => {
@@ -230,7 +126,6 @@ useEffect(() => {
   }, []);
 
   // Function to handle video selection
-  // base64 + url
   const pickVideo = async () => {
     try {
       const result = await ImagePickerExpo.launchImageLibraryAsync({
@@ -657,27 +552,6 @@ useEffect(() => {
         IP Address: {ipAddress || 'Fetching IP...'}
       </Text>
 
-
-
-      {/* {videoUri ? (
-        <View
-        //  contentContainerStyle={{ flexGrow: 1 }} 
-        //  showsVerticalScrollIndicator={true}
-        >
-        <Video
-          source={{ uri: videoUri }}
-          shouldPlay
-          resizeMode={ResizeMode.COVER}
-          style={{
-            width: videoDimensions ? videoDimensions.width * 0.2 : undefined,
-            height: videoDimensions ? videoDimensions.height * 0.2 : undefined
-          }}
-        />
-        </View>
-      ) : (
-        !sendVideo && <Text style={styles.placeholderText}>No video selected</Text>
-      )} */}
-
       {videoUri ? (
         <ScrollView
           style={{ flex: 1 }}
@@ -734,28 +608,6 @@ useEffect(() => {
         disabled={!videoUri}
       />}
 
-      {/* only show dots and lines when camera is open and recording*/}
-      {/* {(isCameraOpen && recording) && <Svg style={{ ...styles.cameraContainer, height: 440 - 20 }}>
-        {points.map((item, index) => (
-          <Circle r={5} 
-                  cx={item.x} 
-                  cy={item.y} 
-                  fill={"rgb(" + (255 - index * 30) +"," + index * 30 + "," + (255 - index * 30) + ")"} 
-                  key={index}/>
-        ))}
-        {linePoints.map((item, index) => (
-          <Line x1={item.start.x} 
-                y1={item.start.y} 
-                x2={item.end.x}
-                y2={item.end.y}
-                strokeWidth={1}
-                stroke="red"
-                key={index}
-          />
-        ))}
-      </Svg>} */}
-        
-      
     </SafeAreaView>
   );
 }
@@ -781,36 +633,6 @@ const styles = StyleSheet.create({
     width: '90%',
     height: 60,
     marginVertical: 10,
-  },
-
-  closeCameraButton: {
-    position: 'absolute',
-    backgroundColor: 'transparent',
-    top: 10,
-    alignSelf: 'center',
-    width: 160,
-    height: 30,
-    zIndex: 10, 
-  },
-
-  cameraContainer: {
-    // flex: 1,
-    position: 'absolute',
-   // marginVertical: 100,
-    width: width * factor, //can be changed
-    height: height * factorThree, //can be changed
-   // marginBottom: 20,
-    borderRadius: 10,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cameraWrapper: {
-    width: width,
-    height: height * 0.7,
-    position: 'relative',
-    marginTop: 50,
-    overflow: 'hidden',
   },
   point: {
     flex: 1,
@@ -846,19 +668,6 @@ const styles = StyleSheet.create({
     fontFamily: 'System',
 
   },
-
-  // cameraOverlay: {
-  //   // flex: 1,
-  //   position: 'absolute',
-  //   top: 0,
-  //   left: 0,
-  //   width: '100%',
-  //   height: '100%',
-  //   backgroundColor: 'rgba(0,0,0,0.9)', // Optional: Dim the background behind camera
-  //   justifyContent: 'center',
-  //   alignItems: 'center',
-  //   zIndex: 100,
-  // },
   cameraOverlay: {
     position: 'absolute',
     top: 0,
