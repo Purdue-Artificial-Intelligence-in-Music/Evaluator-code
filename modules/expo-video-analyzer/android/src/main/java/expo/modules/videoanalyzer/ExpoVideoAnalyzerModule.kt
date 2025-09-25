@@ -28,6 +28,7 @@ class ExpoVideoAnalyzerModule : Module() {
     private var detector: Detector? = null
     private var isOpenCVInitialized = false
     private var initializationAttempted = false
+    @Volatile private var isCancelled = false
 
     // Input for one detector (likely going to be an array later for abstraction)
     var inputBitmaps: Array<ArrayDeque<Bitmap>>? = null
@@ -39,7 +40,6 @@ class ExpoVideoAnalyzerModule : Module() {
     var inputMutexes: Array<Mutex>? = null
     val outputMutex = Mutex()
     val readingBitmapsMutex = Mutex()
-
 
     override fun definition() = ModuleDefinition {
         Name("ExpoVideoAnalyzer")
@@ -215,9 +215,16 @@ class ExpoVideoAnalyzerModule : Module() {
                     Log.d("ProcessVideo", "Starting video processing for: $videoUri")
 
                     var processedFrameCount = 0
+                    isCancelled = false // reset cancel flag at start
 
                     // Use processVideoStream function to loop through and annotate frames
                     val outputpath = processVideoStream(videoUri, 15) { annotatedFrame, timeUs ->
+                        if (isCancelled) {
+                            Log.d("ProcessVideo", "Processing cancelled at frame $processedFrameCount")
+                            annotatedFrame.recycle()
+                            throw CancellationException("Processing was cancelled")
+                        }
+                        
                         try {
                             processedFrameCount++
                             Log.d("ProcessFrame", "Processed frame $processedFrameCount at time ${timeUs}μs")
@@ -243,12 +250,17 @@ class ExpoVideoAnalyzerModule : Module() {
                                 "outputPath" to "file://$outputpath"
                             )
                             promise.resolve(resultMap)
+                        } else if (isCancelled) {
+                            promise.reject("PROCESSING_CANCELLED", "Video processing cancelled", null)
                         } else {
                             Log.e("ProcessVideo", "Failed to process video or no frames processed")
                             promise.reject("PROCESSING_ERROR", "Failed to process video frames", null)
                         }
                     }
-
+                } catch (e: CancellationException) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("CANCELLED", e.message, e)
+                    }
                 } catch (e: Exception) {
                     Log.e("ProcessVideo", "Video processing failed: ${e.message}", e)
                     withContext(Dispatchers.Main) {
@@ -256,6 +268,11 @@ class ExpoVideoAnalyzerModule : Module() {
                     }
                 }
             }
+        }
+
+        AsyncFunction("cancelProcessing") {
+            isCancelled = true
+            Log.d("ProcessVideo", "Cancel flag set to true")
         }
 
         // Helper function

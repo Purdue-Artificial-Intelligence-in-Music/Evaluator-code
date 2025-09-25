@@ -40,3 +40,7 @@ export async function testFFmpeg(): Promise<any> {
 export async function checkFileExists(filePath: String): Promise<any> {
   return await ExpoVideoAnalyzerModule.checkFileExists(filePath);
 }
+
+export async function cancelProcessing() {
+  return await ExpoVideoAnalyzerModule.cancelProcessing();
+}
