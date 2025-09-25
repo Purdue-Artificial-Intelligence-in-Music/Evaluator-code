@@ -19,7 +19,7 @@ import { Platform } from 'react-native';
 
 import * as MediaLibrary from 'expo-media-library';
 
-import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator, Modal, Alert } from 'react-native';
 
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
@@ -607,7 +607,15 @@ useEffect(() => {
         onPress={() => downloadVideo(videoUri)}
         disabled={!videoUri}
       />}
-
+      {/* activityindicator: full-screen overlay during upload/analysis */}
+      <Modal transparent visible={isAnalyzing} animationType="fade" statusBarTranslucent>
+        <View style={styles.overlay}>
+          <View style={styles.spinnerCard}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.spinnerText}>Uploading / processing video…</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -676,5 +684,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'transparent',
     zIndex: 1000,
+  },
+    overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  spinnerCard: {
+    backgroundColor: '#fff',
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    borderRadius: 16,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  spinnerText: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
