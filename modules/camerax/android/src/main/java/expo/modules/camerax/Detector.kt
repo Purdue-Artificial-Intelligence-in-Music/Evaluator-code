@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.SystemClock
-
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.nnapi.NnApiDelegate
@@ -77,7 +76,7 @@ class Detector (
                 println("Gpu delegate failed")
             }
             */
-            
+
 
             if (CompatibilityList().isDelegateSupportedOnThisDevice) {
                 this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
@@ -606,7 +605,6 @@ class Detector (
      */
     private fun degrees(radians: Double): Double {
         return radians * (180.0 / PI)
-
     }
 
     /*
@@ -670,29 +668,23 @@ class Detector (
             classResults.classification = -2
             return classResults
         }
-        if (results.stringResults != null) {
-            results.stringResults = sortStringPoints(results.stringResults!!)
-            //need to do averaging of top two y coords
-            //averageYCoordinate(results.stringResults!!)
+        if (results.stringResults == null) {
+            classResults.classification = -1
             classResults.bow = results.bowResults
-            if (results.bowResults != null) {
-                classResults.bow = results.bowResults
-            }
-            if (results.bowResults != null && results.stringResults != null) {
-                updatePoints(results.stringResults!!, results.bowResults!!)
-                val midlines = getMidline()
-                val vert_lines = getVerticalLines()
-                val intersect_points = intersectsVertical(midlines, vert_lines)
-                classResults.angle = bowAngle(midlines, vert_lines)
-                classResults.classification = intersect_points
-                return classResults
-
-            } else {
-                classResults.classification = -1
-                return classResults
-            }
+            return classResults
+        } else if (results.bowResults == null) {
+            classResults.classification = -1
+            classResults.string = results.stringResults
+            return classResults
         } else {
-            classResults.classification = -2
+            classResults.string = results.stringResults
+            classResults.bow = results.bowResults
+            updatePoints(results.stringResults!!, results.bowResults!!)
+            val midlines = getMidline()
+            val vert_lines = getVerticalLines()
+            val intersect_points = intersectsVertical(midlines, vert_lines)
+            classResults.angle = bowAngle(midlines, vert_lines)
+            classResults.classification = intersect_points
             return classResults
         }
     }
