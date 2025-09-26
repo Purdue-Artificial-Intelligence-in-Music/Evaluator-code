@@ -1,5 +1,4 @@
 package expo.modules.videoanalyzer
-import expo.modules.camerax.Detector
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,13 +22,11 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import android.os.Environment
 
-import com.google.mediapipe.tasks.vision.core.RunningMode
-import expo.modules.camerax.HandLandmarkerHelper
-
 import kotlin.time.measureTime
 
 class ExpoVideoAnalyzerModule : Module() {
     private var detector: Detector? = null
+    private var isOpenCVInitialized = false
     private var initializationAttempted = false
     @Volatile private var isCancelled = false
 
@@ -47,19 +44,42 @@ class ExpoVideoAnalyzerModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("ExpoVideoAnalyzer")
         
+        // function for testing, remove later
+        Function("getStatus") {
+            val status = StringBuilder()
+            status.append("Video Analyzer Module Connected | ")
+            status.append("OpenCV: ${if (isOpenCVInitialized) "Ready" else "Not Ready"} | ")
+            status.append("Detector: ${if (detector != null) "Ready" else "Not Ready"}")
+            return@Function status.toString()
+        }
+        
         AsyncFunction("initialize") { promise: Promise ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     if (!initializationAttempted) {
                         initializationAttempted = true
+                        
+                        // try initializing OpenCV
+                        isOpenCVInitialized = try {
+                            org.opencv.android.OpenCVLoader.initDebug()
+                        } catch (e: Exception) {
+                            println("OpenCV initialization failed: ${e.message}")
+                            Log.d("init", "OpenCV initialization failed: ${e.message}")
+                            false
+                        }
+                        
 
-                        initializeDetector()
+                        if (isOpenCVInitialized) {
+                            initializeDetector()
+                        }
                     }
                     
                     withContext(Dispatchers.Main) {
                         promise.resolve(mapOf(
                             "success" to true,
+                            "openCV" to isOpenCVInitialized,
                             "detector" to (detector != null),
+                            "initializationMethod" to if (isOpenCVInitialized) "successful" else "failed"
                         ))
                     }
                 } catch (e: Exception) {
@@ -70,74 +90,90 @@ class ExpoVideoAnalyzerModule : Module() {
             }
         }
         
-//        AsyncFunction("processFrame") { videoUri: String, promise: Promise ->
-//            CoroutineScope(Dispatchers.IO).launch {
-//                try {
-//                    if (!isOpenCVInitialized) {
-//                        withContext(Dispatchers.Main) {
-//                            promise.reject("OPENCV_NOT_READY", "OpenCV not initialized. Call initialize() first.", null)
-//                        }
-//                        return@launch
-//                    }
-//
-//                    if (detector == null) {
-//                        withContext(Dispatchers.Main) {
-//                            promise.reject("DETECTOR_NOT_READY", "Detector not initialized. Call initialize() first.", null)
-//                        }
-//                        return@launch
-//                    }
-//                    val bitmapImage = getBitmapFromAssets(appContext.reactContext!!, "Sample Input.png")
-////                    val bitmapImage = extractFrameFromVideo(videoUri, 10_000_000L) // convert a frame to bitmap
-//                    if (bitmapImage == null) {
-//                        withContext(Dispatchers.Main) {
-//                            promise.reject("ASSET_ERROR", "Failed to load image from assets", null)
-//                        }
-//                        Log.d("bitmapImage", "bitmapImage is null")
-//                        return@launch
-//                    }
-//
-//                    //val result = detector!!.process_frame(bitmapImage)
-//
-//                    //val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
-//                    //val result = detector!!.process_frame(bitmap)
-//
-//                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L)
-//                    if (bitmap == null) {
-//                        withContext(Dispatchers.Main) {
-//                            promise.reject("FRAME_ERROR", "Failed to extract frame", null)
-//                        }
-//                        return@launch
-//                    }
-//
-//                    val result = detector!!.process_frame(bitmap)
-//
-//                    println(result)
-//                    Log.d("result", "$result")
-//                    val response = mapOf(
-//                        "success" to true,
-//                        "classification" to (result.classification ?: -1),
-//                        "angle" to (result.angle ?: 0),
-//                        "hasBow" to (result.bow != null),
-//                        "hasString" to (result.string != null),
-//                        "bowPoints" to if (result.bow != null) result.bow!!.size else 0,
-//                        "stringPoints" to if (result.string != null) result.string!!.size else 0,
-//                        "imageWidth" to bitmapImage.width,
-//                        "imageHeight" to bitmapImage.height
-//                    )
-//
-//                    // clear bitmap storage
-//                    bitmapImage.recycle()
-//
-//                    withContext(Dispatchers.Main) {
-//                        promise.resolve(response)
-//                    }
-//                } catch (e: Exception) {
-//                    withContext(Dispatchers.Main) {
-//                        promise.reject("PROCESS_ERROR", "Frame processing failed: ${e.message}", e)
-//                    }
-//                }
-//            }
-//        }
+        AsyncFunction("processFrame") { videoUri: String, promise: Promise ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    if (!isOpenCVInitialized) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("OPENCV_NOT_READY", "OpenCV not initialized. Call initialize() first.", null)
+                        }
+                        return@launch
+                    }
+                    
+                    if (detector == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("DETECTOR_NOT_READY", "Detector not initialized. Call initialize() first.", null)
+                        }
+                        return@launch
+                    }
+                    val bitmapImage = getBitmapFromAssets(appContext.reactContext!!, "Sample Input.png")
+//                    val bitmapImage = extractFrameFromVideo(videoUri, 10_000_000L) // convert a frame to bitmap
+                    if (bitmapImage == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("ASSET_ERROR", "Failed to load image from assets", null)
+                        }
+                        Log.d("bitmapImage", "bitmapImage is null")
+                        return@launch
+                    }
+                    
+                    //val result = detector!!.process_frame(bitmapImage)
+
+                    //val bitmap = extractFrameFromVideo(videoUri, 5_000_000L) // convert a frame to bitmap
+                    //val result = detector!!.process_frame(bitmap)
+
+                    val bitmap = extractFrameFromVideo(videoUri, 5_000_000L)
+                    if (bitmap == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("FRAME_ERROR", "Failed to extract frame", null)
+                        }
+                        return@launch
+                    }
+
+                    val result = detector!!.process_frame(bitmap)
+                    
+                    println(result)
+                    Log.d("result", "$result")
+                    val response = mapOf(
+                        "success" to true,
+                        "classification" to (result.classification ?: -1),
+                        "angle" to (result.angle ?: 0),
+                        "hasBow" to (result.bow != null),
+                        "hasString" to (result.string != null),
+                        "bowPoints" to if (result.bow != null) result.bow!!.size else 0,
+                        "stringPoints" to if (result.string != null) result.string!!.size else 0,
+                        "imageWidth" to bitmapImage.width,
+                        "imageHeight" to bitmapImage.height
+                    )
+                    
+                    // clear bitmap storage
+                    bitmapImage.recycle()
+                    
+                    withContext(Dispatchers.Main) {
+                        promise.resolve(response)
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("PROCESS_ERROR", "Frame processing failed: ${e.message}", e)
+                    }
+                }
+            }
+        }
+        
+        // Function only for testing, remove later
+        AsyncFunction("openVideo") { videoUri: String, promise: Promise ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val result = openAndValidateVideo(videoUri)
+                    withContext(Dispatchers.Main) {
+                        promise.resolve(result)
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("VIDEO_OPEN_ERROR", "Failed to open video: ${e.message}", e)
+                    }
+                }
+            }
+        }
 
         // TODO not implemented yet
         AsyncFunction("resetDetector") { promise: Promise ->
@@ -170,40 +206,38 @@ class ExpoVideoAnalyzerModule : Module() {
             var outputpath: String? = null
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    if (detector == null) {
+                    if (!isOpenCVInitialized || detector == null) {
                         withContext(Dispatchers.Main) {
-                            promise.reject("NOT_INITIALIZED", "Detector not initialized", null)
+                            promise.reject("NOT_INITIALIZED", "OpenCV or detector not initialized", null)
                         }
                         return@launch
                     }
 
                     Log.d("ProcessVideo", "Starting video processing for: $videoUri")
+
                     var processedFrameCount = 0
                     isCancelled = false // reset cancel flag at start
 
-                    outputpath = processVideoStream(videoUri, 15) { annotatedFrame, timeUs ->
+                    // Use processVideoStream function to loop through and annotate frames
+                    val outputpath = processVideoStream(videoUri, 15) { annotatedFrame, timeUs ->
                         if (isCancelled) {
                             Log.d("ProcessVideo", "Processing cancelled at frame $processedFrameCount")
                             annotatedFrame.recycle()
                             throw CancellationException("Processing was cancelled")
                         }
-
+                        
                         try {
                             processedFrameCount++
                             Log.d("ProcessFrame", "Processed frame $processedFrameCount at time ${timeUs}μs")
+
+                            // Frame processing is complete, just count and log
+
                         } catch (e: Exception) {
                             Log.e("ProcessFrame", "Failed to process frame $processedFrameCount: ${e.message}")
                         } finally {
+                            // Always recycle the bitmap to prevent memory leaks
                             annotatedFrame.recycle()
                         }
-                    }
-
-                    if (isCancelled) {
-                        outputpath?.let { File(it).delete() }
-                        withContext(Dispatchers.Main) {
-                            promise.reject("PROCESSING_CANCELLED", "User cancelled video processing", null)
-                        }
-                        return@launch
                     }
 
                     withContext(Dispatchers.Main) {
@@ -217,6 +251,9 @@ class ExpoVideoAnalyzerModule : Module() {
                                 "outputPath" to "file://$outputpath"
                             )
                             promise.resolve(resultMap)
+                        } else if (isCancelled) {
+                            promise.reject("PROCESSING_CANCELLED", "Video processing cancelled", null)
+                            outputpath?.let { File(it).delete() }
                         } else {
                             Log.e("ProcessVideo", "Failed to process video or no frames processed")
                             promise.reject("PROCESSING_ERROR", "Failed to process video frames", null)
@@ -234,8 +271,6 @@ class ExpoVideoAnalyzerModule : Module() {
                     withContext(Dispatchers.Main) {
                         promise.reject("PROCESS_ERROR", "Video processing failed: ${e.message}", e)
                     }
-                } finally {
-                    isCancelled = false // reset flag
                 }
             }
         }
@@ -582,43 +617,43 @@ class ExpoVideoAnalyzerModule : Module() {
      * WARNING: will store a lot of frames at once, only use for shorter videos/testing
      *          need another function that updates a synchronized stack of frames
      */
-//    private fun getVideoBitmaps(videoURI: String, targetFPS: Int = 30, maxTime: Float = 3.0f):
-//            MutableList<Pair<Bitmap, Long>> {
-//
-//        val results = mutableListOf<Pair<Bitmap, Long>>()
-//        // Set time delta using fps
-//        var timeUs: Long = 0
-//        var maxTimeLong: Long = 1000000L * maxTime.toLong()
-//        var overMaxTime: Boolean = false
-//        val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
-//        // Get frame by time (using time delta to loop over)
-//        var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUs)
-//        while ((!overMaxTime) && (bitmapImage != null)) {
-//            //val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
-//            //evaluator.createInterpreter(MainActivity.applicationContext())
-//            try {
-//                //Tasks.await(detector.initializeTask)
-//                Log.d("Interpreter", "TfLite.initialize() completed successfully")
-//                Log.d("Timing", "Current time is ${(timeUs.toDouble() / 1000000.0)}")
-//                bitmapImage.let {
-//                    detector!!.modelReadyLatch.await()
-//
-//                    val result = detector!!.detect(it)
-//                    results.add(Pair(detector!!.drawPointsOnBitmap(it, result), timeUs))
-//                }
-//                timeUs += timeDelta
-//                bitmapImage = extractFrameFromVideo(videoURI, timeUs)
-//            } catch (e: Exception) {
-//                Log.e("Interpreter", "Error during evaluation", e)
-//            }
-//            // Check over max time (including -1 as whole video)
-//            if ((maxTime > 0) && (timeUs > maxTimeLong)) {
-//                overMaxTime = true
-//            }
-//        }
-//
-//        return results
-//    }
+    private fun getVideoBitmaps(videoURI: String, targetFPS: Int = 30, maxTime: Float = 3.0f):
+            MutableList<Pair<Bitmap, Long>> {
+
+        val results = mutableListOf<Pair<Bitmap, Long>>()
+        // Set time delta using fps
+        var timeUs: Long = 0
+        var maxTimeLong: Long = 1000000L * maxTime.toLong()
+        var overMaxTime: Boolean = false
+        val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
+        // Get frame by time (using time delta to loop over)
+        var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUs)
+        while ((!overMaxTime) && (bitmapImage != null)) {
+            //val bitmapImage = getBitmapFromAssets(MainActivity.applicationContext(), "Sample Input.png")
+            //evaluator.createInterpreter(MainActivity.applicationContext())
+            try {
+                //Tasks.await(detector.initializeTask)
+                Log.d("Interpreter", "TfLite.initialize() completed successfully")
+                Log.d("Timing", "Current time is ${(timeUs.toDouble() / 1000000.0)}")
+                bitmapImage.let {
+                    detector!!.modelReadyLatch.await()
+
+                    val result = detector!!.detect(it)
+                    results.add(Pair(detector!!.drawPointsOnBitmap(it, result), timeUs))
+                }
+                timeUs += timeDelta
+                bitmapImage = extractFrameFromVideo(videoURI, timeUs)
+            } catch (e: Exception) {
+                Log.e("Interpreter", "Error during evaluation", e)
+            }
+            // Check over max time (including -1 as whole video)
+            if ((maxTime > 0) && (timeUs > maxTimeLong)) {
+                overMaxTime = true
+            }
+        }
+
+        return results
+    }
 
     // Helper function. It loops through the video, extracts frames into bitmap format, calls
     // detect() and drawPointsOnBitmap() from detector to get annotated frames.
@@ -628,7 +663,6 @@ class ExpoVideoAnalyzerModule : Module() {
         onFrameProcessed: (Bitmap, Long) -> Unit
     ): String? {
         val retriever = MediaMetadataRetriever()
-        var landmarkerHelper: HandLandmarkerHelper? = null
 
         try {
             retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
@@ -661,14 +695,6 @@ class ExpoVideoAnalyzerModule : Module() {
             val totalFrames = (duration * 1000L / timeDelta).toInt()
             Log.d("Encode", "Target frame interval: ${timeDelta}μs, Total frames: $totalFrames")
 
-            // Initialize HandLandmarkerHelper
-            landmarkerHelper = HandLandmarkerHelper(
-                context = appContext.reactContext!!,
-                runningMode = RunningMode.VIDEO,
-                combinedLandmarkerHelperListener = null,
-                maxNumHands = 2
-            )
-
             // Use the original video's resolution and the same FPS
             val encoder = VideoEncoder(File(outputPath), outputWidth, outputHeight, fps = targetFPS)
 
@@ -676,11 +702,6 @@ class ExpoVideoAnalyzerModule : Module() {
             var frameIndex = 0
 
             while (timeUs < duration * 1000) {
-                if (isCancelled) {
-                    Log.d("ProcessVideo", "User cancelled video processing during frame loop.")
-                    break
-                }
-
                 var frame: Bitmap? = null
                 var processedFrame: Bitmap? = null
                 var annotatedFrame: Bitmap? = null
@@ -688,32 +709,22 @@ class ExpoVideoAnalyzerModule : Module() {
                 try {
                     // Extract specific frame
                     frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-
                     frame?.let { originalFrame ->
-                        processedFrame = originalFrame.copy(Bitmap.Config.ARGB_8888, true)
-                        originalFrame.recycle()
-                        frame = null // Avoid repeated recycling
-                    }
+                        // convert format to ARGB_8888
+                        processedFrame = if (originalFrame.config != Bitmap.Config.ARGB_8888) {
+                            val convertedBitmap = originalFrame.copy(Bitmap.Config.ARGB_8888, false)
+                            originalFrame.recycle()
+                            frame = null // Avoid repeated recycling
+                            convertedBitmap
+                        } else {
+                            originalFrame
+                        }
 
                         processedFrame?.let { pFrame ->
                             // Annotate frame using Detector
-                            annotatedFrame = detector!!.process_frame(pFrame)
-
-                            val (landmarkerResult, mpAnnotatedFrame) = landmarkerHelper?.detectAndDrawVideoFrame(
-                                annotatedFrame,  // pass bitmap that has bow drawings
-                                timeUs / 1000
-                            ) ?: Pair(null, null)
-
-                            if (mpAnnotatedFrame != null) {
-                                annotatedFrame = mpAnnotatedFrame
-                                if (landmarkerResult != null) {
-                                    Log.d("Encode", "Frame $frameIndex - Hand: ${landmarkerResult.handDetection}, Pose: ${landmarkerResult.poseDetection}")
-                                } else {
-                                    Log.d("Encode", "landmarkerResult is null")
-                                }
-                            } else {
-                                Log.d("Encode", "Frame $frameIndex mpAnnotatedFrame is null")
-                            }
+                            val result = detector!!.detect(pFrame)
+                            // TODO: important! Potential memory leak in Detector
+                            annotatedFrame = detector!!.drawPointsOnBitmap(pFrame, result)
 
                             annotatedFrame?.let { aFrame ->
                                 if (frameIndex == 0) {
@@ -735,6 +746,7 @@ class ExpoVideoAnalyzerModule : Module() {
                                     pFrame.recycle()
                                 }
                             }
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e("FrameProcess", "Error at frame $frameIndex, time $timeUs: ${e.message}")
@@ -755,13 +767,6 @@ class ExpoVideoAnalyzerModule : Module() {
                 timeUs += timeDelta
             }
 
-            if (isCancelled) {
-                Log.d("ProcessVideo", "Cancelling encoder and cleaning up")
-                encoder.finish()
-                File(outputPath).delete()
-                return null
-            }
-
             encoder.finish()
             Log.d("Encode", "Video encoding completed. Total frames processed: $frameIndex")
 
@@ -778,7 +783,6 @@ class ExpoVideoAnalyzerModule : Module() {
             return null
         } finally {
             retriever.release()
-            landmarkerHelper?.clearLandmarkers()
         }
     }
 
