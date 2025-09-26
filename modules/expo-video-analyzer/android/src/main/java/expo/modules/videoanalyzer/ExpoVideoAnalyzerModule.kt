@@ -203,6 +203,7 @@ class ExpoVideoAnalyzerModule : Module() {
         // detect() and drawPointsOnBitmap(), saves annotated frame, then uses FFmpeg to recollect
         // back into a video.
         AsyncFunction("processVideoComplete") { videoUri: String, promise: Promise ->
+            var outputpath: String? = null
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     if (!isOpenCVInitialized || detector == null) {
@@ -252,16 +253,20 @@ class ExpoVideoAnalyzerModule : Module() {
                             promise.resolve(resultMap)
                         } else if (isCancelled) {
                             promise.reject("PROCESSING_CANCELLED", "Video processing cancelled", null)
+                            outputpath?.let { File(it).delete() }
                         } else {
                             Log.e("ProcessVideo", "Failed to process video or no frames processed")
                             promise.reject("PROCESSING_ERROR", "Failed to process video frames", null)
+                            outputpath?.let { File(it).delete() }
                         }
                     }
                 } catch (e: CancellationException) {
+                    outputpath?.let { File(it).delete() }
                     withContext(Dispatchers.Main) {
                         promise.reject("CANCELLED", e.message, e)
                     }
                 } catch (e: Exception) {
+                    outputpath?.let { File(it).delete() }
                     Log.e("ProcessVideo", "Video processing failed: ${e.message}", e)
                     withContext(Dispatchers.Main) {
                         promise.reject("PROCESS_ERROR", "Video processing failed: ${e.message}", e)
