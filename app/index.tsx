@@ -19,7 +19,7 @@ import { Platform } from 'react-native';
 
 import * as MediaLibrary from 'expo-media-library';
 
-import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, ScrollView, ActivityIndicator, Alert, Modal } from 'react-native';
 
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
@@ -213,25 +213,38 @@ useEffect(() => {
     setsendButton(false);
     setIsAnalyzing(false);
     setAnalysisResult('');
-    try {
-      await VideoAnalyzer.cancelProcessing();
-      Alert.alert('Video processing cancelled.');
-      console.log("Video processing cancelled.");
+  };
 
-      if (videofile) {
-        try {
-          await FileSystem.deleteAsync(videofile, { idempotent: true });
-          console.log("Deleted partial video file:", videofile);
-        } catch (err) {
-          console.error("Failed to delete partial file:", err);
+  const cancelVidProc = async () => {
+    if (isAnalyzing) {
+      try {
+        await VideoAnalyzer.cancelProcessing();
+        Alert.alert('Cancelled', 'Video processing cancelled.');
+        console.log("Video processing cancelled.");
+
+        if (videofile) {
+          try {
+            await FileSystem.deleteAsync(videofile, { idempotent: true });
+            console.log("Deleted partial video file:", videofile);
+          } catch (err) {
+            console.error("Failed to delete partial file:", err);
+          }
         }
+      } catch (err) {
+        console.error("Failed to cancel processing:", err);
+      } finally {
+        setIsAnalyzing(false);
+        setsendVideo(false);
+        setvideofile(null);
       }
-    } catch (err) {
-      console.error("Failed to cancel processing:", err);
+    } else {
+      setIsCameraOpen(false);
+      setVideoUri(null);
+      setsendButton(false);
+      setAnalysisResult('');
+      setvideofile(null);
+      setsendVideo(false);
     }
-
-    setsendVideo(false);
-    setvideofile(null);
   };
 
   // Send captured image to backend API
@@ -328,7 +341,7 @@ useEffect(() => {
         Alert.alert('Error: Initialization fail', 'Initialization Failed');
         return;
       }
-      Alert.alert('Video processing starting...', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
+      //Alert.alert('Video processing starting...', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
 
       // 3. process video
       console.log('=== Test Logs ===');
@@ -608,6 +621,23 @@ useEffect(() => {
         disabled={!videoUri}
       />}
 
+      {/* activityindicator: full-screen overlay during upload/analysis */}
+      <Modal transparent visible={isAnalyzing} animationType="fade" statusBarTranslucent>
+        <View style={styles.overlay}>
+          <View style={styles.spinnerCard}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.spinnerText}>Processing video…</Text>
+            <TouchableOpacity
+              onPress={cancelVidProc}
+              style={styles.cancelButton}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -677,4 +707,39 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     zIndex: 1000,
   },
+
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  spinnerCard: {
+    backgroundColor: '#fff',
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    borderRadius: 16,
+    minWidth: 220,
+    alignItems: 'center',
+  },
+  spinnerText: {
+    marginTop: 8,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelButton: {
+  marginTop: 15,
+  paddingVertical: 10,
+  paddingHorizontal: 20,
+  borderRadius: 8,
+  backgroundColor: '#d9534f',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+
 });
