@@ -25,7 +25,7 @@ if (useManagedAndroidSdkVersions) {
   project.android {
     compileSdkVersion safeExtGet("compileSdkVersion", 34)
     defaultConfig {
-      minSdkVersion safeExtGet("minSdkVersion", 21)
+      minSdkVersion safeExtGet("minSdkVersion", 24)
       targetSdkVersion safeExtGet("targetSdkVersion", 34)
     }
   }
@@ -62,6 +62,10 @@ dependencies {
   implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4'
   implementation 'org.tensorflow:tensorflow-lite-gpu-api:2.13.0'
   implementation 'org.tensorflow:tensorflow-lite-api:2.13.0'
+  implementation 'androidx.fragment:fragment:1.8.9'
+  implementation 'androidx.navigation:navigation-fragment-ktx:2.9.2'
+  implementation 'androidx.navigation:navigation-ui-ktx:2.9.2'
+  implementation 'com.google.mediapipe:tasks-vision:0.10.14'
   
   // Other
   implementation 'androidx.fragment:fragment-ktx:1.6.2'

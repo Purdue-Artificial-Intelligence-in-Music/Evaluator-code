@@ -201,7 +201,11 @@ class Detector (
                 results.bowResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
                 bowConf = box.conf
             } else if (box.cls == 1 && box.conf > stringConf) {
-                results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
+                if (box.width > box.height) {
+                    results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle - Math.PI.toFloat() / 2).toMutableList()
+                } else {
+                    results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
+                }
                 stringConf = box.conf
             }
         }
