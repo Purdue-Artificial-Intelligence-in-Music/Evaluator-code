@@ -31,9 +31,12 @@ import androidx.core.graphics.createBitmap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
+import com.google.mediapipe.proto.MediaPipeLoggingEnumsProto.ErrorCode
+//import com.google.mediapipe.examples.handlandmarker.HandLandmarkerHelper
+import com.google.mediapipe.tasks.vision.core.RunningMode
 
 
-class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, appContext), Detector.DetectorListener {
+class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, appContext), Detector.DetectorListener, HandLandmarkerHelper.CombinedLandmarkerListener {
     // Event dispatchers for different events
     private val onDetectionResult by EventDispatcher()
     private val onNoDetection by EventDispatcher()
@@ -53,6 +56,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
     // Detection related properties
     private var detector: Detector? = null
+    private lateinit var handLandmarkerHelper: HandLandmarkerHelper
     private var isDetectionEnabled = false
     private var isCameraActive = false
 
@@ -85,8 +89,18 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         )
         frameLayout.addView(overlayView)
 
-        // Initialize detector
+        // Initialize detector and hands stuff
         detector = Detector(context, this)
+        handLandmarkerHelper = HandLandmarkerHelper(
+            context = context,
+            runningMode = RunningMode.LIVE_STREAM,
+            minHandDetectionConfidence = HandLandmarkerHelper.DEFAULT_HAND_DETECTION_CONFIDENCE,
+            minHandTrackingConfidence = HandLandmarkerHelper.DEFAULT_HAND_TRACKING_CONFIDENCE,
+            minHandPresenceConfidence = HandLandmarkerHelper.DEFAULT_HAND_PRESENCE_CONFIDENCE,
+            maxNumHands = HandLandmarkerHelper.DEFAULT_NUM_HANDS,
+            currentDelegate = HandLandmarkerHelper.DELEGATE_CPU,
+            combinedLandmarkerHelperListener = this
+        )
     }
 
     // Props that can be set from React Native
@@ -246,12 +260,18 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
                 imageProxy.height, 
                 Bitmap.Config.ARGB_8888
             )
-            
-            imageProxy.use { 
-                bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer) 
+
+            imageProxy.use {
+                bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
+                imageProxy.planes[0].buffer.rewind()
+                handLandmarkerHelper.detectLiveStream(
+                    imageProxy,
+                    false //CHANGE TO TRUE ONCE WE SWITCH TO FRONT CAMERA, WILL ALSO HAVE TO MIRROR IMAGE FOR DETECTOR PROCESSING
+                )
             }
 
-            // Rotate bitmap based on device orientation
+
+                // Rotate bitmap based on device orientation
             val matrix = Matrix().apply {
                 postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
             }
@@ -335,6 +355,15 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         
         onNoDetection(mapOf("message" to "No objects detected"))
     }
+
+    override fun onError(error: String, errorCode: Int) {
+        android.util.Log.d("Hands", "Error from HandLandmarkerHelper: $error")
+    }
+
+    override fun onResults(resultBundle: HandLandmarkerHelper.CombinedResultBundle) {
+        android.util.Log.d("Hands", "Hand/Pose landmarks detected. Inference time: ${resultBundle.inferenceTime}ms $resultBundle")
+    }
+
 
     private fun hasPermissions(): Boolean {
         val requiredPermissions = arrayOf(android.Manifest.permission.CAMERA)
