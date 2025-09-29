@@ -26,8 +26,8 @@ class OverlayView @JvmOverloads constructor(
         const val CLASS_PARTIAL = -1
         const val CLASS_CORRECT = 0
         const val CLASS_OUTSIDE = 1
-        const val CLASS_TOO_LOW = 2
-        const val CLASS_TOO_HIGH = 3
+        const val CLASS_TOO_HIGH = 2
+        const val CLASS_TOO_LOW = 3
 
         const val ANGLE_RIGHT = 0
         const val ANGLE_WRONG = 1
