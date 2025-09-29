@@ -18,7 +18,35 @@ class OverlayView @JvmOverloads constructor(
     private var imageHeight = 1
     private var boxPaint : Paint = Paint()
     private var textPaint = Paint()
+    private var anglePaint = Paint()
 
+    companion object {
+        // Classification constants
+        const val CLASS_NONE = -2
+        const val CLASS_PARTIAL = -1
+        const val CLASS_CORRECT = 0
+        const val CLASS_OUTSIDE = 1
+        const val CLASS_TOO_LOW = 2
+        const val CLASS_TOO_HIGH = 3
+
+        const val ANGLE_RIGHT = 0
+        const val ANGLE_WRONG = 1
+
+        // Map classifications to labels
+        val CLASSIFICATION_LABELS = mapOf(
+            CLASS_NONE to "No detection",
+            CLASS_PARTIAL to "Partial detection",
+            CLASS_CORRECT to "Correct Bow Placement",
+            CLASS_OUTSIDE to "Bow Outside Zone",
+            CLASS_TOO_LOW to "Bow Too Low",
+            CLASS_TOO_HIGH to "Bow Too High"
+        )
+
+        val ANGLE_LABELS = mapOf(
+            ANGLE_RIGHT to "Correct Bow Angle",
+            ANGLE_WRONG to "Incorrect Bow Angle"
+        )
+    }
 
     init {
         boxPaint.setColor(Color.GREEN)
@@ -28,6 +56,10 @@ class OverlayView @JvmOverloads constructor(
         textPaint.setColor(Color.GREEN)
         textPaint.style = Paint.Style.FILL
         textPaint.textSize = 48f
+
+        anglePaint.setColor(Color.GREEN)
+        anglePaint.style = Paint.Style.FILL
+        anglePaint.textSize =48f
     }
 
     fun returnDims() : Pair<Int, Int> {
@@ -89,11 +121,21 @@ class OverlayView @JvmOverloads constructor(
                     , boxPaint)
             }
 
+            val label = CLASSIFICATION_LABELS[results?.classification] ?: "Unknown"
+            val angle = ANGLE_LABELS[results?.angle] ?: "Unknown"
+
             canvas.drawText(
-                "Classification: ${results?.classification}",
+                "Classification: ${label}",
                 50f,
                 100f,
                 textPaint
+            )
+
+            canvas.drawText(
+                "${angle}",
+                50f,
+                160f,
+                anglePaint
             )
 
         }
@@ -106,5 +148,6 @@ class OverlayView @JvmOverloads constructor(
         invalidate()
 
     }
+
 
 }
