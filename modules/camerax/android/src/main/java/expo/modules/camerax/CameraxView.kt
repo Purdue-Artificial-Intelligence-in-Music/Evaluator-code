@@ -291,7 +291,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         val scaledImageHeight = sourceHeight.toFloat() * scaleFactor
         val offsetX = (scaledImageWidth - overlayWidth.toFloat()) / 2f
         val offsetY = (scaledImageHeight - overlayHeight.toFloat()) / 2f
-        
+
         bowPoints?.bow?.forEach { point ->
             point.x = (point.x.toDouble() * scaleFactor.toDouble()) - offsetX.toDouble()
             point.y = (point.y.toDouble() * scaleFactor.toDouble()) - offsetY.toDouble()
@@ -305,11 +305,10 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
         activity.runOnUiThread {
             if (bowPoints != null) {
+                // 🔹 this makes your OverlayView actually draw the boxes
                 overlayView.updateResults(bowPoints)
             }
         }
-        
-        println(bowPoints)
 
         val detectionResults: Map<String, Any> = mapOf(
             "classification" to (bowPoints?.classification ?: -1),
@@ -327,6 +326,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         )
         onDetectionResult(detectionResults)
     }
+
 
     override fun noDetect() {
         activity.runOnUiThread {
