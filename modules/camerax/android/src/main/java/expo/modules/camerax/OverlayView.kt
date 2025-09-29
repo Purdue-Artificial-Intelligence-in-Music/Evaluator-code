@@ -17,12 +17,17 @@ class OverlayView @JvmOverloads constructor(
     private var imageWidth = 1
     private var imageHeight = 1
     private var boxPaint : Paint = Paint()
+    private var textPaint = Paint()
 
 
     init {
         boxPaint.setColor(Color.GREEN)
         boxPaint.style = Paint.Style.STROKE
         boxPaint.strokeWidth = 8f
+
+        textPaint.setColor(Color.GREEN)
+        textPaint.style = Paint.Style.FILL
+        textPaint.textSize = 48f
     }
 
     fun returnDims() : Pair<Int, Int> {
@@ -83,6 +88,14 @@ class OverlayView @JvmOverloads constructor(
                     bowBox[0].y.toFloat() * scaleY
                     , boxPaint)
             }
+
+            canvas.drawText(
+                "Classification: ${results?.classification}",
+                50f,
+                100f,
+                textPaint
+            )
+
         }
 
 
