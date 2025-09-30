@@ -58,10 +58,11 @@ dependencies {
   
   // OpenCV
   implementation project(':cv')
-  
 
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 
   implementation(files("libs/ffmpeg-kit-min-gpl-6.0-2.aar"))
   implementation("com.arthenica:smart-exception-java:0.2.1")
+
+  implementation project(":camerax")
 }
