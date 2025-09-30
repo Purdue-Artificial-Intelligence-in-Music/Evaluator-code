@@ -360,36 +360,46 @@ class HandLandmarkerHelper(
      */
     private fun extractHandCoordinates(result: HandLandmarkerResult): FloatArray {
         val coords = FloatArray(42) { 0f }
-        val hands = result.landmarks()
+        val landmarks = result.landmarks()
+        val handedness = result.handedness()
 
-        if (hands.isNotEmpty()) {
-            val firstHand = hands[0]
-            if (firstHand.isEmpty()) return coords
+        for (i in landmarks.indices) {
+            // check handedness
+            val handCategory = handedness.getOrNull(i)?.firstOrNull()
+            if (handCategory?.displayName() == "Right") {
 
-            val originX = firstHand[0].x()
-            val originY = firstHand[0].y()
+                // right hand detected, process landmarks
+                val rightHandLandmarks = landmarks[i]
+                if (rightHandLandmarks.isEmpty()) continue
 
-            val relativeCoords = FloatArray(42)
-            var maxAbsValue = 0f
+                val originX = rightHandLandmarks[0].x()
+                val originY = rightHandLandmarks[0].y()
 
-            for ((i, landmark) in firstHand.withIndex()) {
-                val relativeX = landmark.x() - originX
-                val relativeY = landmark.y() - originY
+                val relativeCoords = FloatArray(42)
+                var maxAbsValue = 0f
 
-                val base = i * 2
-                relativeCoords[base] = relativeX
-                relativeCoords[base + 1] = relativeY
+                for ((j, landmark) in rightHandLandmarks.withIndex()) {
+                    val relativeX = landmark.x() - originX
+                    val relativeY = landmark.y() - originY
 
-                maxAbsValue = max(maxAbsValue, abs(relativeX))
-                maxAbsValue = max(maxAbsValue, abs(relativeY))
-            }
+                    val base = j * 2
+                    relativeCoords[base] = relativeX
+                    relativeCoords[base + 1] = relativeY
 
-            if (maxAbsValue > 0) {
-                for (i in relativeCoords.indices) {
-                    coords[i] = relativeCoords[i] / maxAbsValue
+                    maxAbsValue = max(maxAbsValue, abs(relativeX))
+                    maxAbsValue = max(maxAbsValue, abs(relativeY))
                 }
+
+                if (maxAbsValue > 0) {
+                    for (j in relativeCoords.indices) {
+                        coords[j] = relativeCoords[j] / maxAbsValue
+                    }
+                }
+                
+                break
             }
         }
+
         return coords
     }
 
