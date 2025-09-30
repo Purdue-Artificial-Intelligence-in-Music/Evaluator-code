@@ -366,7 +366,7 @@ class HandLandmarkerHelper(
         for (i in landmarks.indices) {
             // check handedness
             val handCategory = handedness.getOrNull(i)?.firstOrNull()
-            if (handCategory?.displayName() == "Right") {
+            if (handCategory?.displayName() == "Left") {
 
                 // right hand detected, process landmarks
                 val rightHandLandmarks = landmarks[i]
