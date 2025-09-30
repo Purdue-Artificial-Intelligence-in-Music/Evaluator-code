@@ -6,7 +6,14 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.SystemClock
-
+import android.util.Log
+// import android.graphics.PointF
+// import android.gesture.OrientedBoundingBox
+// import com.google.android.gms.tasks.Task
+// import com.google.android.gms.tflite.java.TfLite
+//import org.opencv.core.*
+//import org.opencv.imgproc.Imgproc
+// import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.nnapi.NnApiDelegate
@@ -24,7 +31,7 @@ import kotlin.math.*
 
 class Detector (
     private val context: Context,
-    private val listener: DetectorListener
+    private val listener: DetectorListener? = null
 ){
 
     private var interpreter: Interpreter
@@ -45,6 +52,8 @@ class Detector (
     private var frameCounter = 0
     private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
     private val numWaitFrames = 5
+    private var ogWidth: Int = 0
+    private var ogHeight: Int = 0
     //private var ogWidth: Int = 1
     //private var ogHeight: Int = 1
 
@@ -77,7 +86,7 @@ class Detector (
                 println("Gpu delegate failed")
             }
             */
-            
+
 
             if (CompatibilityList().isDelegateSupportedOnThisDevice) {
                 this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
@@ -158,7 +167,7 @@ class Detector (
      */
 
 
-    fun detect(frame: Bitmap){
+    fun detect(frame: Bitmap): YoloResults{
 
         //ogWdith = frame.width
         //ogHeight = frame.height
@@ -202,7 +211,11 @@ class Detector (
                 results.bowResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
                 bowConf = box.conf
             } else if (box.cls == 1 && box.conf > stringConf) {
-                results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
+                if (box.width > box.height) {
+                    results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle - Math.PI.toFloat() / 2).toMutableList()
+                } else {
+                    results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
+                }
                 stringConf = box.conf
             }
         }
@@ -212,11 +225,12 @@ class Detector (
         //println("bow conf, string conf: $bowConf, $stringConf")
 
         if (results.bowResults == null && results.stringResults == null) {
-            listener.noDetect()
+            listener?.noDetect()
         } else {
-            listener.detected(results, frame.width, frame.height)
+            listener?.detected(results, frame.width, frame.height)
             print(results)
         }
+        return results
     }
 
 
@@ -606,7 +620,6 @@ class Detector (
      */
     private fun degrees(radians: Double): Double {
         return radians * (180.0 / PI)
-
     }
 
     /*
@@ -670,37 +683,30 @@ class Detector (
             classResults.classification = -2
             return classResults
         }
-        if (results.stringResults != null) {
-            results.stringResults = sortStringPoints(results.stringResults!!)
-            //need to do averaging of top two y coords
-            //averageYCoordinate(results.stringResults!!)
+        if (results.stringResults == null) {
+            classResults.classification = -1
             classResults.bow = results.bowResults
-            if (results.bowResults != null) {
-                classResults.bow = results.bowResults
-            }
-            if (results.bowResults != null && results.stringResults != null) {
-                updatePoints(results.stringResults!!, results.bowResults!!)
-                val midlines = getMidline()
-                val vert_lines = getVerticalLines()
-                val intersect_points = intersectsVertical(midlines, vert_lines)
-                classResults.angle = bowAngle(midlines, vert_lines)
-                classResults.classification = intersect_points
-                return classResults
-
-            } else {
-                classResults.classification = -1
-                return classResults
-            }
+            return classResults
+        } else if (results.bowResults == null) {
+            classResults.classification = -1
+            classResults.string = results.stringResults
+            return classResults
         } else {
-            classResults.classification = -2
+            classResults.string = results.stringResults
+            classResults.bow = results.bowResults
+            updatePoints(results.stringResults!!, results.bowResults!!)
+            val midlines = getMidline()
+            val vert_lines = getVerticalLines()
+            val intersect_points = intersectsVertical(midlines, vert_lines)
+            classResults.angle = bowAngle(midlines, vert_lines)
+            classResults.classification = intersect_points
             return classResults
         }
     }
-    /*
+
     fun process_frame(bitmap: Bitmap): returnBow {
         return classify(detect(bitmap))
     }
-     */
 
     interface DetectorListener {
         fun noDetect()
