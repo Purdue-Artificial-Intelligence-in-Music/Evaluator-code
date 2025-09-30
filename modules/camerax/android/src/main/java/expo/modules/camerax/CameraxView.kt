@@ -34,7 +34,12 @@ import kotlin.math.max
 import com.google.mediapipe.proto.MediaPipeLoggingEnumsProto.ErrorCode
 //import com.google.mediapipe.examples.handlandmarker.HandLandmarkerHelper
 import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarker
+import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarkerResult
+import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
+import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 
+import android.util.Log
 
 class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, appContext), Detector.DetectorListener, HandLandmarkerHelper.CombinedLandmarkerListener {
     // Event dispatchers for different events
@@ -64,6 +69,10 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
     private var lensType = CameraSelector.LENS_FACING_BACK
 
     private lateinit var overlayView: OverlayView
+
+    private var latestBowResults: Detector.returnBow? = null
+    private var latestHandPoints: List<HandLandmarkerResult?> = emptyList()
+    private var latestPosePoints: List<PoseLandmarkerResult?> = emptyList()
 
     init {
         frameLayout.layoutParams = FrameLayout.LayoutParams(
@@ -322,15 +331,16 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         }
 
         println("DETECTED")
+        latestBowResults = bowPoints
 
-        activity.runOnUiThread {
+        /*activity.runOnUiThread {
             if (bowPoints != null) {
                 // 🔹 this makes your OverlayView actually draw the boxes
                 overlayView.updateResults(bowPoints)
             }
-        }
+        }*/
 
-        val detectionResults: Map<String, Any> = mapOf(
+        /*val detectionResults: Map<String, Any> = mapOf(
             "classification" to (bowPoints?.classification ?: -1),
             "angle" to (bowPoints?.angle ?: 0),
             "bow" to (bowPoints?.bow?.map { point ->
@@ -343,15 +353,20 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
             "sourceHeight" to sourceHeight,
             "viewWidth" to overlayView.width,
             "viewHeight" to overlayView.height
-        )
-        onDetectionResult(detectionResults)
+        )*/
+
+        updateOverlay()
+        //onDetectionResult(detectionResults)
+        sendDetectionResults()
     }
 
 
     override fun noDetect() {
-        activity.runOnUiThread {
+        /*activity.runOnUiThread {
             overlayView.updateResults(Detector.returnBow(-2, null, null, 0))
-        }
+        }*/
+        latestBowResults = Detector.returnBow(-2, null, null, 0)
+        updateOverlay()
         
         onNoDetection(mapOf("message" to "No objects detected"))
     }
@@ -362,6 +377,31 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
     override fun onResults(resultBundle: HandLandmarkerHelper.CombinedResultBundle) {
         android.util.Log.d("Hands", "Hand/Pose landmarks detected. Inference time: ${resultBundle.inferenceTime}ms $resultBundle")
+        Log.d("cameraxview", "detected hands")
+
+        latestHandPoints = resultBundle.handResults
+        latestPosePoints = resultBundle.poseResults
+
+        overlayView.setImageDimensions(
+            resultBundle.inputImageWidth,
+            resultBundle.inputImageHeight
+        )
+
+        //not sending any at the moment, still seems to be updating
+
+        /*val detectionResults: Map<String, Any> = mapOf(
+            "hands" to handPoints,
+            "pose" to posePoints,
+            "inferenceTime" to resultBundle.inferenceTime,
+            "sourceWidth" to resultBundle.inputImageWidth,
+            "sourceHeight" to resultBundle.inputImageHeight,
+            "viewWidth" to overlayView.width,
+            "viewHeight" to overlayView.height
+        )*/
+
+        updateOverlay()
+        //onDetectionResult(detectionResults)
+        sendDetectionResults()
     }
 
 
@@ -383,4 +423,35 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
     companion object {
         private const val TAG = "MyCamera"
     }
+
+    private fun updateOverlay() {
+        // Use the latest bow, hand, and pose results
+        activity.runOnUiThread {
+            overlayView.updateResults(
+                results = latestBowResults,
+                hands = latestHandPoints?.firstOrNull(),
+                pose = latestPosePoints?.firstOrNull()
+            )
+        }
+    }
+
+    //not sending any at the moment, still seems to be updating
+    private fun sendDetectionResults() {
+        val bowPoints = latestBowResults
+
+        /*val detectionResults: Map<String, Any> = mapOf(
+            "classification" to (bowPoints?.classification ?: -1),
+            "angle" to (bowPoints?.angle ?: 0),
+            "bow" to (bowPoints?.bow?.map { point -> mapOf("x" to point.x, "y" to point.y) } ?: emptyList()),
+            "string" to (bowPoints?.string?.map { point -> mapOf("x" to point.x, "y" to point.y) } ?: emptyList()),
+            "hands" to latestHandPoints.first() ?: emptyList(),
+            "pose" to latestPosePoints.first ?: emptyList(),
+            "viewWidth" to overlayView.width,
+            "viewHeight" to overlayView.height
+        )
+
+        onDetectionResult(detectionResults)*/
+    }
+
+
 }
