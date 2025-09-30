@@ -1,4 +1,5 @@
 package expo.modules.videoanalyzer
+import expo.modules.camerax.Detector
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
