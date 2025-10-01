@@ -236,6 +236,7 @@ useEffect(() => {
         setIsAnalyzing(false);
         setsendVideo(false);
         setvideofile(null);
+        setVideoUri(null);
       }
     } else {
       setIsCameraOpen(false);

@@ -6,6 +6,14 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.SystemClock
+import android.util.Log
+// import android.graphics.PointF
+// import android.gesture.OrientedBoundingBox
+// import com.google.android.gms.tasks.Task
+// import com.google.android.gms.tflite.java.TfLite
+//import org.opencv.core.*
+//import org.opencv.imgproc.Imgproc
+// import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.nnapi.NnApiDelegate
@@ -23,7 +31,7 @@ import kotlin.math.*
 
 class Detector (
     private val context: Context,
-    private val listener: DetectorListener
+    private val listener: DetectorListener? = null
 ){
 
     private var interpreter: Interpreter
@@ -44,6 +52,8 @@ class Detector (
     private var frameCounter = 0
     private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
     private val numWaitFrames = 5
+    private var ogWidth: Int = 0
+    private var ogHeight: Int = 0
     //private var ogWidth: Int = 1
     //private var ogHeight: Int = 1
 
@@ -157,7 +167,7 @@ class Detector (
      */
 
 
-    fun detect(frame: Bitmap){
+    fun detect(frame: Bitmap): YoloResults{
 
         //ogWdith = frame.width
         //ogHeight = frame.height
@@ -215,11 +225,12 @@ class Detector (
         //println("bow conf, string conf: $bowConf, $stringConf")
 
         if (results.bowResults == null && results.stringResults == null) {
-            listener.noDetect()
+            listener?.noDetect()
         } else {
-            listener.detected(results, frame.width, frame.height)
+            listener?.detected(results, frame.width, frame.height)
             print(results)
         }
+        return results
     }
 
 
@@ -692,11 +703,10 @@ class Detector (
             return classResults
         }
     }
-    /*
+
     fun process_frame(bitmap: Bitmap): returnBow {
         return classify(detect(bitmap))
     }
-     */
 
     interface DetectorListener {
         fun noDetect()
