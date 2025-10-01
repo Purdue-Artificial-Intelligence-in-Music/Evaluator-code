@@ -73,6 +73,8 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
     private var latestBowResults: Detector.returnBow? = null
     private var latestHandPoints: List<HandLandmarkerResult?> = emptyList()
     private var latestPosePoints: List<PoseLandmarkerResult?> = emptyList()
+    private var latestHandDetection: String = ""
+    private var latestPoseDetection: String = ""
 
     init {
         frameLayout.layoutParams = FrameLayout.LayoutParams(
@@ -382,12 +384,16 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         latestHandPoints = resultBundle.handResults
         latestPosePoints = resultBundle.poseResults
 
+        latestHandDetection = resultBundle.handDetection
+        latestPoseDetection = resultBundle.poseDetection
+
         overlayView.setImageDimensions(
             resultBundle.inputImageWidth,
             resultBundle.inputImageHeight
         )
 
         //not sending any at the moment, still seems to be updating
+
 
         /*val detectionResults: Map<String, Any> = mapOf(
             "hands" to handPoints,
@@ -430,7 +436,9 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
             overlayView.updateResults(
                 results = latestBowResults,
                 hands = latestHandPoints?.firstOrNull(),
-                pose = latestPosePoints?.firstOrNull()
+                pose = latestPosePoints?.firstOrNull(),
+                handDetection = latestHandDetection,
+                poseDetection = latestPoseDetection,
             )
         }
     }
