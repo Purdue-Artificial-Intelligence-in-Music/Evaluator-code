@@ -44,6 +44,7 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
+import kotlin.String
 
 class HandLandmarkerHelper(
     var minHandDetectionConfidence: Float = DEFAULT_HAND_DETECTION_CONFIDENCE,
@@ -262,7 +263,9 @@ class HandLandmarkerHelper(
             inputImageHeight = firstFrame.height,
             inputImageWidth = firstFrame.width,
             handCoordinates = null,
-            poseCoordinates = null
+            poseCoordinates = null,
+            handDetection = "",
+            poseDetection = ""
         )
     }
 
@@ -288,7 +291,9 @@ class HandLandmarkerHelper(
                 inputImageHeight = image.height,
                 inputImageWidth = image.width,
                 handCoordinates = handResult?.let { extractHandCoordinates(it) },
-                poseCoordinates = poseResult?.let { extractPoseCoordinates(it) }
+                poseCoordinates = poseResult?.let { extractPoseCoordinates(it) },
+                handDetection = "",
+                poseDetection = ""
             )
         }
         return null
@@ -319,17 +324,19 @@ class HandLandmarkerHelper(
             // This logic is now safely executed only if the helper is active.
             if (latestHandResult != null && latestPoseResult != null) {
                 val inferenceTime = SystemClock.uptimeMillis() - latestFrameTime
+                var predictionResult = ""
+                var predictedPoseResult = ""
 
                 if (latestHandResult!!.landmarks().isNotEmpty()) {
                     val poseCoordinates = extractPoseCoordinates(latestPoseResult!!)
-                    val predictedPoseResult = runTFLitePoseInference(poseCoordinates)
+                    predictedPoseResult = runTFLitePoseInference(poseCoordinates)
                 }
 
                 // can safely call this because the synchronized block prevents
                 // `handTFLite` from being closed by another thread during this operation.
                 if (latestHandResult!!.landmarks().isNotEmpty()) {
                     val handCoordinates = extractHandCoordinates(latestHandResult!!)
-                    val predictionResult = runTFLiteInference(handCoordinates)
+                    predictionResult = runTFLiteInference(handCoordinates)
                 }
 
                 // check the listener isn't null and the helper isn't closed one last time
@@ -342,7 +349,9 @@ class HandLandmarkerHelper(
                         inputImageHeight = latestImage!!.height,
                         inputImageWidth = latestImage!!.width,
                         handCoordinates = extractHandCoordinates(latestHandResult!!),
-                        poseCoordinates = extractPoseCoordinates(latestPoseResult!!)
+                        poseCoordinates = extractPoseCoordinates(latestPoseResult!!),
+                        handDetection = predictionResult,
+                        poseDetection = predictedPoseResult,
                     )
                 )
 
@@ -547,6 +556,8 @@ class HandLandmarkerHelper(
         val inputImageWidth: Int,
         val handCoordinates: FloatArray?,
         val poseCoordinates: FloatArray?,
+        val handDetection: String,
+        val poseDetection: String
     )
 
     interface CombinedLandmarkerListener {

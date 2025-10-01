@@ -30,11 +30,16 @@ class OverlayView @JvmOverloads constructor(
     private var handLandmarkerResult: HandLandmarkerResult? = null
     private var poseLandmarkerResult: PoseLandmarkerResult? = null
 
+    private var handDetect: String = ""
+    private var poseDetect: String = ""
+
     private var linePaint = Paint()
     private var pointPaint = Paint()
     private var poseLinePaint = Paint()
     private var posePointPaint = Paint()
     private var testPaint = Paint()
+    private var handDetectPaint = Paint()
+    private var poseDetectPaint = Paint()
 
     // New properties to store the offsets
     private var xOffset: Float = 0f
@@ -104,6 +109,14 @@ class OverlayView @JvmOverloads constructor(
         posePointPaint.color = Color.BLUE
         posePointPaint.strokeWidth = LANDMARK_STROKE_WIDTH
         posePointPaint.style = Paint.Style.FILL
+
+        handDetectPaint.setColor(Color.GREEN)
+        handDetectPaint.style = Paint.Style.FILL
+        handDetectPaint.textSize = 48f
+
+        poseDetectPaint.setColor(Color.GREEN)
+        poseDetectPaint.style = Paint.Style.FILL
+        poseDetectPaint.textSize = 48f
     }
 
     fun returnDims() : Pair<Int, Int> {
@@ -182,6 +195,20 @@ class OverlayView @JvmOverloads constructor(
                 160f,
                 anglePaint
             )
+
+            canvas.drawText(
+                "hands: ${handDetect}",
+                50f,
+                220f,
+                handDetectPaint
+            )
+
+            canvas.drawText(
+                "pose: ${poseDetect}",
+                50f,
+                280f,
+                poseDetectPaint
+            )
         }
 
         //comment out pose detector, distracting on top of live feed. maybe use for skeleton later?
@@ -245,10 +272,14 @@ class OverlayView @JvmOverloads constructor(
 
     fun updateResults(results: Detector.returnBow?,
                       hands:  HandLandmarkerResult?,
-                      pose:   PoseLandmarkerResult? ) {
+                      pose:   PoseLandmarkerResult?,
+                      handDetection: String,
+                      poseDetection: String, ) {
         this.results = results
         this.handLandmarkerResult = hands
         this.poseLandmarkerResult = pose
+        this.handDetect = handDetection
+        this.poseDetect = poseDetection
         invalidate()
     }
 
