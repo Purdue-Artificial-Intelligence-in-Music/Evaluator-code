@@ -663,4 +663,7 @@ class Detector(private val context: Context) {
         return classify(detect(bitmap))
     }
 
+    fun process_bitmap(bitmap: Bitmap): Bitmap {
+        return drawPointsOnBitmap(bitmap, detect(bitmap))
+    }
 }

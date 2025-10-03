@@ -105,6 +105,73 @@ class VideoEncoder(
         }
     }
 
+    /*
+     * The below functions take in the frameTime in order to accomidate out of order frames
+     * from async processing. All other functionality is the same as above, it just uses
+     * the locally passed frameTime to encode
+     */
+
+    fun encodeFrame(bitmap: Bitmap, frameTime: Long) {
+        // Scale to target size
+        // Ideally encoder is initialized correctly and this step isn't executed
+        val scaledBitmap = if (bitmap.width != width || bitmap.height != height) {
+            Bitmap.createScaledBitmap(bitmap, width, height, true)
+        } else bitmap
+
+        // Draw bitmap to Surface
+        surfaceCanvas = surface.lockCanvas(null)
+        surfaceCanvas?.drawBitmap(scaledBitmap, 0f, 0f, paint)
+        surface.unlockCanvasAndPost(surfaceCanvas)
+
+        // If scaledBitmap was created, recyle the old bitmap
+        if (scaledBitmap != bitmap) scaledBitmap.recycle()
+
+        // Drain output
+        drainEncoder(false, frameTime)
+    }
+
+    private fun drainEncoder(endOfStream: Boolean = false, frameTime: Long) {
+        if (endOfStream) {
+            codec.signalEndOfInputStream()
+        }
+
+        val bufferInfo = MediaCodec.BufferInfo()
+        while (true) {
+            val outputBufferIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
+            when {
+                outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                    if (!endOfStream) break
+                }
+                outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    if (muxerStarted) throw RuntimeException("Format changed twice")
+                    val newFormat = codec.outputFormat
+                    trackIndex = muxer.addTrack(newFormat)
+                    muxer.start()
+                    muxerStarted = true
+                }
+                outputBufferIndex >= 0 -> {
+                    val encodedData = codec.getOutputBuffer(outputBufferIndex)
+                        ?: throw RuntimeException("encoderOutputBuffer $outputBufferIndex was null")
+
+                    if (bufferInfo.size > 0 && muxerStarted) {
+                        // set timestamps
+                        bufferInfo.presentationTimeUs = frameTime
+
+                        encodedData.position(bufferInfo.offset)
+                        encodedData.limit(bufferInfo.offset + bufferInfo.size)
+                        muxer.writeSampleData(trackIndex, encodedData, bufferInfo)
+                    }
+
+                    codec.releaseOutputBuffer(outputBufferIndex, false)
+
+                    if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        break
+                    }
+                }
+            }
+        }
+    }
+
     fun finish() {
         // flush results and stop execution, release resources
         drainEncoder(endOfStream = true)
@@ -112,7 +179,9 @@ class VideoEncoder(
         codec.stop()
         codec.release()
 
-        muxer.stop()
+        if (muxerStarted) {
+            muxer.stop()
+        }
         muxer.release()
     }
 
