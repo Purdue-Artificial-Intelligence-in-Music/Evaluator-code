@@ -221,15 +221,6 @@ useEffect(() => {
         await VideoAnalyzer.cancelProcessing();
         Alert.alert('Cancelled', 'Video processing cancelled.');
         console.log("Video processing cancelled.");
-
-        if (videofile) {
-          try {
-            await FileSystem.deleteAsync(videofile, { idempotent: true });
-            console.log("Deleted partial video file:", videofile);
-          } catch (err) {
-            console.error("Failed to delete partial file:", err);
-          }
-        }
       } catch (err) {
         console.error("Failed to cancel processing:", err);
       } finally {
@@ -398,7 +389,6 @@ useEffect(() => {
       );
     } catch (error: any) {
       console.error('sendVideoBackend failed:', error);
-      Alert.alert('Error', `Error: ${error.message}`);
     } finally {
       setIsAnalyzing(false);
     }
