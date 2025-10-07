@@ -179,6 +179,7 @@ class OverlayView @JvmOverloads constructor(
                     , boxPaint)
             }
 
+
             val label = CLASSIFICATION_LABELS[results?.classification] ?: "Unknown"
             val angle = ANGLE_LABELS[results?.angle] ?: "Unknown"
 
@@ -195,21 +196,10 @@ class OverlayView @JvmOverloads constructor(
                 160f,
                 anglePaint
             )
-
-            canvas.drawText(
-                "hands: ${handDetect}",
-                50f,
-                220f,
-                handDetectPaint
-            )
-
-            canvas.drawText(
-                "pose: ${poseDetect}",
-                50f,
-                280f,
-                poseDetectPaint
-            )
         }
+
+
+
 
         //comment out pose detector, distracting on top of live feed. maybe use for skeleton later?
         /*poseLandmarkerResult?.let { poseResult ->
@@ -268,7 +258,26 @@ class OverlayView @JvmOverloads constructor(
         }
 
 
+
+
+
+        canvas.drawText(
+            "hands: ${handDetect}",
+            50f,
+            220f,
+            handDetectPaint
+        )
+
+        canvas.drawText(
+            "pose: ${poseDetect}",
+            50f,
+            280f,
+            poseDetectPaint
+        )
+
+
     }
+
 
     fun updateResults(results: Detector.returnBow?,
                       hands:  HandLandmarkerResult?,

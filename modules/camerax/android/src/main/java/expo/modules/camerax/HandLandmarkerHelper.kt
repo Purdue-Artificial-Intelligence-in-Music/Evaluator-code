@@ -24,6 +24,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
+import androidx.core.view.indices
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -283,6 +284,23 @@ class HandLandmarkerHelper(
 
         val inferenceTimeMs = SystemClock.uptimeMillis() - startTime
 
+        var leftHandPrediction = ""
+        var leftHandCoordinates: FloatArray? = null
+        val poseCoordinates = poseResult?.let { extractPoseCoordinates(it) }
+
+        // Process hand result for left hand if available
+        handResult?.let { result ->
+            val handednessList = result.handedness()
+            val leftHandIndex = handednessList.indexOfFirst { it.firstOrNull()?.displayName() == "Left" }
+
+            if (leftHandIndex != -1) {
+                leftHandCoordinates = extractHandCoordinates(result, leftHandIndex)
+                leftHandCoordinates?.let { coords ->
+                    leftHandPrediction = runTFLiteInference(coords)
+                }
+            }
+        }
+
         if (handResult != null || poseResult != null) {
             return CombinedResultBundle(
                 handResults = if (handResult != null) listOf(handResult) else emptyList(),
@@ -290,9 +308,9 @@ class HandLandmarkerHelper(
                 inferenceTime = inferenceTimeMs,
                 inputImageHeight = image.height,
                 inputImageWidth = image.width,
-                handCoordinates = handResult?.let { extractHandCoordinates(it) },
-                poseCoordinates = poseResult?.let { extractPoseCoordinates(it) },
-                handDetection = "",
+                handCoordinates = leftHandCoordinates,
+                poseCoordinates = poseCoordinates,
+                handDetection = leftHandPrediction,
                 poseDetection = ""
             )
         }
@@ -311,51 +329,71 @@ class HandLandmarkerHelper(
     }
 
     private fun maybeSendCombinedResult() {
-        // Synchronize this entire block to ensure that the helper's state (like `isClosed`
-        // or the landmarker objects) doesn't change while we are processing a result.
         synchronized(tfliteLock) {
-            // if clearLandmarkers() has been
-            // called, this flag will be true. We must immediately stop processing to
-            // avoid using closed resources, which would cause a crash.
             if (isClosed) {
                 return
             }
 
-            // This logic is now safely executed only if the helper is active.
             if (latestHandResult != null && latestPoseResult != null) {
                 val inferenceTime = SystemClock.uptimeMillis() - latestFrameTime
-                var predictionResult = ""
-                var predictedPoseResult = ""
 
-                if (latestHandResult!!.landmarks().isNotEmpty()) {
-                    val poseCoordinates = extractPoseCoordinates(latestPoseResult!!)
-                    predictedPoseResult = runTFLitePoseInference(poseCoordinates)
+                var handPrediction = ""
+                var posePrediction = ""
+                var targetHandCoordinates: FloatArray? = null
+                val poseCoordinates = extractPoseCoordinates(latestPoseResult!!)
+
+                if (latestPoseResult!!.landmarks().isNotEmpty()) {
+                    posePrediction = runTFLitePoseInference(poseCoordinates)
                 }
 
-                // can safely call this because the synchronized block prevents
-                // `handTFLite` from being closed by another thread during this operation.
+                // run hand tflite inference only on left hand that is the lowest
                 if (latestHandResult!!.landmarks().isNotEmpty()) {
-                    val handCoordinates = extractHandCoordinates(latestHandResult!!)
-                    predictionResult = runTFLiteInference(handCoordinates)
+                    val handednessList = latestHandResult!!.handedness()
+                    val landmarksList = latestHandResult!!.landmarks()
+                    var targetHandIndex = -1
+                    var maxY: Float = -1.0f
+
+                    // Iterate through all detected hands to find the target
+                    handednessList.forEachIndexed { index, handedness ->
+                        // checks for left hand
+                        //if (handedness.firstOrNull()?.displayName() == "Left") {
+                            // gets landmark for left hand
+                        landmarksList.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { landmarks ->
+                            val wristY = landmarks[0].y()
+                            // checks for lowest left hand
+                            if (wristY > maxY) {
+                                maxY = wristY
+                                targetHandIndex = index
+                            }
+                        }
+                        //}
+                    }
+
+                    // process the lowest left hand
+                    if (targetHandIndex != -1) {
+                        targetHandCoordinates = extractHandCoordinates(latestHandResult!!, targetHandIndex)
+                        targetHandCoordinates?.let {
+                            handPrediction = runTFLiteInference(it)
+                        }
+                    }
                 }
 
-                // check the listener isn't null and the helper isn't closed one last time
-                // before sending the results.
-                combinedLandmarkerHelperListener?.onResults(
-                    CombinedResultBundle(
-                        handResults = listOf(latestHandResult!!),
-                        poseResults = listOf(latestPoseResult!!),
-                        inferenceTime = inferenceTime,
-                        inputImageHeight = latestImage!!.height,
-                        inputImageWidth = latestImage!!.width,
-                        handCoordinates = extractHandCoordinates(latestHandResult!!),
-                        poseCoordinates = extractPoseCoordinates(latestPoseResult!!),
-                        handDetection = predictionResult,
-                        poseDetection = predictedPoseResult,
+                if (!isClosed && combinedLandmarkerHelperListener != null) {
+                    combinedLandmarkerHelperListener.onResults(
+                        CombinedResultBundle(
+                            handResults = listOf(latestHandResult!!),
+                            poseResults = listOf(latestPoseResult!!),
+                            inferenceTime = inferenceTime,
+                            inputImageHeight = latestImage!!.height,
+                            inputImageWidth = latestImage!!.width,
+                            handCoordinates = targetHandCoordinates,
+                            poseCoordinates = poseCoordinates,
+                            handDetection = handPrediction,
+                            poseDetection = posePrediction
+                        )
                     )
-                )
+                }
 
-                // Reset results to ensure we wait for a fresh pair of detections.
                 latestHandResult = null
                 latestPoseResult = null
             }
@@ -367,45 +405,39 @@ class HandLandmarkerHelper(
      * The coordinates are normalized relative to the wrist and scaled to the [-1, 1] range.
      * If no hand is present, returns a zero-filled array.
      */
-    private fun extractHandCoordinates(result: HandLandmarkerResult): FloatArray {
-        val coords = FloatArray(42) { 0f }
-        val landmarks = result.landmarks()
-        val handedness = result.handedness()
+    private fun extractHandCoordinates(result: HandLandmarkerResult, handIndex: Int): FloatArray? {
 
-        for (i in landmarks.indices) {
-            // check handedness
-            val handCategory = handedness.getOrNull(i)?.firstOrNull()
-            if (handCategory?.displayName() == "Left") {
 
-                // right hand detected, process landmarks
-                val rightHandLandmarks = landmarks[i]
-                if (rightHandLandmarks.isEmpty()) continue
+        val landmarksList = result.landmarks()
+        if (handIndex < 0 || handIndex >= landmarksList.size) {
+            return null
+        }
 
-                val originX = rightHandLandmarks[0].x()
-                val originY = rightHandLandmarks[0].y()
+        val handLandmarks = landmarksList[handIndex]
+        if (handLandmarks.isEmpty()) {
+            return null
+        }
 
-                val relativeCoords = FloatArray(42)
-                var maxAbsValue = 0f
+        val coords = FloatArray(42)
+        val originX = handLandmarks[0].x()
+        val originY = handLandmarks[0].y()
+        var maxAbsValue = 0f
 
-                for ((j, landmark) in rightHandLandmarks.withIndex()) {
-                    val relativeX = landmark.x() - originX
-                    val relativeY = landmark.y() - originY
+        val relativeCoords = FloatArray(42)
+        for ((j, landmark) in handLandmarks.withIndex()) {
+            val relativeX = landmark.x() - originX
+            val relativeY = landmark.y() - originY
+            val base = j * 2
+            relativeCoords[base] = relativeX
+            relativeCoords[base + 1] = relativeY
 
-                    val base = j * 2
-                    relativeCoords[base] = relativeX
-                    relativeCoords[base + 1] = relativeY
+            maxAbsValue = max(maxAbsValue, abs(relativeX))
+            maxAbsValue = max(maxAbsValue, abs(relativeY))
+        }
 
-                    maxAbsValue = max(maxAbsValue, abs(relativeX))
-                    maxAbsValue = max(maxAbsValue, abs(relativeY))
-                }
-
-                if (maxAbsValue > 0) {
-                    for (j in relativeCoords.indices) {
-                        coords[j] = relativeCoords[j] / maxAbsValue
-                    }
-                }
-                
-                break
+        if (maxAbsValue > 0) {
+            for (j in relativeCoords.indices) {
+                coords[j] = relativeCoords[j] / maxAbsValue
             }
         }
 
@@ -417,9 +449,9 @@ class HandLandmarkerHelper(
         val pose = result.landmarks()
         if (pose.isNotEmpty() && pose[0].size > 19) {
             val landmarks = pose[0]
-            val right_shoulder = landmarks[11]
-            val elbow = landmarks[13]
-            val right_hand = landmarks[15]
+            val right_shoulder = landmarks[12]
+            val elbow = landmarks[14]
+            val right_hand = landmarks[16]
             val shoulder_elbow_dist_vec = floatArrayOf(
                 right_shoulder.x() - elbow.x(),
                 right_shoulder.y() - elbow.y(),
@@ -496,6 +528,15 @@ class HandLandmarkerHelper(
     private fun runTFLiteInference(inputData: FloatArray): String {
 
         try {
+            //var newArray = mutableListOf(inputData)
+
+            for (i in inputData.indices step 2) {
+                inputData[i] = inputData[i] * -1
+            }
+
+
+            //val newOldArray = newArray.toTypedArray()
+
             // Lazy intitialization
             if (handTFLite == null) {
                 // Add a guard clause here. If the helper was closed before the interpreter
@@ -510,7 +551,7 @@ class HandLandmarkerHelper(
 
             val output = Array(1) { FloatArray(4) }
             val inputArray = arrayOf(inputData)
-            handTFLite!!.run(inputArray, output) // !!: non-null assertion
+            handTFLite!!.run(inputData, output) // !!: non-null assertion
 
             val results = output[0]
             val maxIndex = results.indices.maxByOrNull { results[it] } ?: -1
@@ -536,15 +577,15 @@ class HandLandmarkerHelper(
 
         const val DELEGATE_CPU = 0
         const val DELEGATE_GPU = 1
-        const val DEFAULT_HAND_DETECTION_CONFIDENCE = 0.5F
-        const val DEFAULT_HAND_TRACKING_CONFIDENCE = 0.5F
+        const val DEFAULT_HAND_DETECTION_CONFIDENCE = 0.7F
+        const val DEFAULT_HAND_TRACKING_CONFIDENCE = 0.7F
         const val DEFAULT_HAND_PRESENCE_CONFIDENCE = 0.5F
         const val DEFAULT_NUM_HANDS = 1
         const val OTHER_ERROR = 0
         const val GPU_ERROR = 1
 
-        const val DEFAULT_POSE_DETECTION_CONFIDENCE = 0.5F
-        const val DEFAULT_POSE_TRACKING_CONFIDENCE = 0.5F
+        const val DEFAULT_POSE_DETECTION_CONFIDENCE = 0.7F
+        const val DEFAULT_POSE_TRACKING_CONFIDENCE = 0.7F
         const val DEFAULT_POSE_PRESENCE_CONFIDENCE = 0.5F
     }
 
