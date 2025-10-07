@@ -432,6 +432,20 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
     private fun updateOverlay() {
         // Use the latest bow, hand, and pose results
+        //var index = 0
+        //var x_coord_mid = 10000
+        //Log.d("HANDS", latestHandPoints?.get(0)?.landmarks()?.get(0)?.get(0)?.x().toString())
+
+//        if (latestHandPoints?.handedness().get(0).get(0).    == "Left") {
+//            index = 0
+//        } else {
+//            index = 1
+//        }
+
+
+
+
+
         activity.runOnUiThread {
             overlayView.updateResults(
                 results = latestBowResults,
