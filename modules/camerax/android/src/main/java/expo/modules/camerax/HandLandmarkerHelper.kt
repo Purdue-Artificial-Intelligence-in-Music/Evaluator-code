@@ -45,6 +45,10 @@ import java.io.IOException
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import kotlin.String
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 
 class HandLandmarkerHelper(
     var minHandDetectionConfidence: Float = DEFAULT_HAND_DETECTION_CONFIDENCE,
@@ -267,6 +271,53 @@ class HandLandmarkerHelper(
             handDetection = "",
             poseDetection = ""
         )
+    }
+
+    fun detectAndDrawVideoFrame(frame: Bitmap?, timestampMs: Long): Pair<CombinedResultBundle?, Bitmap?> {
+        if (runningMode != RunningMode.VIDEO) {
+            throw IllegalArgumentException("Attempting to call detectVideoFile while not using RunningMode.VIDEO")
+        }
+        if (frame == null) return Pair(null, null)
+        val startTime = SystemClock.uptimeMillis()
+
+        val mpImage = BitmapImageBuilder(frame).build()
+        val handResult = handLandmarker?.detectForVideo(mpImage, timestampMs)
+        val poseResult = poseLandmarker?.detectForVideo(mpImage, timestampMs)
+
+        var handCoords: FloatArray? = null
+        var handPrediction: String? = null
+        if (handResult != null && handResult.landmarks().isNotEmpty()) {
+            handCoords = extractHandCoordinates(handResult)
+            handPrediction = runTFLiteInference(handCoords)
+        } else {
+            Log.d("Encode", "handResult is null")
+        }
+
+        var poseCoords: FloatArray? = null
+        var posePrediction: String? = null
+        if (poseResult != null && poseResult.landmarks().isNotEmpty()) {
+            poseCoords = extractPoseCoordinates(poseResult)
+            posePrediction = runTFLitePoseInference(poseCoords)
+        } else {
+            Log.d("Encode", "poseResult is null")
+        }
+        val inferenceTime = SystemClock.uptimeMillis() - startTime
+        Log.d("Encode", "inferenceTime: $inferenceTime")
+
+        val resultBundle = CombinedResultBundle(
+            handResults = if (handResult != null) listOf(handResult) else emptyList(),
+            poseResults = if (poseResult != null) listOf(poseResult) else emptyList(),
+            inferenceTime = inferenceTime,
+            inputImageHeight = frame.height,
+            inputImageWidth = frame.width,
+            handCoordinates = handCoords,
+            poseCoordinates = poseCoords,
+            handDetection = handPrediction ?: "No hand detected",
+            poseDetection = posePrediction ?: "No pose detected"
+        )
+        val annotatedFrame = drawMediaPipeAnnotations(frame, resultBundle)
+
+        return Pair(resultBundle, annotatedFrame)
     }
 
     // Corrected detectImage to return a CombinedResultBundle
@@ -563,5 +614,83 @@ class HandLandmarkerHelper(
     interface CombinedLandmarkerListener {
         fun onError(error: String, errorCode: Int = OTHER_ERROR)
         fun onResults(resultBundle: CombinedResultBundle)
+    }
+
+    private fun drawMediaPipeAnnotations(
+        bitmap: Bitmap,
+        result: CombinedResultBundle
+    ): Bitmap {
+        val canvas = Canvas(bitmap) // do not copy bitmap again, use mutable bitmap passed in
+
+        val imageWidth = bitmap.width
+        val imageHeight = bitmap.height
+
+        if (result.handResults.isNotEmpty()) {
+            val linePaint = Paint().apply {
+                color = Color.RED
+                strokeWidth = 8f
+                style = Paint.Style.STROKE
+            }
+
+            val pointPaint = Paint().apply {
+                color = Color.YELLOW
+                strokeWidth = 8f
+                style = Paint.Style.FILL
+            }
+
+            val handResult = result.handResults[0]
+            for (landmarks in handResult.landmarks()) {
+                // draw hand connections
+                HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
+                    val startLandmark = landmarks.get(connection!!.start())
+                    val endLandmark = landmarks.get(connection.end())
+
+                    canvas.drawLine(
+                        startLandmark.x() * imageWidth,
+                        startLandmark.y() * imageHeight,
+                        endLandmark.x() * imageWidth,
+                        endLandmark.y() * imageHeight,
+                        linePaint
+                    )
+                }
+
+                for (landmark in landmarks) {
+                    canvas.drawPoint(
+                        landmark.x() * imageWidth,
+                        landmark.y() * imageHeight,
+                        pointPaint
+                    )
+                }
+            }
+        }
+
+        // write down classificartion
+        val textPaint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        val strokePaint = Paint().apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+
+        val handText = "hands: ${result.handDetection}"
+        val poseText = "pose: ${result.poseDetection}"
+
+        canvas.drawText(handText, 50f, 240f, strokePaint)
+        canvas.drawText(poseText, 50f, 310f, strokePaint)
+
+        canvas.drawText(handText, 50f, 240f, textPaint)
+        canvas.drawText(poseText, 50f, 310f, textPaint)
+
+        return bitmap
     }
 }

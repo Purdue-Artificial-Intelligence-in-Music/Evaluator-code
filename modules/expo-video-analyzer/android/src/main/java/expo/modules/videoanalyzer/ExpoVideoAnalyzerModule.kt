@@ -23,6 +23,9 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import android.os.Environment
 
+import com.google.mediapipe.tasks.vision.core.RunningMode
+import expo.modules.camerax.HandLandmarkerHelper
+
 import kotlin.time.measureTime
 
 class ExpoVideoAnalyzerModule : Module() {
@@ -664,6 +667,7 @@ class ExpoVideoAnalyzerModule : Module() {
         onFrameProcessed: (Bitmap, Long) -> Unit
     ): String? {
         val retriever = MediaMetadataRetriever()
+        var landmarkerHelper: HandLandmarkerHelper? = null
 
         try {
             retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
@@ -696,6 +700,13 @@ class ExpoVideoAnalyzerModule : Module() {
             val totalFrames = (duration * 1000L / timeDelta).toInt()
             Log.d("Encode", "Target frame interval: ${timeDelta}μs, Total frames: $totalFrames")
 
+            // Initialize HandLandmarkerHelper
+            landmarkerHelper = HandLandmarkerHelper(
+                context = appContext.reactContext!!,
+                runningMode = RunningMode.VIDEO,
+                combinedLandmarkerHelperListener = null
+            )
+
             // Use the original video's resolution and the same FPS
             val encoder = VideoEncoder(File(outputPath), outputWidth, outputHeight, fps = targetFPS)
 
@@ -710,22 +721,34 @@ class ExpoVideoAnalyzerModule : Module() {
                 try {
                     // Extract specific frame
                     frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+
                     frame?.let { originalFrame ->
-                        // convert format to ARGB_8888
-                        processedFrame = if (originalFrame.config != Bitmap.Config.ARGB_8888) {
-                            val convertedBitmap = originalFrame.copy(Bitmap.Config.ARGB_8888, false)
-                            originalFrame.recycle()
-                            frame = null // Avoid repeated recycling
-                            convertedBitmap
-                        } else {
-                            originalFrame
-                        }
+                        processedFrame = originalFrame.copy(Bitmap.Config.ARGB_8888, true)
+                        originalFrame.recycle()
+                        frame = null // Avoid repeated recycling
+                    }
 
                         processedFrame?.let { pFrame ->
                             // Annotate frame using Detector
-                            val result = detector!!.detect(pFrame)
+                            val bowResult = detector!!.detect(pFrame)
                             // TODO: important! Potential memory leak in Detector
-                            annotatedFrame = detector!!.drawPointsOnBitmap(pFrame, result)
+                            annotatedFrame = detector!!.drawPointsOnBitmap(pFrame, bowResult)
+
+                            val (landmarkerResult, mpAnnotatedFrame) = landmarkerHelper?.detectAndDrawVideoFrame(
+                                annotatedFrame,  // pass bitmap that has bow drawings
+                                timeUs / 1000
+                            ) ?: Pair(null, null)
+
+                            if (mpAnnotatedFrame != null) {
+                                annotatedFrame = mpAnnotatedFrame
+                                if (landmarkerResult != null) {
+                                    Log.d("Encode", "Frame $frameIndex - Hand: ${landmarkerResult.handDetection}, Pose: ${landmarkerResult.poseDetection}")
+                                } else {
+                                    Log.d("Encode", "landmarkerResult is null")
+                                }
+                            } else {
+                                Log.d("Encode", "Frame $frameIndex mpAnnotatedFrame is null")
+                            }
 
                             annotatedFrame?.let { aFrame ->
                                 if (frameIndex == 0) {
@@ -747,7 +770,6 @@ class ExpoVideoAnalyzerModule : Module() {
                                     pFrame.recycle()
                                 }
                             }
-                        }
                     }
                 } catch (e: Exception) {
                     Log.e("FrameProcess", "Error at frame $frameIndex, time $timeUs: ${e.message}")
@@ -784,6 +806,7 @@ class ExpoVideoAnalyzerModule : Module() {
             return null
         } finally {
             retriever.release()
+            landmarkerHelper?.clearLandmarkers()
         }
     }
 
