@@ -87,8 +87,8 @@ class Detector (
             }
             */
 
-            this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-            /*
+            //this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
+
             if (CompatibilityList().isDelegateSupportedOnThisDevice) {
                 this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
             } else {
@@ -96,7 +96,7 @@ class Detector (
                 this.setUseXNNPACK(true)
             }
 
-             */
+             
 
 
             //this.setNumThreads(4)
