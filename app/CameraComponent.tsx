@@ -4,9 +4,12 @@ import { requireNativeViewManager } from 'expo-modules-core';
 
 const CameraxView = requireNativeViewManager('Camerax');
 
-const CameraComponent = ({ startDelay, onClose }) => {
+const CameraComponent = (
+  { startDelay, onClose }: { startDelay?: number; onClose?: () => void }
+  ) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
+  const [rhPronationText, setRhPronationText] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -16,6 +19,47 @@ const CameraComponent = ({ startDelay, onClose }) => {
     return () => clearTimeout(timer);
   }, []);
 
+// Pull the right-hand pronation label from the native event payload
+const pullRightHandText = (nativeEvent: any) => {
+  // Try common locations. Adjust only if your payload uses a different key.
+  const raw =
+    nativeEvent?.rightHand?.pronationLabel ??
+    nativeEvent?.hands?.right?.pronationLabel ??
+    nativeEvent?.pronationLabel ??
+    null;
+
+  if (typeof raw === 'string') {
+    // normalize a few common variants into your three phrases
+    const s = raw.toLowerCase();
+    let label = raw;
+    if (s.includes('supin')) label = 'Supination';
+    else if (s.includes('too') || s.includes('over')) label = 'Too much pronation';
+    else if (s.includes('good') || s.includes('neutral')) label = 'Good pronation';
+
+    setRhPronationText(label);
+  }
+};
+
+useEffect(() => {
+  const originalLog = console.log;
+  console.log = (...args: any[]) => {
+    try {
+      // You already log: console.log('Detection:', event.nativeEvent)
+      if (args[0] === 'Detection:' && args[1]) {
+        pullRightHandText(args[1]);
+      }
+      // You already log: console.log('No detection:', event.message)
+      if (args[0] === 'No detection:') {
+        setRhPronationText(null);
+      }
+    } catch {}
+    originalLog(...args);
+  };
+  return () => {
+    console.log = originalLog; // restore console.log
+  };
+}, []);
+
   return (
     <View style={styles.container}>
       <CameraxView
@@ -23,10 +67,17 @@ const CameraComponent = ({ startDelay, onClose }) => {
         cameraActive={isCameraActive}
         detectionEnabled={isDetectionEnabled}
         lensType="back"
-        onDetectionResult={(event) => console.log('Detection:', event.nativeEvent)}
-        onNoDetection={(event) => console.log('No detection:', event.message)}
+        onDetectionResult={(event: any) => console.log('Detection:', event.nativeEvent)}
+        onNoDetection={(event: any) => console.log('No detection:', event.message)}
       />
       
+      {/* Right-hand pronation text overlay */}
+      {isDetectionEnabled && rhPronationText && (
+        <View style={styles.pronationPill}>
+          <Text style={styles.pronationText}>{rhPronationText}</Text>
+        </View>
+      )}
+
       <TouchableOpacity
         style={styles.closeButton}
         onPress={onClose}
@@ -84,6 +135,22 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  pronationPill: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    right: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+  },
+  pronationText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
