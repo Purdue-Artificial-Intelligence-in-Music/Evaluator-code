@@ -87,6 +87,7 @@ class Detector (
             }
             */
 
+            //this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
 
             if (CompatibilityList().isDelegateSupportedOnThisDevice) {
                 this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
@@ -94,6 +95,8 @@ class Detector (
                 this.setNumThreads(4)
                 this.setUseXNNPACK(true)
             }
+
+             
 
 
             //this.setNumThreads(4)
@@ -418,7 +421,7 @@ class Detector (
             // Calculate slope
             leftSlope = (topLeft.y - botLeft.y) / dxLeft
             // Calculate y-intercept
-            leftYint = topLeft.y - leftSlope * topLeft.y
+            leftYint = topLeft.y - leftSlope * topLeft.x
         }
 
         // Right vertical line (from topRight to botRight)
@@ -432,7 +435,7 @@ class Detector (
             rightYint = -1.0
         } else {
             rightSlope = (topRight.y - botRight.y) / dxRight
-            rightYint = topRight.y - rightSlope * topRight.y
+            rightYint = topRight.y - rightSlope * topRight.x
         }
 
         // Heights of each side (just the y-coordinates of top and bottom points)
@@ -494,10 +497,12 @@ class Detector (
             val yMin = minOf(topY, botY)
             val yMax = maxOf(topY, botY)
 
-            if (y !in yMin..yMax) {
+            if (yMin > y || y > yMax) {
                 //println("Intersection y=$y is outside vertical range ($yMin, $yMax)")
                 return null
             }
+
+
 
             return Point(x,y)
         }
@@ -507,11 +512,12 @@ class Detector (
         val xRight = stringPoints!![1].x
 
         // Calculate intersections of midline with both vertical string lines
-        val pt1 = getIntersection(verticalOne, xLeft)
-        val pt2 = getIntersection(verticalTwo, xRight)
+        var pt1 = getIntersection(verticalOne, xLeft)
+        var pt2 = getIntersection(verticalTwo, xRight)
 
         if (pt1 == null || pt2 == null) {
             //println("One or both intersections invalid")
+            Log.d("BOW", "INVALID INTERSECTION")
             return 1
         }
         return bowHeightIntersection(mutableListOf(pt1, pt2), mutableListOf(verticalOne, verticalTwo))
@@ -531,8 +537,8 @@ class Detector (
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val bot_scaling_factor = .15
-        val top_scaling_factor = .15
+        val bot_scaling_factor = .1
+        val top_scaling_factor = .1
 
         // Extracts the vertical lines from the list
         val vertical_one = verticalLines[0]
@@ -550,6 +556,7 @@ class Detector (
         val height = ((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0
 
         // Calculates the minimum and maximum y-coordinates for the intersections based on the scaling factors
+        /*
         val min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
         if (intersectionPoints[0].y <= min_y || intersectionPoints[1].y <= min_y) {
             return 2
@@ -559,6 +566,12 @@ class Detector (
         if (intersectionPoints[0].y >= max_y || intersectionPoints[1].y >= max_y) {
             return 3
         }
+
+         */
+
+
+
+
 
 
         return 0
@@ -627,7 +640,7 @@ class Detector (
      */
     private fun bowAngle(bowLine: MutableList<Int>, verticalLines: MutableList<MutableList<Double>>): Int {
         // flexibility of angle relative to 90 degrees
-        val max_angle = 30
+        val max_angle = 15
 
         // grab bow line and vertical lines
         val m_bow: Double = bowLine[0].toDouble()
@@ -700,6 +713,7 @@ class Detector (
             val intersect_points = intersectsVertical(midlines, vert_lines)
             classResults.angle = bowAngle(midlines, vert_lines)
             classResults.classification = intersect_points
+            Log.d("BOW", classResults.classification.toString())
             return classResults
         }
     }
