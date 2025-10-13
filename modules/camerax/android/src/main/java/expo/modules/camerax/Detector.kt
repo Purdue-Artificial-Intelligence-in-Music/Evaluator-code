@@ -96,7 +96,9 @@ class Detector (
                 this.setUseXNNPACK(true)
             }
 
-             
+
+
+
 
 
             //this.setNumThreads(4)
@@ -215,9 +217,9 @@ class Detector (
                 bowConf = box.conf
             } else if (box.cls == 1 && box.conf > stringConf) {
                 if (box.width > box.height) {
-                    results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle - Math.PI.toFloat() / 2).toMutableList()
+                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle + Math.PI.toFloat() / 2).toMutableList())
                 } else {
-                    results.stringResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
+                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList())
                 }
                 stringConf = box.conf
             }
@@ -401,6 +403,7 @@ class Detector (
     }
 
     private fun getVerticalLines(): MutableList<MutableList<Double>> {
+        System.out.println(stringPoints)
         // Extracting corner points
         val topLeft = stringPoints!![0]
         val topRight = stringPoints!![1]
@@ -515,12 +518,18 @@ class Detector (
         var pt1 = getIntersection(verticalOne, xLeft)
         var pt2 = getIntersection(verticalTwo, xRight)
 
-        if (pt1 == null || pt2 == null) {
+        if (pt1 == null && pt2 == null) {
             //println("One or both intersections invalid")
             Log.d("BOW", "INVALID INTERSECTION")
             return 1
         }
-        return bowHeightIntersection(mutableListOf(pt1, pt2), mutableListOf(verticalOne, verticalTwo))
+        if (pt1 == null) {
+            pt1 = pt2
+        }
+        if (pt2 == null){
+            pt2 = pt1
+        }
+        return bowHeightIntersection(mutableListOf(pt1!!, pt2!!), mutableListOf(verticalOne, verticalTwo))
     }
 
 
@@ -533,46 +542,40 @@ class Detector (
         - 0: Intersection is in middle
      */
 
+
     private fun bowHeightIntersection(
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val bot_scaling_factor = .1
-        val top_scaling_factor = .1
+        val top_zone_percentage = 0.15
+        val bottom_zone_percentage = 0.15
 
-        // Extracts the vertical lines from the list
         val vertical_one = verticalLines[0]
         val vertical_two = verticalLines[1]
 
-        // Extracts the bottom y-coordinates of the vertical lines
+        val top_y1 = vertical_one[2]
+        val top_y2 = vertical_two[2]
         val bot_y1 = vertical_one[3]
         val bot_y2 = vertical_two[3]
 
-        // Extracts the top y-coordinates of the vertical lines
-        val top_y1 = vertical_one[2]
-        val top_y2 = vertical_two[2]
+        val height = abs(((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0)
+        if (height == 0.0) return 0
 
-        // Calculates the height of the bow based on the vertical lines
-        val height = ((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0
+        val avg_top_y = (top_y1 + top_y2) / 2.0
+        val avg_bot_y = (bot_y1 + bot_y2) / 2.0
 
-        // Calculates the minimum and maximum y-coordinates for the intersections based on the scaling factors
-        /*
-        val min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
-        if (intersectionPoints[0].y <= min_y || intersectionPoints[1].y <= min_y) {
+        val too_high_threshold = avg_top_y + height * top_zone_percentage
+        val too_low_threshold = avg_bot_y - height * bottom_zone_percentage
+
+        val intersection_y = intersectionPoints.map { it.y }.average()
+
+        if (intersection_y <= too_high_threshold) {
             return 2
         }
 
-        val max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
-        if (intersectionPoints[0].y >= max_y || intersectionPoints[1].y >= max_y) {
+        if (intersection_y >= too_low_threshold) {
             return 3
         }
-
-         */
-
-
-
-
-
 
         return 0
     }
