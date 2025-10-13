@@ -267,8 +267,8 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         try {
             // Convert ImageProxy to Bitmap
             val bitmapBuffer = createBitmap(
-                imageProxy.width, 
-                imageProxy.height, 
+                imageProxy.width,
+                imageProxy.height,
                 Bitmap.Config.ARGB_8888
             )
 
@@ -285,11 +285,13 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
                 // Rotate bitmap based on device orientation
             val matrix = Matrix().apply {
                 postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                //postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+                //UNCOMMENT THIS WHEN DOING FRONT CAMERA
             }
 
             val rotatedBitmap = Bitmap.createBitmap(
                 bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height,
-                matrix, true
+                matrix, false
             )
 
             android.util.Log.d("live", "Calling detector.detect() with bitmap: ${rotatedBitmap.width}x${rotatedBitmap.height}")
@@ -452,7 +454,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
                 hands = latestHandPoints?.firstOrNull(),
                 pose = latestPosePoints?.firstOrNull(),
                 handDetection = latestHandDetection,
-                poseDetection = latestPoseDetection,
+                poseDetection = latestPoseDetection
             )
         }
     }
