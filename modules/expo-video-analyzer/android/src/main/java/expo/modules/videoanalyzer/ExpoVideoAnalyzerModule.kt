@@ -705,7 +705,8 @@ class ExpoVideoAnalyzerModule : Module() {
             landmarkerHelper = HandLandmarkerHelper(
                 context = appContext.reactContext!!,
                 runningMode = RunningMode.VIDEO,
-                combinedLandmarkerHelperListener = null
+                combinedLandmarkerHelperListener = null,
+                maxNumHands = 2
             )
 
             // Use the original video's resolution and the same FPS
