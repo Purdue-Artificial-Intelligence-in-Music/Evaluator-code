@@ -11,8 +11,6 @@ import android.util.Log
 // import android.gesture.OrientedBoundingBox
 // import com.google.android.gms.tasks.Task
 // import com.google.android.gms.tflite.java.TfLite
-//import org.opencv.core.*
-//import org.opencv.imgproc.Imgproc
 // import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter

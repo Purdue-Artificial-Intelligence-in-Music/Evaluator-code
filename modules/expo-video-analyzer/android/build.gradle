@@ -57,7 +57,7 @@ dependencies {
   implementation 'com.google.android.gms:play-services-tflite-gpu:16.1.0'
   
   // OpenCV
-  implementation project(':cv')
+  // implementation project(':cv')
 
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 
