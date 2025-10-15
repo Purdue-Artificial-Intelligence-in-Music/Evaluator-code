@@ -234,49 +234,48 @@ class HandLandmarkerHelper(
     }
 
     // Updated detectVideoFile to return a CombinedResultBundle
-    fun detectVideoFile(videoUri: Uri, inferenceIntervalMs: Long): CombinedResultBundle? {
-        if (runningMode != RunningMode.VIDEO) {
-            throw IllegalArgumentException("Attempting to call detectVideoFile while not using RunningMode.VIDEO")
-        }
-
-        // might not account for complex threading
-        val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(context, videoUri)
-        val videoLengthMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: return null
-        val firstFrame = retriever.getFrameAtTime(0) ?: return null
-
-        val handResultList = mutableListOf<HandLandmarkerResult>()
-        val poseResultList = mutableListOf<PoseLandmarkerResult>()
-
-        val numberOfFrames = videoLengthMs.div(inferenceIntervalMs)
-
-        for (i in 0..numberOfFrames) {
-            val timestampMs = i * inferenceIntervalMs
-            val frame = retriever.getFrameAtTime(timestampMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
-            frame?.let {
-                val mpImage = BitmapImageBuilder(it).build()
-                handLandmarker?.detectForVideo(mpImage, timestampMs)?.let { handResult -> handResultList.add(handResult) }
-                poseLandmarker?.detectForVideo(mpImage, timestampMs)?.let { poseResult -> poseResultList.add(poseResult) }
-            }
-        }
-        retriever.release()
-
-        return CombinedResultBundle(
-            handResults = handResultList,
-            poseResults = poseResultList,
-            inferenceTime = 0, // Placeholder
-            inputImageHeight = firstFrame.height,
-            inputImageWidth = firstFrame.width,
-            handCoordinates = null,
-            poseCoordinates = null,
-            handDetection = "",
-            poseDetection = ""
-        )
-    }
-
+//    fun detectVideoFile(videoUri: Uri, inferenceIntervalMs: Long): CombinedResultBundle? {
+//        if (runningMode != RunningMode.VIDEO) {
+//            throw IllegalArgumentException("Attempting to call detectVideoFile while not using RunningMode.VIDEO")
+//        }
+//
+//        // might not account for complex threading
+//        val retriever = MediaMetadataRetriever()
+//        retriever.setDataSource(context, videoUri)
+//        val videoLengthMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: return null
+//        val firstFrame = retriever.getFrameAtTime(0) ?: return null
+//
+//        val handResultList = mutableListOf<HandLandmarkerResult>()
+//        val poseResultList = mutableListOf<PoseLandmarkerResult>()
+//
+//        val numberOfFrames = videoLengthMs.div(inferenceIntervalMs)
+//
+//        for (i in 0..numberOfFrames) {
+//            val timestampMs = i * inferenceIntervalMs
+//            val frame = retriever.getFrameAtTime(timestampMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+//            frame?.let {
+//                val mpImage = BitmapImageBuilder(it).build()
+//                handLandmarker?.detectForVideo(mpImage, timestampMs)?.let { handResult -> handResultList.add(handResult) }
+//                poseLandmarker?.detectForVideo(mpImage, timestampMs)?.let { poseResult -> poseResultList.add(poseResult) }
+//            }
+//        }
+//        retriever.release()
+//
+//        return CombinedResultBundle(
+//            handResults = handResultList,
+//            poseResults = poseResultList,
+//            inferenceTime = 0, // Placeholder
+//            inputImageHeight = firstFrame.height,
+//            inputImageWidth = firstFrame.width,
+//            handCoordinates = null,
+//            poseCoordinates = null,
+//            handDetection = "",
+//            poseDetection = ""
+//        )
+//    }
     fun detectAndDrawVideoFrame(frame: Bitmap?, timestampMs: Long): Pair<CombinedResultBundle?, Bitmap?> {
         if (runningMode != RunningMode.VIDEO) {
-            throw IllegalArgumentException("Attempting to call detectVideoFile while not using RunningMode.VIDEO")
+            throw IllegalArgumentException("Attempting to call detectAndDrawVideoFrame while not using RunningMode.VIDEO")
         }
         if (frame == null) return Pair(null, null)
         val startTime = SystemClock.uptimeMillis()
@@ -286,24 +285,43 @@ class HandLandmarkerHelper(
         val poseResult = poseLandmarker?.detectForVideo(mpImage, timestampMs)
 
         var handCoords: FloatArray? = null
-        var handPrediction: String? = null
+        var handPrediction: String = "No hand detected"
+        var targetHandIndex = -1
+
         if (handResult != null && handResult.landmarks().isNotEmpty()) {
-            handCoords = extractHandCoordinates(handResult)
-            handPrediction = runTFLiteInference(handCoords)
-        } else {
-            Log.d("Encode", "handResult is null")
+            val handednessList = handResult.handedness()
+            val landmarksList = handResult.landmarks()
+            var maxY: Float = -1.0f
+
+            // traverse detected hands
+            handednessList.forEachIndexed { index, handedness ->
+                landmarksList.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { landmarks ->
+                    val wristY = landmarks[0].y()
+
+                    // Find lowest hand (lowest hand has max wristY value)
+                    if (wristY > maxY) {
+                        maxY = wristY
+                        targetHandIndex = index
+                    }
+                }
+            }
+
+            // Only process lowest hand
+            if (targetHandIndex != -1) {
+                handCoords = extractHandCoordinates(handResult, targetHandIndex)
+                handCoords?.let {
+                    handPrediction = runTFLiteInference(it)
+                }
+            }
         }
 
         var poseCoords: FloatArray? = null
-        var posePrediction: String? = null
+        var posePrediction: String = "No pose detected"
         if (poseResult != null && poseResult.landmarks().isNotEmpty()) {
             poseCoords = extractPoseCoordinates(poseResult)
             posePrediction = runTFLitePoseInference(poseCoords)
-        } else {
-            Log.d("Encode", "poseResult is null")
         }
         val inferenceTime = SystemClock.uptimeMillis() - startTime
-        Log.d("Encode", "inferenceTime: $inferenceTime")
 
         val resultBundle = CombinedResultBundle(
             handResults = if (handResult != null) listOf(handResult) else emptyList(),
@@ -313,8 +331,9 @@ class HandLandmarkerHelper(
             inputImageWidth = frame.width,
             handCoordinates = handCoords,
             poseCoordinates = poseCoords,
-            handDetection = handPrediction ?: "No hand detected",
-            poseDetection = posePrediction ?: "No pose detected"
+            handDetection = handPrediction,
+            poseDetection = posePrediction,
+            targetHandIndex = targetHandIndex
         )
         val annotatedFrame = drawMediaPipeAnnotations(frame, resultBundle)
 
@@ -649,7 +668,8 @@ class HandLandmarkerHelper(
         val handCoordinates: FloatArray?,
         val poseCoordinates: FloatArray?,
         val handDetection: String,
-        val poseDetection: String
+        val poseDetection: String,
+        val targetHandIndex: Int = -1
     )
 
     interface CombinedLandmarkerListener {
@@ -666,48 +686,77 @@ class HandLandmarkerHelper(
         val imageWidth = bitmap.width
         val imageHeight = bitmap.height
 
-        if (result.handResults.isNotEmpty()) {
-            val linePaint = Paint().apply {
-                color = Color.RED
-                strokeWidth = 8f
-                style = Paint.Style.STROKE
-            }
-
-            val pointPaint = Paint().apply {
-                color = Color.YELLOW
-                strokeWidth = 8f
-                style = Paint.Style.FILL
-            }
-
+        if (result.handResults.isNotEmpty() && result.targetHandIndex != -1) {
             val handResult = result.handResults[0]
-            for (landmarks in handResult.landmarks()) {
-                // draw hand connections
-                HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
-                    val startLandmark = landmarks.get(connection!!.start())
-                    val endLandmark = landmarks.get(connection.end())
+            val landmarksList = handResult.landmarks()
+            val handednessList = handResult.handedness()
 
-                    canvas.drawLine(
-                        startLandmark.x() * imageWidth,
-                        startLandmark.y() * imageHeight,
-                        endLandmark.x() * imageWidth,
-                        endLandmark.y() * imageHeight,
-                        linePaint
-                    )
-                }
+            // check if targetHandIndex is valid
+            if (result.targetHandIndex < landmarksList.size) {
+                val targetLandmarks = landmarksList[result.targetHandIndex]
 
-                for (landmark in landmarks) {
-                    canvas.drawPoint(
-                        landmark.x() * imageWidth,
-                        landmark.y() * imageHeight,
-                        pointPaint
+                if (targetLandmarks.isNotEmpty()) {
+                    val linePaint = Paint().apply {
+                        color = Color.BLUE  // use blue lines
+                        strokeWidth = 10f
+                        style = Paint.Style.STROKE
+                    }
+
+                    val pointPaint = Paint().apply {
+                        color = Color.CYAN
+                        strokeWidth = 10f
+                        style = Paint.Style.FILL
+                    }
+
+                    // draw hand connections
+                    HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
+                        val startLandmark = targetLandmarks[connection!!.start()]
+                        val endLandmark = targetLandmarks[connection.end()]
+
+                        canvas.drawLine(
+                            startLandmark.x() * imageWidth,
+                            startLandmark.y() * imageHeight,
+                            endLandmark.x() * imageWidth,
+                            endLandmark.y() * imageHeight,
+                            linePaint
+                        )
+                    }
+
+                    // draw keypoints
+                    for (landmark in targetLandmarks) {
+                        canvas.drawPoint(
+                            landmark.x() * imageWidth,
+                            landmark.y() * imageHeight,
+                            pointPaint
+                        )
+                    }
+
+                    // hand lable
+                    val wrist = targetLandmarks[0]
+                    val handName = handednessList.getOrNull(result.targetHandIndex)?.firstOrNull()?.displayName() ?: "Unknown"
+
+                    val labelPaint = Paint().apply {
+                        color = Color.WHITE
+                        textSize = 40f
+                        style = Paint.Style.FILL
+                        isAntiAlias = true
+                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                        setShadowLayer(4f, 2f, 2f, Color.BLACK)
+                    }
+
+                    canvas.drawText(
+                        "Bow Hand ($handName)",
+                        wrist.x() * imageWidth + 20f,
+                        wrist.y() * imageHeight - 20f,
+                        labelPaint
                     )
                 }
             }
         }
 
-        // write down classificartion
+        // write out classification
         val textPaint = Paint().apply {
-            color = Color.WHITE
+            color = Color.BLUE
             style = Paint.Style.FILL
             textSize = 56f
             isAntiAlias = true
