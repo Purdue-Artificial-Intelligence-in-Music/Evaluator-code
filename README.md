@@ -37,9 +37,9 @@
   ```bash
   npx expo run:android # This may take a while
   ```
-6. Testing: press "Fetch data" button, you should see "Status: Video Analyzer Module Connected"
+6. You should see 3 buttons on the home page. Try testing with "Open Camera" or "Choose Video".
 
 
 ## Overview
-- Frontend file: app/index.tsx
-- Native Module: modules/expo-video-analyzer
+- Frontend file: app/index.tsx (home page), app/CameraComponent.tsx (camera page)
+- Native Module: modules/expo-video-analyzer (for video processing), modules/camerax (for live inference)
