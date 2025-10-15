@@ -320,26 +320,14 @@ useEffect(() => {
 
     setIsAnalyzing(true);
     try {
-      // 1. open video
-      const open = await VideoAnalyzer.openVideo(videofile);
-      if (!open.success) {
-        Alert.alert('Error', `Video could not be opened: ${open.error}`);
-      }
-      setAnalysisResult(JSON.stringify(open, null, 2));
-
-      // 2. initialize video analyzer
+      // 1. initialize video analyzer
       const initResult = await VideoAnalyzer.initialize();
       if (!initResult.success) {
         Alert.alert('Error: Initialization fail', 'Initialization Failed');
         return;
       }
-      //Alert.alert('Video processing starting...', `OpenCV: ${initResult.openCV}, Detector: ${initResult.detector}`);
 
-      // 3. process video
-      console.log('=== Test Logs ===');
-      console.log('Video file URI:', videofile);
-      console.log('URI type:', typeof videofile);
-      console.log('URI length:', videofile.length);
+      // 2. process video
       console.log('Start frame extraction...');
       const proc = await VideoAnalyzer.processVideoComplete(videofile);
       console.log('Processing complete:', proc);
@@ -353,7 +341,7 @@ useEffect(() => {
       setVideoUri(proc.outputPath);
       setsendVideo(false);
 
-      // 4. give user option of saving resulting video to photos
+      // 3. give user option of saving resulting video to photos
       Alert.alert(
         "Processing complete",
         `Do you want to save the processed video to Photos?`,

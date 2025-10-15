@@ -27,6 +27,7 @@ import java.util.concurrent.CountDownLatch
 import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
 import kotlin.math.*
+import android.graphics.Typeface
 
 
 class Detector (
@@ -241,32 +242,156 @@ class Detector (
 
 
     fun drawPointsOnBitmap(
-        sourceBitmap: Bitmap,
+        bitmap: Bitmap,
         points: YoloResults,
-        color: Int = Color.RED,
-        radius: Float = 10f
+        classification: Int?,
+        angle: Int?
     ): Bitmap {
-        val resultBitmap = sourceBitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(bitmap)
 
-        val canvas = Canvas(resultBitmap)
+        // Determine if there's an issue with classification or angle
+        // 0 = correct, anything else is an issue
+        val hasIssue = (classification != null && classification != 0) ||
+                (angle != null && angle == 1)
+
+        // Choose colors based on classification
+        val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Orange or Blue
 
         val paint = Paint().apply {
-            this.color = color
-            style = Paint.Style.FILL
+            color = boxColor
+            style = Paint.Style.STROKE
+            strokeWidth = 8f
             isAntiAlias = true
         }
-        if (points.bowResults != null) {
-            for (point in points.bowResults!!) {
-                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), radius, paint)
-            }
+
+        // Draw string box (rectangle)
+        if (points.stringResults != null && points.stringResults!!.size >= 4) {
+            val stringBox = points.stringResults!!
+            // Draw four lines connecting the corners
+            canvas.drawLine(
+                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
+                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
+                paint
+            )
+            canvas.drawLine(
+                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
+                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
+                paint
+            )
+            canvas.drawLine(
+                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
+                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
+                paint
+            )
+            canvas.drawLine(
+                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
+                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
+                paint
+            )
         }
-        if (points.stringResults != null) {
-            for (point in points.stringResults!!) {
-                canvas.drawCircle(point.x.toFloat(), point.y.toFloat(), radius, paint)
+
+        // Draw bow box (rectangle)
+        if (points.bowResults != null && points.bowResults!!.size >= 4) {
+            val bowBox = points.bowResults!!
+            // Draw four lines connecting the corners
+            canvas.drawLine(
+                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
+                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
+                paint
+            )
+            canvas.drawLine(
+                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
+                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
+                paint
+            )
+            canvas.drawLine(
+                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
+                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
+                paint
+            )
+            canvas.drawLine(
+                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
+                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
+                paint
+            )
+        }
+
+        // Classification labels mapping
+        // -2: No detection, -1: Partial, 0: Correct, 1: Outside, 2: Too high, 3: Too low
+        val classificationLabels = mapOf(
+            0 to "",  // Correct - don't display
+            1 to "Bow outside zone",
+            2 to "Bow too high",
+            3 to "Bow too low"
+        )
+
+        // Angle labels: 0 = correct, 1 = wrong
+        val angleLabels = mapOf(
+            0 to "",  // Correct - don't display
+            1 to "Incorrect bow angle"
+        )
+
+        // Prepare text paint styles
+        val textPaint = Paint().apply {
+            color = Color.rgb(255, 140, 0) // Orange
+            style = Paint.Style.FILL
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+
+        val strokePaint = Paint().apply {
+            color = Color.rgb(204, 85, 0) // Dark orange
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+
+        // Fixed positions from top - below the hand/pose classifications
+        val topMargin = 300f  // Below hand (160f) and pose (230f) messages
+        val lineSpacing = 70f
+        val centerX = bitmap.width / 2f
+
+        var currentY = topMargin
+
+        // Draw classification message if there's an issue
+        if (classification != null && classification != 0) {
+            val message = classificationLabels[classification] ?: ""
+            if (message.isNotEmpty()) {
+                canvas.drawText(message, centerX, currentY, strokePaint)
+                canvas.drawText(message, centerX, currentY, textPaint)
+                currentY += lineSpacing
             }
         }
 
-        return resultBitmap
+        // Draw angle message if there's an issue
+        if (angle != null && angle == 1) {
+            val message = angleLabels[angle] ?: ""
+            if (message.isNotEmpty()) {
+                canvas.drawText(message, centerX, currentY, strokePaint)
+                canvas.drawText(message, centerX, currentY, textPaint)
+            }
+        }
+
+        return bitmap
+    }
+
+    fun process_frame(bitmap: Bitmap): Bitmap {
+        val classificationResult = classify(detect(bitmap))
+        val annotatedBitmap = drawPointsOnBitmap(
+            bitmap,
+            YoloResults(
+                bowResults = classificationResult.bow?.toMutableList(),
+                stringResults = classificationResult.string?.toMutableList()
+            ),
+            classificationResult.classification,
+            classificationResult.angle
+        )
+        return annotatedBitmap
     }
 
 
@@ -719,10 +844,6 @@ class Detector (
             Log.d("BOW", classResults.classification.toString())
             return classResults
         }
-    }
-
-    fun process_frame(bitmap: Bitmap): returnBow {
-        return classify(detect(bitmap))
     }
 
     interface DetectorListener {
