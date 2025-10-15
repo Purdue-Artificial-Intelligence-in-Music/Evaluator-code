@@ -1,4 +1,0 @@
-/Users/jacksonshields/Library/Android/sdk/cmake/3.22.1/bin/ninja \
-  -C \
-  /Users/jacksonshields/AndroidStudioProjects/EvaluatorKotlin/cv/.cxx/RelWithDebInfo/242f4s08/x86 \
-  clean

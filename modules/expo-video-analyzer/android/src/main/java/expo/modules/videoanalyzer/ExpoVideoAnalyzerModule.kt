@@ -30,7 +30,6 @@ import kotlin.time.measureTime
 
 class ExpoVideoAnalyzerModule : Module() {
     private var detector: Detector? = null
-    private var isOpenCVInitialized = false
     private var initializationAttempted = false
     @Volatile private var isCancelled = false
 
@@ -48,42 +47,19 @@ class ExpoVideoAnalyzerModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("ExpoVideoAnalyzer")
         
-        // function for testing, remove later
-        Function("getStatus") {
-            val status = StringBuilder()
-            status.append("Video Analyzer Module Connected | ")
-            status.append("OpenCV: ${if (isOpenCVInitialized) "Ready" else "Not Ready"} | ")
-            status.append("Detector: ${if (detector != null) "Ready" else "Not Ready"}")
-            return@Function status.toString()
-        }
-        
         AsyncFunction("initialize") { promise: Promise ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     if (!initializationAttempted) {
                         initializationAttempted = true
-                        
-                        // try initializing OpenCV
-                        isOpenCVInitialized = try {
-                            org.opencv.android.OpenCVLoader.initDebug()
-                        } catch (e: Exception) {
-                            println("OpenCV initialization failed: ${e.message}")
-                            Log.d("init", "OpenCV initialization failed: ${e.message}")
-                            false
-                        }
-                        
 
-                        if (isOpenCVInitialized) {
-                            initializeDetector()
-                        }
+                        initializeDetector()
                     }
                     
                     withContext(Dispatchers.Main) {
                         promise.resolve(mapOf(
                             "success" to true,
-                            "openCV" to isOpenCVInitialized,
                             "detector" to (detector != null),
-                            "initializationMethod" to if (isOpenCVInitialized) "successful" else "failed"
                         ))
                     }
                 } catch (e: Exception) {
@@ -194,9 +170,9 @@ class ExpoVideoAnalyzerModule : Module() {
             var outputpath: String? = null
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    if (!isOpenCVInitialized || detector == null) {
+                    if (detector == null) {
                         withContext(Dispatchers.Main) {
-                            promise.reject("NOT_INITIALIZED", "OpenCV or detector not initialized", null)
+                            promise.reject("NOT_INITIALIZED", "Detector not initialized", null)
                         }
                         return@launch
                     }
