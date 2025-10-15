@@ -1,0 +1,6 @@
+module VisionCamera {
+  umbrella header "VisionCamera-umbrella.h"
+
+  export *
+  module * { export * }
+}

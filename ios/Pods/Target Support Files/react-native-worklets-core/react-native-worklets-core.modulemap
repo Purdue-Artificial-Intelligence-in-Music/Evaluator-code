@@ -1,0 +1,6 @@
+module react_native_worklets_core {
+  umbrella header "react-native-worklets-core-umbrella.h"
+
+  export *
+  module * { export * }
+}

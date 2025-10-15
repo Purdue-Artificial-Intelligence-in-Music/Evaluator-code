@@ -1,0 +1,84 @@
+{
+  "name": "react-native-skia",
+  "version": "1.12.4",
+  "summary": "High-performance React Native Graphics using Skia",
+  "description": "@shopify/react-native-skia",
+  "homepage": "https://github.com/shopify/react-native-skia",
+  "license": {
+    "type": "MIT",
+    "file": "LICENSE.md"
+  },
+  "authors": {
+    "Christian Falch": "christian.falch@gmail.com",
+    "William Candillon": "wcandillon@gmail.com"
+  },
+  "platforms": {
+    "ios": "13.0",
+    "tvos": "13.0",
+    "osx": "11"
+  },
+  "source": {
+    "git": "https://github.com/shopify/react-native-skia/react-native-skia.git",
+    "tag": "1.12.4"
+  },
+  "requires_arc": true,
+  "pod_target_xcconfig": {
+    "GCC_PREPROCESSOR_DEFINITIONS": "$(inherited) SK_METAL=1 SK_GANESH=1 SK_IMAGE_READ_PIXELS_DISABLE_LEGACY_API=1",
+    "CLANG_CXX_LANGUAGE_STANDARD": "c++20",
+    "DEFINES_MODULE": "YES",
+    "HEADER_SEARCH_PATHS": "\"$(PODS_TARGET_SRCROOT)/cpp/\"/** \"$(PODS_ROOT)/boost\" \"$(PODS_ROOT)/Headers/Private/Yoga\"",
+    "OTHER_CPLUSPLUSFLAGS": "$(inherited) -DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32"
+  },
+  "frameworks": [
+    "MetalKit",
+    "AVFoundation",
+    "AVKit",
+    "CoreMedia"
+  ],
+  "vendored_frameworks": [
+    "libs/apple/libskia.xcframework",
+    "libs/apple/libsvg.xcframework",
+    "libs/apple/libskshaper.xcframework",
+    "libs/apple/libskparagraph.xcframework",
+    "libs/apple/libskunicode_core.xcframework",
+    "libs/apple/libskunicode_libgrapheme.xcframework"
+  ],
+  "source_files": [
+    "apple/**/*.{h,c,cc,cpp,m,mm,swift}",
+    "cpp/**/*.{h,cpp}"
+  ],
+  "exclude_files": [
+    "cpp/rnskia/DawnContext.h",
+    "cpp/rnskia/DawnUtils.h",
+    "cpp/rnskia/DawnWindowContext.h",
+    "cpp/rnskia/DawnWindowContext.cpp",
+    "cpp/rnskia/ImageProvider.h"
+  ],
+  "compiler_flags": "-DRCT_NEW_ARCH_ENABLED=1 -DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1 -DFOLLY_CFG_NO_COROUTINES=1 -DFOLLY_HAVE_CLOCK_GETTIME=1 -Wno-comma -Wno-shorten-64-to-32",
+  "dependencies": {
+    "React-Core": [],
+    "RCT-Folly": [
+      "2024.01.01.00"
+    ],
+    "glog": [],
+    "React-RCTFabric": [],
+    "ReactCodegen": [],
+    "RCTRequired": [],
+    "RCTTypeSafety": [],
+    "ReactCommon/turbomodule/bridging": [],
+    "ReactCommon/turbomodule/core": [],
+    "React-NativeModulesApple": [],
+    "Yoga": [],
+    "React-Fabric": [],
+    "React-graphics": [],
+    "React-utils": [],
+    "React-featureflags": [],
+    "React-debug": [],
+    "React-ImageManager": [],
+    "React-rendererdebug": [],
+    "DoubleConversion": [],
+    "hermes-engine": [],
+    "React": [],
+    "React-callinvoker": []
+  }
+}
