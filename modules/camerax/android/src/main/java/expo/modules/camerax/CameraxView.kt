@@ -117,7 +117,24 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
     // Props that can be set from React Native
     fun setDetectionEnabled(enabled: Boolean) {
         if (isDetectionEnabled != enabled) {
+            // set isDetectionEnabled to the value that was passed in
             isDetectionEnabled = enabled
+
+            // stop detection
+            if (!enabled) {
+                // clear all results
+                latestBowResults = null
+                latestHandPoints = emptyList()
+                latestPosePoints = emptyList()
+                latestHandDetection = ""
+                latestPoseDetection = ""
+
+                // clear overlay drawings
+                activity.runOnUiThread {
+                    overlayView.clear()
+                }
+            }
+
             if (cameraProvider != null && isCameraActive) {
                 bindCameraUseCases() // Rebind to add/remove image analyzer
             }
@@ -312,6 +329,11 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
     // Implement DetectorListener interface methods
     override fun detected(results: Detector.YoloResults, sourceWidth: Int, sourceHeight: Int) {
+        if (!isDetectionEnabled) {
+            // if "stop detection" was already pressed
+            return
+        }
+
         val bowPoints = detector?.classify(results)
 
         val overlayWidth = overlayView.width
@@ -369,6 +391,10 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         /*activity.runOnUiThread {
             overlayView.updateResults(Detector.returnBow(-2, null, null, 0))
         }*/
+        if (!isDetectionEnabled) {
+            // if "stop detection" was already pressed
+            return
+        }
         latestBowResults = Detector.returnBow(-2, null, null, 0)
         updateOverlay()
         
@@ -380,6 +406,10 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
     }
 
     override fun onResults(resultBundle: HandLandmarkerHelper.CombinedResultBundle) {
+        if (!isDetectionEnabled) {
+            // if "stop detection" was already pressed
+            return
+        }
         android.util.Log.d("Hands", "Hand/Pose landmarks detected. Inference time: ${resultBundle.inferenceTime}ms $resultBundle")
         Log.d("cameraxview", "detected hands")
 

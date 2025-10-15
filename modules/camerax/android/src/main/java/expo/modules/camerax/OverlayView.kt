@@ -125,14 +125,28 @@ class OverlayView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        //val scaleX = width.toFloat() / imageWidth
-        //val scaleY = height.toFloat() / imageHeight
+        if (results == null && handLandmarkerResult == null && handDetect.isEmpty() && poseDetect.isEmpty()) {
+            // detection stopped, do not draw anything
+            return
+        }
+
         val scaleX = 1f
         val scaleY = 1f
         val scaleFactor = 1f //max(scaleX, scaleY)
         if (results?.classification != -2) {
             val stringBox = results?.string
             val bowBox = results?.bow
+
+            // Determine if there's an issue
+            val hasIssue = (results?.classification != null && results?.classification != 0) ||
+                    (results?.angle != null && results?.angle == 1)
+
+            // Choose box color based on classification
+            val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Orange or Blue
+
+            // Update boxPaint color dynamically
+            boxPaint.color = boxColor
+
             if (stringBox != null) {
                 canvas.drawLine(stringBox[0].x.toFloat() * scaleX,
                     stringBox[0].y.toFloat() * scaleY,
@@ -156,7 +170,6 @@ class OverlayView @JvmOverloads constructor(
                     , boxPaint)
             }
             if (bowBox != null) {
-                //println("DRAWING BOW BOX")
                 canvas.drawLine(bowBox[0].x.toFloat() * scaleX,
                     bowBox[0].y.toFloat() * scaleY,
                     bowBox[1].x.toFloat() * scaleX,
@@ -179,56 +192,65 @@ class OverlayView @JvmOverloads constructor(
                     , boxPaint)
             }
 
-
-            val label = CLASSIFICATION_LABELS[results?.classification] ?: "Unknown"
-            val angle = ANGLE_LABELS[results?.angle] ?: "Unknown"
-
-            canvas.drawText(
-                "Classification: ${label}",
-                50f,
-                100f,
-                textPaint
+            // Classification labels - only show if not correct
+            val classificationLabels = mapOf(
+                0 to "",  // Correct - don't display
+                1 to "Bow outside zone",
+                2 to "Bow too high",
+                3 to "Bow too low"
             )
 
-            canvas.drawText(
-                "${angle}",
-                50f,
-                160f,
-                anglePaint
+            val angleLabels = mapOf(
+                0 to "",  // Correct - don't display
+                1 to "Incorrect bow angle"
             )
-        }
 
+            // Prepare text paint styles for bow/string classification
+            val orangeTextPaint = Paint().apply {
+                color = Color.rgb(255, 140, 0) // Orange
+                style = Paint.Style.FILL
+                textSize = 56f
+                isAntiAlias = true
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
 
+            val orangeStrokePaint = Paint().apply {
+                color = Color.rgb(204, 85, 0) // Dark orange
+                style = Paint.Style.STROKE
+                strokeWidth = 6f
+                textSize = 56f
+                isAntiAlias = true
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+            }
 
+            // Fixed positions from top - below hand/pose classifications
+            val topMargin = 300f
+            val lineSpacing = 70f
+            val centerX = width / 2f
 
-        //comment out pose detector, distracting on top of live feed. maybe use for skeleton later?
-        /*poseLandmarkerResult?.let { poseResult ->
-            if (poseResult.landmarks().isNotEmpty()) {
-                val landmarks = poseResult.landmarks()[0]
+            var currentY = topMargin
 
-                // Draw connections
-                PoseLandmarker.POSE_LANDMARKS.forEach { connection ->
-                    canvas.drawLine(
-                        // Apply the x and y offsets to all coordinates
-                        landmarks[connection.start()].x() * imageWidth * handsScaleFactor + xOffset,
-                        landmarks[connection.start()].y() * imageHeight * handsScaleFactor + yOffset,
-                        landmarks[connection.end()].x() * imageWidth * handsScaleFactor + xOffset,
-                        landmarks[connection.end()].y() * imageHeight * handsScaleFactor + yOffset,
-                        poseLinePaint
-                    )
-                }
-
-                // Draw points
-                for (normalizedLandmark in landmarks) {
-                    canvas.drawPoint(
-                        // Apply the x and y offsets
-                        normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
-                        normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
-                        posePointPaint
-                    )
+            // Draw classification message if there's an issue
+            if (results?.classification != null && results?.classification != 0) {
+                val message = classificationLabels[results?.classification] ?: ""
+                if (message.isNotEmpty()) {
+                    canvas.drawText(message, centerX, currentY, orangeStrokePaint)
+                    canvas.drawText(message, centerX, currentY, orangeTextPaint)
+                    currentY += lineSpacing
                 }
             }
-        }*/
+
+            // Draw angle message if there's an issue
+            if (results?.angle != null && results?.angle == 1) {
+                val message = angleLabels[results?.angle] ?: ""
+                if (message.isNotEmpty()) {
+                    canvas.drawText(message, centerX, currentY, orangeStrokePaint)
+                    canvas.drawText(message, centerX, currentY, orangeTextPaint)
+                }
+            }
+        }
 
         // Draw Hand Landmarks
         handLandmarkerResult?.let { handResult ->
@@ -236,7 +258,6 @@ class OverlayView @JvmOverloads constructor(
                 // Draw hand connections
                 HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
                     canvas.drawLine(
-                        // Apply the x and y offsets
                         landmarks.get(connection!!.start()).x() * imageWidth * handsScaleFactor + xOffset,
                         landmarks.get(connection.start()).y() * imageHeight * handsScaleFactor + yOffset,
                         landmarks.get(connection.end()).x() * imageWidth * handsScaleFactor + xOffset,
@@ -248,7 +269,6 @@ class OverlayView @JvmOverloads constructor(
                 // Draw hand points
                 for (normalizedLandmark in landmarks) {
                     canvas.drawPoint(
-                        // Apply the x and y offsets
                         normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
                         normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
                         pointPaint
@@ -257,27 +277,65 @@ class OverlayView @JvmOverloads constructor(
             }
         }
 
+        // Parse hand classification
+        val handClassRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
+        val handMatch = handClassRegex.find(handDetect)
+        val handClass = handMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
+        // Parse pose classification
+        val poseMatch = handClassRegex.find(poseDetect)
+        val poseClass = poseMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
+        // Hand/pose classification text paint styles
+        val textPaint = Paint().apply {
+            color = Color.rgb(255, 140, 0) // Orange
+            style = Paint.Style.FILL
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
 
+        val strokePaint = Paint().apply {
+            color = Color.rgb(204, 85, 0) // Dark orange
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
 
-        canvas.drawText(
-            "hands: ${handDetect}",
-            50f,
-            220f,
-            handDetectPaint
-        )
+        val handTopMargin = 160f
+        val poseTopMargin = 230f
+        val centerX = width / 2f
 
-        canvas.drawText(
-            "pose: ${poseDetect}",
-            50f,
-            280f,
-            poseDetectPaint
-        )
+        // Draw hand message if there's an issue
+        if (handClass in 1..2) {
+            val handMessage = when (handClass) {
+                1 -> "Supination"
+                2 -> "Too much pronation"
+                else -> ""
+            }
+            if (handMessage.isNotEmpty()) {
+                canvas.drawText(handMessage, centerX, handTopMargin, strokePaint)
+                canvas.drawText(handMessage, centerX, handTopMargin, textPaint)
+            }
+        }
 
-
+        // Draw pose message if there's an issue
+        if (poseClass in 1..2) {
+            val poseMessage = when (poseClass) {
+                1 -> "Low elbow"
+                2 -> "Elbow too high"
+                else -> ""
+            }
+            if (poseMessage.isNotEmpty()) {
+                canvas.drawText(poseMessage, centerX, poseTopMargin, strokePaint)
+                canvas.drawText(poseMessage, centerX, poseTopMargin, textPaint)
+            }
+        }
     }
-
 
     fun updateResults(results: Detector.returnBow?,
                       hands:  HandLandmarkerResult?,
@@ -305,7 +363,13 @@ class OverlayView @JvmOverloads constructor(
         handsScaleFactor = min(scaleX, scaleY)
     }
 
-
-
+    fun clear() {
+        results = null
+        handLandmarkerResult = null
+        poseLandmarkerResult = null
+        handDetect = ""
+        poseDetect = ""
+        postInvalidate() // remove drawings
+    }
 
 }

@@ -28,8 +28,8 @@ const CameraComponent = ({ startDelay, onClose }) => {
         cameraActive={isCameraActive}
         detectionEnabled={isDetectionEnabled}
         lensType={lensType}
-        onDetectionResult={(event) => console.log('Detection:', event.nativeEvent)}
-        onNoDetection={(event) => console.log('No detection:', event.message)}
+        // onDetectionResult={(event) => console.log('Detection:', event.nativeEvent)}
+        // onNoDetection={(event) => console.log('No detection:', event.message)}
       />
       
       <TouchableOpacity
