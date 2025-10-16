@@ -422,6 +422,7 @@ class HandLandmarkerHelper(
                     val landmarksList = latestHandResult!!.landmarks()
                     var targetHandIndex = -1
                     var maxY: Float = -1.0f
+                    var finalHandResult: HandLandmarkerResult? = null
 
                     // Iterate through all detected hands to find the target
                     handednessList.forEachIndexed { index, handedness ->
