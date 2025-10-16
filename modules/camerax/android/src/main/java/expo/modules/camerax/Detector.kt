@@ -171,8 +171,9 @@ class Detector (
      */
 
 
-    fun detect(frame: Bitmap): YoloResults{
-
+    fun detect(frame: Bitmap, sourceWidth: Int = 1, sourceHeight: Int = 1): YoloResults{
+        Log.d("DIMENSIONS WIDTH", frame.width.toString())
+        Log.d("DIMENSIONS HEIGHT", frame.height.toString())
         //ogWdith = frame.width
         //ogHeight = frame.height
         var inferenceTime = SystemClock.uptimeMillis()
@@ -209,6 +210,8 @@ class Detector (
         var stringConf = 0f
         val ogWidth = frame.width.toFloat()
         val ogHeight = frame.height.toFloat()
+        //val ogWidth = 1
+        //val ogHeight = 1
 
         for (box in bestBoxes) {
             if (box.cls == 0 && box.conf > bowConf) {
@@ -216,9 +219,9 @@ class Detector (
                 bowConf = box.conf
             } else if (box.cls == 1 && box.conf > stringConf) {
                 if (box.width > box.height) {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle + Math.PI.toFloat() / 2).toMutableList())
+                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight * 1.0f, box.angle + Math.PI.toFloat() / 2).toMutableList())
                 } else {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList())
+                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight * 1.0f, box.angle).toMutableList())
                 }
                 stringConf = box.conf
             }
@@ -670,8 +673,8 @@ class Detector (
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val top_zone_percentage = 0.15
-        val bottom_zone_percentage = 0.15
+        val top_zone_percentage = 0.1
+        val bottom_zone_percentage = 0.1
 
         val vertical_one = verticalLines[0]
         val vertical_two = verticalLines[1]

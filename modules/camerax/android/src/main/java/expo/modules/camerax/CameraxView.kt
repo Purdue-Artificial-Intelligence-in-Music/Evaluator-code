@@ -300,6 +300,9 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
 
                 // Rotate bitmap based on device orientation
+            Log.d("DEVICE ROTATION", imageProxy.imageInfo.rotationDegrees.toString())
+            Log.d("DEVICE ROTATION WIDTH", imageProxy.width.toString())
+            Log.d("DEVICE ROTATION HEIGHT", imageProxy.height.toString())
             val matrix = Matrix().apply {
                 postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
                 //postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
@@ -308,8 +311,9 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
             val rotatedBitmap = Bitmap.createBitmap(
                 bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height,
-                matrix, false
+                matrix, true
             )
+
 
             android.util.Log.d("live", "Calling detector.detect() with bitmap: ${rotatedBitmap.width}x${rotatedBitmap.height}")
             // Perform detection
