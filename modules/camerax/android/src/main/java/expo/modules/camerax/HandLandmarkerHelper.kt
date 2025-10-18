@@ -222,6 +222,7 @@ class HandLandmarkerHelper(
             val rotatedBitmap = Bitmap.createBitmap(
                 bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true
             )
+            //Log.d("HANDS DIMENSION WIDTH", rotatedBitmap.width.toString() + ", " + rotatedBitmap.height.toString())
             latestImage = BitmapImageBuilder(rotatedBitmap).build()
 
             // 3. RUN INFERENCE
@@ -520,21 +521,42 @@ class HandLandmarkerHelper(
         val pose = result.landmarks()
         if (pose.isNotEmpty() && pose[0].size > 19) {
             val landmarks = pose[0]
-            val right_shoulder = landmarks[12]
-            val elbow = landmarks[14]
-            val right_hand = landmarks[16]
+
+            // Flip horizontally across image center
+            val right_shoulder_x = 1f - landmarks[12].x()
+            val right_shoulder_y = landmarks[12].y()
+            val right_shoulder_z = landmarks[12].z()
+
+            val elbow_x = 1f - landmarks[14].x()
+            val elbow_y = landmarks[14].y()
+            val elbow_z = landmarks[14].z()
+
+            val right_hand_x = 1f - landmarks[16].x()
+            val right_hand_y = landmarks[16].y()
+            val right_hand_z = landmarks[16].z()
+
             val shoulder_elbow_dist_vec = floatArrayOf(
-                right_shoulder.x() - elbow.x(),
-                right_shoulder.y() - elbow.y(),
-                right_shoulder.z() - elbow.z()
+                right_shoulder_x - elbow_x,
+                right_shoulder_y - elbow_y,
+                right_shoulder_z - elbow_z
             )
             val hand_elbow_dist_vec = floatArrayOf(
-                right_hand.x() - elbow.x(),
-                right_hand.y() - elbow.y(),
-                right_hand.z() - elbow.z()
+                right_hand_x - elbow_x,
+                right_hand_y - elbow_y,
+                right_hand_z - elbow_z
             )
-            val shoulder_elbow_dist = sqrt(shoulder_elbow_dist_vec[0].pow(2) + shoulder_elbow_dist_vec[1].pow(2) + shoulder_elbow_dist_vec[2].pow(2))
-            val hand_elbow_dist = sqrt(hand_elbow_dist_vec[0].pow(2) + hand_elbow_dist_vec[1].pow(2) + hand_elbow_dist_vec[2].pow(2))
+
+            val shoulder_elbow_dist = sqrt(
+                shoulder_elbow_dist_vec[0].pow(2) +
+                        shoulder_elbow_dist_vec[1].pow(2) +
+                        shoulder_elbow_dist_vec[2].pow(2)
+            )
+            val hand_elbow_dist = sqrt(
+                hand_elbow_dist_vec[0].pow(2) +
+                        hand_elbow_dist_vec[1].pow(2) +
+                        hand_elbow_dist_vec[2].pow(2)
+            )
+
             if (shoulder_elbow_dist > 0 && hand_elbow_dist > 0) {
                 val shoulder_elbow_dist_norm_x = shoulder_elbow_dist_vec[0] / shoulder_elbow_dist
                 val shoulder_elbow_dist_norm_y = shoulder_elbow_dist_vec[1] / shoulder_elbow_dist
@@ -542,9 +564,16 @@ class HandLandmarkerHelper(
                 val hand_elbow_dist_norm_x = hand_elbow_dist_vec[0] / hand_elbow_dist
                 val hand_elbow_dist_norm_y = hand_elbow_dist_vec[1] / hand_elbow_dist
                 val hand_elbow_dist_norm_z = hand_elbow_dist_vec[2] / hand_elbow_dist
-                val cos_theta_3d = ((shoulder_elbow_dist_vec[0] * hand_elbow_dist_vec[0]) + (shoulder_elbow_dist_vec[1] * hand_elbow_dist_vec[1]) + (shoulder_elbow_dist_vec[2] * hand_elbow_dist_vec[2])) / (shoulder_elbow_dist * hand_elbow_dist)
+
+                val cos_theta_3d = (
+                        (shoulder_elbow_dist_vec[0] * hand_elbow_dist_vec[0]) +
+                                (shoulder_elbow_dist_vec[1] * hand_elbow_dist_vec[1]) +
+                                (shoulder_elbow_dist_vec[2] * hand_elbow_dist_vec[2])
+                        ) / (shoulder_elbow_dist * hand_elbow_dist)
+
                 val clipped_cos_theta_3d = cos_theta_3d.coerceIn(-1.0f, 1.0f)
                 val theta_rad_3d = acos(clipped_cos_theta_3d)
+
                 coords[0] = shoulder_elbow_dist_norm_x
                 coords[1] = shoulder_elbow_dist_norm_y
                 coords[2] = shoulder_elbow_dist_norm_z
