@@ -20,6 +20,9 @@ buildscript {
         //classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
         classpath "com.android.tools.build:gradle:8.2.2"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22" // match Kotlin version
+
+        classpath "com.google.gms:google-services:4.4.2"
+        classpath "com.google.firebase:firebase-appdistribution-gradle:5.1.1"
     }
 }
 

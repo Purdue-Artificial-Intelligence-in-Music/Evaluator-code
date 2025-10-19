@@ -147,7 +147,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
             "back" -> CameraSelector.LENS_FACING_BACK
             else -> CameraSelector.LENS_FACING_BACK
         }
-        
+
         if (lensType != newLensType) {
             lensType = newLensType
             if (cameraProvider != null && isCameraActive) {
@@ -299,7 +299,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
             }
 
 
-                // Rotate bitmap based on device orientation
+            // Rotate bitmap based on device orientation
             Log.d("DEVICE ROTATION", imageProxy.imageInfo.rotationDegrees.toString())
             Log.d("DEVICE ROTATION WIDTH", imageProxy.width.toString())
             Log.d("DEVICE ROTATION HEIGHT", imageProxy.height.toString())
@@ -341,30 +341,30 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         }
 
         val bowPoints = detector?.classify(results)
-/*
-        val overlayWidth = overlayView.width
-        val overlayHeight = overlayView.height
-        val scaleFactor = max(
-            overlayWidth.toFloat() / sourceWidth.toFloat(),
-            overlayHeight.toFloat() / sourceHeight.toFloat()
-        )
-        val scaledImageWidth = sourceWidth.toFloat() * scaleFactor
-        val scaledImageHeight = sourceHeight.toFloat() * scaleFactor
-        val offsetX = (scaledImageWidth - overlayWidth.toFloat()) / 2f
-        val offsetY = (scaledImageHeight - overlayHeight.toFloat()) / 2f
+        /*
+                val overlayWidth = overlayView.width
+                val overlayHeight = overlayView.height
+                val scaleFactor = max(
+                    overlayWidth.toFloat() / sourceWidth.toFloat(),
+                    overlayHeight.toFloat() / sourceHeight.toFloat()
+                )
+                val scaledImageWidth = sourceWidth.toFloat() * scaleFactor
+                val scaledImageHeight = sourceHeight.toFloat() * scaleFactor
+                val offsetX = (scaledImageWidth - overlayWidth.toFloat()) / 2f
+                val offsetY = (scaledImageHeight - overlayHeight.toFloat()) / 2f
 
-        bowPoints?.bow?.forEach { point ->
-            point.x = (point.x.toDouble() * scaleFactor.toDouble()) - offsetX.toDouble()
-            point.y = (point.y.toDouble() * scaleFactor.toDouble()) - offsetY.toDouble()
-        }
-        bowPoints?.string?.forEach { point ->
-            point.x = (point.x.toDouble() * scaleFactor.toDouble()) - offsetX.toDouble()
-            point.y = (point.y.toDouble() * scaleFactor.toDouble()) - offsetY.toDouble()
-        }
+                bowPoints?.bow?.forEach { point ->
+                    point.x = (point.x.toDouble() * scaleFactor.toDouble()) - offsetX.toDouble()
+                    point.y = (point.y.toDouble() * scaleFactor.toDouble()) - offsetY.toDouble()
+                }
+                bowPoints?.string?.forEach { point ->
+                    point.x = (point.x.toDouble() * scaleFactor.toDouble()) - offsetX.toDouble()
+                    point.y = (point.y.toDouble() * scaleFactor.toDouble()) - offsetY.toDouble()
+                }
 
-        println("DETECTED")
+                println("DETECTED")
 
- */
+         */
         latestBowResults = bowPoints
 
         /*activity.runOnUiThread {
@@ -405,7 +405,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         }
         latestBowResults = Detector.returnBow(-2, null, null, 0)
         updateOverlay()
-        
+
         onNoDetection(mapOf("message" to "No objects detected"))
     }
 
