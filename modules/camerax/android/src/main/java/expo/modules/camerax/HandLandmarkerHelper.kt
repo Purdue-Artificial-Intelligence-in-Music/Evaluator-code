@@ -222,7 +222,6 @@ class HandLandmarkerHelper(
             val rotatedBitmap = Bitmap.createBitmap(
                 bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true
             )
-            //Log.d("HANDS DIMENSION WIDTH", rotatedBitmap.width.toString() + ", " + rotatedBitmap.height.toString())
             latestImage = BitmapImageBuilder(rotatedBitmap).build()
 
             // 3. RUN INFERENCE
@@ -423,7 +422,6 @@ class HandLandmarkerHelper(
                     val landmarksList = latestHandResult!!.landmarks()
                     var targetHandIndex = -1
                     var maxY: Float = -1.0f
-                    var finalHandResult: HandLandmarkerResult? = null
 
                     // Iterate through all detected hands to find the target
                     handednessList.forEachIndexed { index, handedness ->
@@ -521,42 +519,21 @@ class HandLandmarkerHelper(
         val pose = result.landmarks()
         if (pose.isNotEmpty() && pose[0].size > 19) {
             val landmarks = pose[0]
-
-            // Flip horizontally across image center
-            val right_shoulder_x = 1f - landmarks[12].x()
-            val right_shoulder_y = landmarks[12].y()
-            val right_shoulder_z = landmarks[12].z()
-
-            val elbow_x = 1f - landmarks[14].x()
-            val elbow_y = landmarks[14].y()
-            val elbow_z = landmarks[14].z()
-
-            val right_hand_x = 1f - landmarks[16].x()
-            val right_hand_y = landmarks[16].y()
-            val right_hand_z = landmarks[16].z()
-
+            val right_shoulder = landmarks[12]
+            val elbow = landmarks[14]
+            val right_hand = landmarks[16]
             val shoulder_elbow_dist_vec = floatArrayOf(
-                right_shoulder_x - elbow_x,
-                right_shoulder_y - elbow_y,
-                right_shoulder_z - elbow_z
+                right_shoulder.x() - elbow.x(),
+                right_shoulder.y() - elbow.y(),
+                right_shoulder.z() - elbow.z()
             )
             val hand_elbow_dist_vec = floatArrayOf(
-                right_hand_x - elbow_x,
-                right_hand_y - elbow_y,
-                right_hand_z - elbow_z
+                right_hand.x() - elbow.x(),
+                right_hand.y() - elbow.y(),
+                right_hand.z() - elbow.z()
             )
-
-            val shoulder_elbow_dist = sqrt(
-                shoulder_elbow_dist_vec[0].pow(2) +
-                        shoulder_elbow_dist_vec[1].pow(2) +
-                        shoulder_elbow_dist_vec[2].pow(2)
-            )
-            val hand_elbow_dist = sqrt(
-                hand_elbow_dist_vec[0].pow(2) +
-                        hand_elbow_dist_vec[1].pow(2) +
-                        hand_elbow_dist_vec[2].pow(2)
-            )
-
+            val shoulder_elbow_dist = sqrt(shoulder_elbow_dist_vec[0].pow(2) + shoulder_elbow_dist_vec[1].pow(2) + shoulder_elbow_dist_vec[2].pow(2))
+            val hand_elbow_dist = sqrt(hand_elbow_dist_vec[0].pow(2) + hand_elbow_dist_vec[1].pow(2) + hand_elbow_dist_vec[2].pow(2))
             if (shoulder_elbow_dist > 0 && hand_elbow_dist > 0) {
                 val shoulder_elbow_dist_norm_x = shoulder_elbow_dist_vec[0] / shoulder_elbow_dist
                 val shoulder_elbow_dist_norm_y = shoulder_elbow_dist_vec[1] / shoulder_elbow_dist
@@ -564,16 +541,9 @@ class HandLandmarkerHelper(
                 val hand_elbow_dist_norm_x = hand_elbow_dist_vec[0] / hand_elbow_dist
                 val hand_elbow_dist_norm_y = hand_elbow_dist_vec[1] / hand_elbow_dist
                 val hand_elbow_dist_norm_z = hand_elbow_dist_vec[2] / hand_elbow_dist
-
-                val cos_theta_3d = (
-                        (shoulder_elbow_dist_vec[0] * hand_elbow_dist_vec[0]) +
-                                (shoulder_elbow_dist_vec[1] * hand_elbow_dist_vec[1]) +
-                                (shoulder_elbow_dist_vec[2] * hand_elbow_dist_vec[2])
-                        ) / (shoulder_elbow_dist * hand_elbow_dist)
-
+                val cos_theta_3d = ((shoulder_elbow_dist_vec[0] * hand_elbow_dist_vec[0]) + (shoulder_elbow_dist_vec[1] * hand_elbow_dist_vec[1]) + (shoulder_elbow_dist_vec[2] * hand_elbow_dist_vec[2])) / (shoulder_elbow_dist * hand_elbow_dist)
                 val clipped_cos_theta_3d = cos_theta_3d.coerceIn(-1.0f, 1.0f)
                 val theta_rad_3d = acos(clipped_cos_theta_3d)
-
                 coords[0] = shoulder_elbow_dist_norm_x
                 coords[1] = shoulder_elbow_dist_norm_y
                 coords[2] = shoulder_elbow_dist_norm_z
@@ -716,45 +686,29 @@ class HandLandmarkerHelper(
         val imageWidth = bitmap.width
         val imageHeight = bitmap.height
 
-        // Parse hand classification
-        val classRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
-        val handMatch = classRegex.find(result.handDetection)
-        val handClass = handMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
-
-        // Parse pose classification
-        val poseMatch = classRegex.find(result.poseDetection)
-        val poseClass = poseMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
-
-        // Determine colors based on classification
-        val handHasIssue = handClass in 1..2
-        val poseHasIssue = poseClass in 1..2
-
         if (result.handResults.isNotEmpty() && result.targetHandIndex != -1) {
             val handResult = result.handResults[0]
             val landmarksList = handResult.landmarks()
             val handednessList = handResult.handedness()
 
+            // check if targetHandIndex is valid
             if (result.targetHandIndex < landmarksList.size) {
                 val targetLandmarks = landmarksList[result.targetHandIndex]
 
                 if (targetLandmarks.isNotEmpty()) {
-                    // Choose color based on hand classification
-                    // Using a brighter, more saturated orange (Deep Orange/Amber)
-                    val handColor = if (handHasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Vivid orange or Blue
-
                     val linePaint = Paint().apply {
-                        color = handColor
+                        color = Color.BLUE  // use blue lines
                         strokeWidth = 10f
                         style = Paint.Style.STROKE
                     }
 
                     val pointPaint = Paint().apply {
-                        color = if (handHasIssue) Color.rgb(255, 180, 50) else Color.CYAN // Bright amber or Cyan
+                        color = Color.CYAN
                         strokeWidth = 10f
                         style = Paint.Style.FILL
                     }
 
-                    // Draw hand connections
+                    // draw hand connections
                     HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
                         val startLandmark = targetLandmarks[connection!!.start()]
                         val endLandmark = targetLandmarks[connection.end()]
@@ -768,7 +722,7 @@ class HandLandmarkerHelper(
                         )
                     }
 
-                    // Draw keypoints
+                    // draw keypoints
                     for (landmark in targetLandmarks) {
                         canvas.drawPoint(
                             landmark.x() * imageWidth,
@@ -777,7 +731,7 @@ class HandLandmarkerHelper(
                         )
                     }
 
-                    // Hand label
+                    // hand lable
                     val wrist = targetLandmarks[0]
                     val handName = handednessList.getOrNull(result.targetHandIndex)?.firstOrNull()?.displayName() ?: "Unknown"
 
@@ -800,59 +754,32 @@ class HandLandmarkerHelper(
             }
         }
 
-        // Prepare text paint styles
+        // write out classification
         val textPaint = Paint().apply {
-            color = Color.rgb(255, 140, 0) // Vivid orange
+            color = Color.BLUE
             style = Paint.Style.FILL
             textSize = 56f
             isAntiAlias = true
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER // Center align text
         }
 
         val strokePaint = Paint().apply {
-            color = Color.rgb(204, 85, 0) // Darker orange shade for contrast
+            color = Color.BLACK
             style = Paint.Style.STROKE
             strokeWidth = 6f
             textSize = 56f
             isAntiAlias = true
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER // Center align text
         }
 
-        // Fixed positions from top with margin - centered horizontally
-        val topMargin = 160f  // Increased from 80f to 160f
-        val lineSpacing = 70f
-        val centerX = imageWidth / 2f  // Horizontal center of the image
+        val handText = "hands: ${result.handDetection}"
+        val poseText = "pose: ${result.poseDetection}"
 
-        val handMessageY = topMargin
-        val poseMessageY = topMargin + lineSpacing
+        canvas.drawText(handText, 50f, 240f, strokePaint)
+        canvas.drawText(poseText, 50f, 310f, strokePaint)
 
-        // Draw hand message if there's an issue
-        if (handHasIssue) {
-            val handMessage = when (handClass) {
-                1 -> "Pronate your wrist more"    // Supination
-                2 -> "Supinate your wrist more"    // Too much pronation
-                else -> ""
-            }
-            if (handMessage.isNotEmpty()) {
-                canvas.drawText(handMessage, centerX, handMessageY, strokePaint)
-                canvas.drawText(handMessage, centerX, handMessageY, textPaint)
-            }
-        }
-
-        // Draw pose message if there's an issue
-        if (poseHasIssue) {
-            val poseMessage = when (poseClass) {
-                1 -> "Raise your elbow a bit"    // Low elbow
-                2 -> "Lower your elbow a bit"    // Elbow too high
-                else -> ""
-            }
-            if (poseMessage.isNotEmpty()) {
-                canvas.drawText(poseMessage, centerX, poseMessageY, strokePaint)
-                canvas.drawText(poseMessage, centerX, poseMessageY, textPaint)
-            }
-        }
+        canvas.drawText(handText, 50f, 240f, textPaint)
+        canvas.drawText(poseText, 50f, 310f, textPaint)
 
         return bitmap
     }

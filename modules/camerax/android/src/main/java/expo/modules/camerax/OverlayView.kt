@@ -75,6 +75,11 @@ class OverlayView @JvmOverloads constructor(
 
         const val LANDMARK_STROKE_WIDTH = 8f
     }
+    private fun quadToString(name: String, quad: List<Detector.Point>?): String {
+        if (quad == null || quad.size < 4) return "$name: null/insufficient"
+        val s = quad.joinToString(prefix = "[", postfix = "]") { p -> "(${p.x.toFloat()}, ${p.y.toFloat()})" }
+        return "$name: $s"
+    }
 
     init {
         boxPaint.setColor(Color.GREEN)
@@ -130,9 +135,10 @@ class OverlayView @JvmOverloads constructor(
             return
         }
 
-        val scaleX = imageWidth * 1.5f
-        val scaleY = imageHeight * 1.5f
+        val scaleX = imageWidth * 1.5f / 640.0f
+        val scaleY = imageHeight * 1.5f / 640.0f
         val scaleFactor = 1f //max(scaleX, scaleY)
+
         if (results?.classification != -2) {
             val stringBox = results?.string
             val bowBox = results?.bow
@@ -343,6 +349,16 @@ class OverlayView @JvmOverloads constructor(
                       handDetection: String,
                       poseDetection: String, ) {
         this.results = results
+        android.util.Log.d(
+            "CheckDel",
+            buildString {
+                appendLine("Frame ${System.nanoTime()}")
+                appendLine(quadToString("STRING", results?.string))
+                appendLine(quadToString("BOW", results?.bow))
+                appendLine("class=${results?.classification} angle=${results?.angle}")
+            }
+        )
+
         this.handLandmarkerResult = hands
         this.poseLandmarkerResult = pose
         this.handDetect = handDetection

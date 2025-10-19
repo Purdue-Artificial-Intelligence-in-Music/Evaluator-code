@@ -5,43 +5,43 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.SystemClock
 import android.util.Log
-// import android.graphics.PointF
-// import android.gesture.OrientedBoundingBox
-// import com.google.android.gms.tasks.Task
-// import com.google.android.gms.tflite.java.TfLite
-// import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.nnapi.NnApiDelegate
+import org.tensorflow.lite.gpu.CompatibilityList
+import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.common.ops.CastOp
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import com.qualcomm.qti.QnnDelegate
+import com.qualcomm.qti.QnnDelegate.Options.BackendType
+import java.io.File
 import java.util.concurrent.CountDownLatch
-import org.tensorflow.lite.gpu.CompatibilityList
-import org.tensorflow.lite.gpu.GpuDelegate
 import kotlin.math.*
-import android.graphics.Typeface
 
-
-class Detector (
+class Detector(
     private val context: Context,
     private val listener: DetectorListener? = null
-){
+) {
 
+    // ==== TFLite + delegates ====
     private var interpreter: Interpreter
-    private var nnApiDelegate: NnApiDelegate? = null
-    private var labels = mutableListOf<String>()
+    private var qnnDelegate: QnnDelegate? = null
+    private var tfliteGpu: GpuDelegate? = null
 
+    // ==== Tensor shapes ====
     private var tensorWidth = 0
     private var tensorHeight = 0
     private var numChannel = 0
     private var numElements = 0
     val modelReadyLatch = CountDownLatch(1)
+
+    // ==== State for classification ====
     private var bowRepeat = 0
     private var stringRepeat = 0
     private var bowPoints: List<Point>? = null
@@ -51,426 +51,143 @@ class Detector (
     private var frameCounter = 0
     private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
     private val numWaitFrames = 5
-    private var ogWidth: Int = 0
-    private var ogHeight: Int = 0
-    //private var ogWidth: Int = 1
-    //private var ogHeight: Int = 1
 
+    private fun Double.f1() = String.format("%.1f", this)
+    private fun Double.f3() = String.format("%.3f", this)
+    private fun Float.f2() = String.format("%.2f", this)
 
-
-
+    private fun fmtQuad(name: String, q: List<Point>?): String {
+        return if (q == null || q.size < 4) {
+            "$name: null"
+        } else {
+            val s = q.joinToString(",") { "(${it.x.f1()}, ${it.y.f1()})" }
+            "$name: [$s]"
+        }
+    }
+    // Preprocessing
     private val imageProcessor = ImageProcessor.Builder()
-        .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
+        .add(NormalizeOp(INPUT_MEAN, INPUT_STD))
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
 
+    // ==== QNN helpers ====
+    private fun nativeLibDir(): String = context.applicationInfo.nativeLibraryDir
+
+    /** Load QNN host libs and return a dir that contains one of the HTP skel .so files. */
+    private fun tryLoadQnnAndPickSkelDir(): String? {
+        val mustLoad = listOf("QnnSystem", "QnnHtp", "QnnHtpPrepare")
+        for (name in mustLoad) {
+            try { System.loadLibrary(name) }
+            catch (e: UnsatisfiedLinkError) {
+                Log.w(TAG, "QNN: failed to load $name: ${e.message}. nativeLibDir=${nativeLibDir()}")
+                return null
+            }
+        }
+        val base = nativeLibDir()
+        val skels = listOf(
+            "libQnnHtpV79Skel.so",
+            "libQnnHtpV75Skel.so",
+            "libQnnHtpV73Skel.so",
+            "libQnnHtpV69Skel.so"
+        )
+        val chosen = skels.firstOrNull { File("$base/$it").exists() }
+        if (chosen == null) {
+            Log.w(TAG, "QNN: no HTP skel found under $base")
+            return null
+        }
+        Log.i(TAG, "QNN: using skel=$chosen in $base")
+        return base
+    }
+
     companion object {
+        private const val TAG = "CheckDel"
+        private const val MODEL_ASSET = "nanoV2.tflite" // <-- set your model file name here
         private const val INPUT_MEAN = 0f
-        private const val INPUT_STANDARD_DEVIATION = 255f
+        private const val INPUT_STD = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.1F
+        private const val CONFIDENCE_THRESHOLD = 0.10f
     }
 
     init {
-        val options = Interpreter.Options().apply{
-            //this.setNumThreads(4)
-            //this.setUseXNNPACK(true)
-            //Log.i("Detector", "isDelegateSupportedOnThisDevice: ${CompatibilityList().isDelegateSupportedOnThisDevice}")
-            //this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-            /*
-            try {
-                this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-            } catch (e: Exception) {
-                println("Gpu delegate failed")
-            }
-            */
+        interpreter = createInterpreterWithFallbacks(context)
 
-            //this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-
-            if (CompatibilityList().isDelegateSupportedOnThisDevice) {
-                this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-            } else {
-                this.setNumThreads(4)
-                this.setUseXNNPACK(true)
-            }
-
-
-
-
-
-
-            //this.setNumThreads(4)
-        }
-
-        /*
-        interpreter = Interpreter.create(
-            FileUtil.loadMappedFile(
-                MainActivity.applicationContext(),
-                "nano_best_float32.tflite"
-            ),
-            options
-        )
-         */
-        val model = FileUtil.loadMappedFile(context, "best_nano_float16.tflite")
-        interpreter = Interpreter(model, options)
-
-        modelReadyLatch.countDown()
-
+        // Cache tensor shapes (NHWC or NCHW)
         val inputShape = interpreter.getInputTensor(0)?.shape()
         val outputShape = interpreter.getOutputTensor(0)?.shape()
-        /*
-        println("output shape")
-        for (x in outputShape!!) {
-            println(x)
-        }
 
-         */
-
-
-
-        if (inputShape != null) {
-            tensorWidth = inputShape[1]
-            tensorHeight = inputShape[2]
-
-            // If in case input shape is in format of [1, 3, ..., ...]
-            if (inputShape[1] == 3) {
+        if (inputShape != null && inputShape.size >= 4) {
+            if (inputShape[1] == 3) {           // NCHW: [1,3,H,W]
+                tensorWidth = inputShape[3]
+                tensorHeight = inputShape[2]
+            } else {                            // NHWC: [1,H,W,3]
                 tensorWidth = inputShape[2]
-                tensorHeight = inputShape[3]
+                tensorHeight = inputShape[1]
             }
         }
 
-        if (outputShape != null) {
-            numElements = outputShape[2]
+        if (outputShape != null && outputShape.size == 3) {
             numChannel = outputShape[1]
+            numElements = outputShape[2]
         }
 
-        //println("Numelements, numchannel: $numElements, $numChannel")
-
+        modelReadyLatch.countDown()
     }
+
+    private fun createInterpreterWithFallbacks(context: Context): Interpreter {
+        val model = FileUtil.loadMappedFile(context, MODEL_ASSET)
+        val options = Interpreter.Options()
+
+        // 1) Qualcomm NPU (QNN/HTP)
+        val skelDir = tryLoadQnnAndPickSkelDir()
+        if (skelDir != null) {
+            try {
+                val qOpts = QnnDelegate.Options().apply {
+                    setBackendType(BackendType.HTP_BACKEND)
+                    setSkelLibraryDir(skelDir)
+                }
+                qnnDelegate = QnnDelegate(qOpts)
+                options.addDelegate(qnnDelegate)
+                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
+                return Interpreter(model, options)
+            } catch (t: Throwable) {
+                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
+            }
+        }
+
+        // 2) GPU
+        try {
+            val cl = CompatibilityList()
+            if (cl.isDelegateSupportedOnThisDevice) {
+                tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
+                options.addDelegate(tfliteGpu)
+                Log.i(TAG, "Using TFLite GPU delegate")
+                return Interpreter(model, options)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "GPU delegate unavailable: ${t.message}")
+        }
+
+        // 3) CPU/XNNPACK
+        Log.i(TAG, "Falling back to CPU/XNNPACK")
+        try { options.setUseXNNPACK(true) } catch (_: Throwable) {}
+        options.setNumThreads(4)
+        return Interpreter(model, options)
+    }
+
     fun close() {
-        interpreter.close()
+        try { interpreter.close() } catch (_: Throwable) {}
+        try { tfliteGpu?.close() } catch (_: Throwable) {}
+        try { qnnDelegate?.close() } catch (_: Throwable) {}
     }
 
+    // ===== Data types =====
     data class YoloResults(
         var bowResults: MutableList<Point>?,
         var stringResults: MutableList<Point>?
     )
 
-    data class Point(
-        var x: Double,
-        var y: Double
-    )
-    /*
-    fun setDimensions(dims: Pair<Int, Int>) {
-        ogWidth = dims.first
-        ogHeight = dims.second
-        println("dims: $dims")
-    }
-
-     */
-
-
-    fun detect(frame: Bitmap, sourceWidth: Int = 1, sourceHeight: Int = 1): YoloResults{
-        Log.d("DIMENSIONS WIDTH", frame.width.toString())
-        Log.d("DIMENSIONS HEIGHT", frame.height.toString())
-        //ogWdith = frame.width
-        //ogHeight = frame.height
-        var inferenceTime = SystemClock.uptimeMillis()
-        var results = YoloResults(null, null)
-        if (tensorWidth == 0
-            || tensorHeight == 0
-            || numChannel == 0
-            || numElements == 0) println("MODEL ERROR")
-
-        //println(tensorWidth)
-        //println(tensorHeight)
-        Log.d("TENSOR DIMS", tensorWidth.toString() + " " + tensorHeight.toString())
-        val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
-
-        val tensorImage = TensorImage(INPUT_IMAGE_TYPE)
-        tensorImage.load(resizedBitmap)
-        val processedImage = imageProcessor.process(tensorImage)
-        val imageBuffer = processedImage.buffer
-        val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
-
-        interpreter.run(imageBuffer, output.buffer)
-
-
-
-        val bestBoxes = newBestBox(output.floatArray)
-        /*
-        val newBoxes = mutableListOf<PointF>()
-        for (box in bestBoxes) {
-            val points = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle)
-            newBoxes.addAll(points)
-        }
-        */
-
-        var bowConf = 0f
-        var stringConf = 0f
-        val ogWidth = frame.width.toFloat()
-        val ogHeight = frame.height.toFloat()
-        //val ogWidth = 1
-        //val ogHeight = 1
-
-        //Log.d("BOXES123", bestBoxes.size.toString())
-        for (box in bestBoxes) {
-
-            if (box.cls == 0 && box.conf > bowConf) {
-                Log.d("BOX INITAL BOW", box.toString())
-                results.bowResults = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList()
-                bowConf = box.conf
-//                var newBowResults = results.bowResults
-//                for (i in 1..4) {
-//                    //newBowResults!![i].x = newBowResults!![i].x * ogWidth
-//                    newBowResults!![i].y = newBowResults!![i].y * ogHeight/ogWidth
-//                }
-//                results.bowResults = newBowResults
-                Log.d("BOX BOW", results.bowResults.toString())
-
-            } else if (box.cls == 1 && box.conf > stringConf) {
-                Log.d("BOX INITAL STRING", box.toString())
-                results.stringResults = sortStringPoints(rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList())
-                /*
-                if (box.width > box.height) {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle + Math.PI.toFloat() / 2).toMutableList())
-                } else {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList())
-                }
-                 */
-//                var newBowResults = results.stringResults
-//                for (i in 1..4) {
-//                    //newBowResults!![i].x = newBowResults!![i].x * ogWidth
-//                    newBowResults!![i].y = newBowResults!![i].y * ogHeight/ogWidth
-//                }
-//                results.stringResults = newBowResults
-                stringConf = box.conf
-                Log.d("BOX STRING", results.stringResults.toString())
-            }
-        }
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
-        //println("TRUE INFERENCE TIME: $inferenceTime")
-        //println("NUMBER OF BOXES: ${bestBoxes.size}")
-        //println("bow conf, string conf: $bowConf, $stringConf")
-
-        if (results.bowResults == null && results.stringResults == null) {
-            listener?.noDetect()
-            Log.d("BOW RESULTS", "NO DETECTIONS")
-        } else {
-            Log.d("BOXES123", "SOMETHING DETECTED")
-            //println(results)
-            listener?.detected(results, frame.width, frame.height)
-            //print(results)
-        }
-        return results
-    }
-
-
-
-    fun drawPointsOnBitmap(
-        bitmap: Bitmap,
-        points: YoloResults,
-        classification: Int?,
-        angle: Int?
-    ): Bitmap {
-        val canvas = Canvas(bitmap)
-
-        // Determine if there's an issue with classification or angle
-        // 0 = correct, anything else is an issue
-        val hasIssue = (classification != null && classification != 0) ||
-                (angle != null && angle == 1)
-
-        // Choose colors based on classification
-        val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Orange or Blue
-
-        val paint = Paint().apply {
-            color = boxColor
-            style = Paint.Style.STROKE
-            strokeWidth = 8f
-            isAntiAlias = true
-        }
-
-        // Draw string box (rectangle)
-        if (points.stringResults != null && points.stringResults!!.size >= 4) {
-            val stringBox = points.stringResults!!
-            // Draw four lines connecting the corners
-            canvas.drawLine(
-                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
-                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
-                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
-                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
-                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
-                paint
-            )
-        }
-
-        // Draw bow box (rectangle)
-        if (points.bowResults != null && points.bowResults!!.size >= 4) {
-            val bowBox = points.bowResults!!
-            // Draw four lines connecting the corners
-            canvas.drawLine(
-                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
-                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
-                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
-                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
-                paint
-            )
-            canvas.drawLine(
-                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
-                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
-                paint
-            )
-        }
-
-        // Classification labels mapping
-        // -2: No detection, -1: Partial, 0: Correct, 1: Outside, 2: Too high, 3: Too low
-        val classificationLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Keep the bow in zone",    // Bow outside zone
-            2 to "Lower the bow",    // Bow too high
-            3 to "Lift the bow"    // Bow too low
-        )
-
-        // Angle labels: 0 = correct, 1 = wrong
-        val angleLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Adjust your bow angle"    // Incorrect bow angle
-        )
-
-        // Prepare text paint styles
-        val textPaint = Paint().apply {
-            color = Color.rgb(255, 140, 0) // Orange
-            style = Paint.Style.FILL
-            textSize = 56f
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-
-        val strokePaint = Paint().apply {
-            color = Color.rgb(204, 85, 0) // Dark orange
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-            textSize = 56f
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-
-        // Fixed positions from top - below the hand/pose classifications
-        val topMargin = 300f  // Below hand (160f) and pose (230f) messages
-        val lineSpacing = 70f
-        val centerX = bitmap.width / 2f
-
-        var currentY = topMargin
-
-        // Draw classification message if there's an issue
-        if (classification != null && classification != 0) {
-            val message = classificationLabels[classification] ?: ""
-            if (message.isNotEmpty()) {
-                canvas.drawText(message, centerX, currentY, strokePaint)
-                canvas.drawText(message, centerX, currentY, textPaint)
-                currentY += lineSpacing
-            }
-        }
-
-        // Draw angle message if there's an issue
-        if (angle != null && angle == 1) {
-            val message = angleLabels[angle] ?: ""
-            if (message.isNotEmpty()) {
-                canvas.drawText(message, centerX, currentY, strokePaint)
-                canvas.drawText(message, centerX, currentY, textPaint)
-            }
-        }
-
-        return bitmap
-    }
-
-    fun process_frame(bitmap: Bitmap): Bitmap {
-        val classificationResult = classify(detect(bitmap))
-        val annotatedBitmap = drawPointsOnBitmap(
-            bitmap,
-            YoloResults(
-                bowResults = classificationResult.bow?.toMutableList(),
-                stringResults = classificationResult.string?.toMutableList()
-            ),
-            classificationResult.classification,
-            classificationResult.angle
-        )
-        return annotatedBitmap
-    }
-
-
-
-    private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float, frameWidth: Float, frameHeight: Float): List<Point> {
-        val halfW = w / 2
-        val halfH = h / 2
-        println("ANGLE $angleRad")
-        val cosA = cos(angleRad - Math.PI.toFloat() / 2)
-        val sinA = sin(angleRad - Math.PI.toFloat() / 2)
-        val corners = listOf(
-            Pair(-halfW, -halfH),
-            Pair(halfW, -halfH),
-            Pair(halfW, halfH),
-            Pair(-halfW, halfH)
-        )
-        return corners.map { (x, y) ->
-            val xRot = x * cosA - y * sinA + cx
-            val yRot = x * sinA + y * cosA + cy
-            //Point(xRot.toDouble() * frameWidth, yRot.toDouble() * frameHeight)
-            Point(xRot.toDouble(), yRot.toDouble())
-        }
-    }
-
-    private fun newBestBox(array : FloatArray) : List<OrientedBoundingBox> {
-        val boundingBoxes = mutableListOf<OrientedBoundingBox>()
-
-        for (r in 0 until numElements) {
-            val stringCnf = array[5 * numElements + r]
-            val bowCnf = array[4 * numElements + r]
-            val cls = if (stringCnf > bowCnf) 1 else 0
-            val cnf = if (stringCnf > bowCnf) stringCnf else bowCnf
-            if (cnf > CONFIDENCE_THRESHOLD) {
-                val x = array[r]
-                val y = array[1 * numElements + r]
-                var h = array[2 * numElements + r]
-                var w = array[3 * numElements + r]
-
-                val angle = array[6 * numElements + r]
-                boundingBoxes.add(
-                    OrientedBoundingBox(
-                        x = x, y = y, height = h, width = w,
-                        conf = cnf, cls = cls, angle = angle
-                    )
-                )
-            }
-        }
-
-
-        return boundingBoxes
-    }
-
+    data class Point(var x: Double, var y: Double)
 
     data class OrientedBoundingBox(
         val x: Float,
@@ -482,67 +199,201 @@ class Detector (
         val angle: Float
     )
 
-    fun updatePoints(
-        stringBox: MutableList<Point>,
-        bowBox: MutableList<Point>
-    ) {
+    data class returnBow(
+        var classification: Int?,
+        var bow: List<Point>?,
+        var string: List<Point>?,
+        var angle: Int?
+    )
 
-        bowPoints = bowBox //change bow points to mutable list
-        stringPoints = sortStringPoints(stringBox)
-        Log.d("sorted points", stringPoints.toString())
-        /*
-        if (!yLocked) {
-            //just assign class variable string points to this
-            stringPoints = stringBox
-        } else if (yAvg != null) {
-            //first sort strings if y is locked
-            val sortedString = sortStringPoints(stringBox)
-            stringPoints = sortedString
-            Log.d("sorted points", stringPoints.toString())
-
-            //stringPoints!![0].y = yAvg!![0]
-            //stringPoints!![1].y = yAvg!![1]
-
-            //println("y_avg: $yAvg")
-            //println("string_points: $stringPoints")
+    // ===== Inference =====
+    fun detect(frame: Bitmap): YoloResults {
+        val results = YoloResults(null, null)
+        if (tensorWidth == 0 || tensorHeight == 0 || numChannel == 0 || numElements == 0) {
+            Log.e(TAG, "MODEL ERROR: invalid tensor shapes")
+            return results
         }
 
-         */
+        val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        val tensorImage = TensorImage(INPUT_IMAGE_TYPE).also { it.load(resized) }
+        val processed = imageProcessor.process(tensorImage)
+        val imageBuffer = processed.buffer
+        val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
 
+        val t0 = SystemClock.uptimeMillis()
+        interpreter.run(imageBuffer, output.buffer)
+        val inferMs = SystemClock.uptimeMillis() - t0
+        Log.d(TAG, "inference ${inferMs}ms")
+
+        // Handle [1, 7, N] or [1, N, 7]
+        val outShape = interpreter.getOutputTensor(0).shape()
+        val raw = output.floatArray
+
+// detect layout, compute (C, N) and possibly transpose
+        val (C, N, parsed) = if (outShape.size == 3 && outShape[1] == 8400 && outShape[2] == 7) {
+            Triple(7, 8400, transposeN7To7N(raw, N = outShape[1], C = outShape[2]))
+        } else {
+            // assume [1, 7, N]
+            Triple(outShape[1], outShape[2], raw)
+        }
+
+        val boxes = newBestBox(parsed, N)
+        Log.d(
+            "CheckDelBox",
+            buildString {
+                append("POSTPROCESS BOXES (${boxes.size}) →\n")
+                boxes.take(5).forEachIndexed { i, b ->
+                    append(
+                        "[$i] cls=${b.cls}, conf=${b.conf.f2()}, " +
+                                "x=${b.x.f2()}, y=${b.y.f2()}, w=${b.width.f2()}, h=${b.height.f2()}, ang=${b.angle.f2()}\n"
+                    )
+                }
+                if (boxes.size > 5) append("... (${boxes.size - 5} more)\n")
+            }
+        )
+        val imgW = frame.width.toFloat()
+        val imgH = frame.height.toFloat()
+        val sX = imgW / tensorWidth.toFloat()
+        val sY = imgH / tensorHeight.toFloat()
+
+        // Treat small (<=1.5) as normalized; else tensor-space
+        val isNorm = boxes.isNotEmpty() &&
+                boxes.maxOf { max(max(it.x, it.y), max(it.width, it.height)) } <= 1.5f
+
+        fun toImgX(x: Float) = if (isNorm) x * imgW else x * sX
+        fun toImgY(y: Float) = if (isNorm) y * imgH else y * sY
+        fun toImgW(w: Float) = if (isNorm) w * imgW else w * sX
+        fun toImgH(h: Float) = if (isNorm) h * imgH else h * sY
+
+//        val isNorm = boxes.isNotEmpty() &&
+//                boxes.maxOf { max(max(it.x, it.y), max(it.width, it.height)) } <= 1.5f
+//
+//        fun toNormX(x: Float) = if (isNorm) x else x / tensorWidth.toFloat()
+//        fun toNormY(y: Float) = if (isNorm) y else y / tensorHeight.toFloat()
+//        fun toNormW(w: Float) = if (isNorm) w else w / tensorWidth.toFloat()
+//        fun toNormH(h: Float) = if (isNorm) h else h / tensorHeight.toFloat()
+        var bowConf = 0f
+        var stringConf = 0f
+
+        for (b in boxes) {
+            val cx = b.x
+            val cy = b.y
+            val ww = b.width
+            val hh = b.height
+
+            if (b.cls == 0 && b.conf > bowConf) {
+                // Bow: subtract π/2 to align long side horizontally (same convention as your old file)
+                val bowAngle = b.angle
+
+                results.bowResults = rotatedRectToPoints(cx, cy, ww, hh, bowAngle).toMutableList()
+                bowConf = b.conf
+            } else if (b.cls == 1 && b.conf > stringConf) {
+                // String: use angle as-is
+                results.stringResults = sortStringPoints(
+                    rotatedRectToPoints(cx, cy, ww, hh, b.angle).toMutableList()
+                )
+                stringConf = b.conf
+            }
+        }
+
+        if (results.bowResults == null && results.stringResults == null) {
+            listener?.noDetect()
+        } else {
+            listener?.detected(results, frame.width, frame.height)
+        }
+        return results
     }
-    //
+
+    // Transpose flattened [1, 8400, 7] -> [1, 7, 8400]
+    private fun transposeN7To7N(src: FloatArray, N: Int = 8400, C: Int = 7): FloatArray {
+        val dst = FloatArray(C * N)
+        var n = 0
+        while (n < N) {
+            val base = n * C
+            var c = 0
+            while (c < C) {
+                dst[c * N + n] = src[base + c]
+                c++
+            }
+            n++
+        }
+        return dst
+    }
+
+    private fun newBestBox(array: FloatArray, N: Int): List<OrientedBoundingBox> {
+        val out = mutableListOf<OrientedBoundingBox>()
+        // loop over anchors/proposals
+        for (r in 0 until N) {
+            val stringCnf = array[5 * N + r]
+            val bowCnf    = array[4 * N + r]
+            val cls = if (stringCnf > bowCnf) 1 else 0
+            val cnf = max(stringCnf, bowCnf)
+            if (cnf > CONFIDENCE_THRESHOLD) {
+                val x = array[0 * N + r]
+                val y = array[1 * N + r]
+                val h = array[2 * N + r]
+                val w = array[3 * N + r]
+                val angle = array[6 * N + r]
+                out.add(OrientedBoundingBox(x, y, h, w, cnf, cls, angle))
+            }
+        }
+        return out
+    }
+
+    // ===== Geometry & classification =====
+    private fun rotatedRectToPoints(
+        cx: Float, cy: Float, w: Float, h: Float, angleRad: Float
+    ): List<Point> {
+        val halfW = w / 2f
+        val halfH = h / 2f
+        val c = cos(angleRad)
+        val s = sin(angleRad)
+        val corners = listOf(
+            -halfW to -halfH, halfW to -halfH,
+            halfW to  halfH, -halfW to  halfH
+        )
+        return corners.map { (x, y) ->
+            val xRot = x * c - y * s + cx
+            val yRot = x * s + y * c + cy
+            Point(xRot.toDouble(), yRot.toDouble())
+        }
+    }
+
+    fun updatePoints(stringBox: MutableList<Point>, bowBox: MutableList<Point>) {
+        bowPoints = bowBox
+        if (!yLocked) {
+            stringPoints = stringBox
+        } else if (yAvg != null) {
+            stringPoints = sortStringPoints(stringBox)
+        }
+    }
+
     fun sortStringPoints(pts: MutableList<Point>): MutableList<Point> {
-        // Sort points by y
-        val sortedPoints = pts.sortedBy {it.y }
-
-        // Find first 2 and last pts
-        val topPoints = sortedPoints.take(2).sortedBy { it.x }      // Sort by X ascending
-        val bottomPoints = sortedPoints.drop(2).sortedByDescending { it.x } // Sort by X descending
-
-        return (topPoints + bottomPoints).toMutableList()
+        val sorted = pts.sortedBy { it.y }
+        val top = sorted.take(2).sortedBy { it.x }
+        val bottom = sorted.drop(2).sortedByDescending { it.x }
+        return (top + bottom).toMutableList()
     }
 
     fun getMidline(): MutableList<Double> {
-        fun distance(pt1: Point, pt2: Point): Double {
-            //just distance formula
-            return (pt1.x - pt2.x) * (pt1.x - pt2.x) + (pt1.y - pt2.y) * (pt1.y - pt2.y)
-        }
+        fun dist(a: Point, b: Point) =
+            (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)
 
-        //find length of the sides of the bow rectangle
-        val d1 = distance(bowPoints!![0], bowPoints!![1])
-        val d2 = distance(bowPoints!![1], bowPoints!![2])
-        val d3 = distance(bowPoints!![2], bowPoints!![3])
-        val d4 = distance(bowPoints!![3], bowPoints!![0])
-        val distances = listOf(d1, d2, d3, d4)
+        val d = listOf(
+            dist(bowPoints!![0], bowPoints!![1]),
+            dist(bowPoints!![1], bowPoints!![2]),
+            dist(bowPoints!![2], bowPoints!![3]),
+            dist(bowPoints!![3], bowPoints!![0])
+        )
+        val i = d.indexOf(d.minOrNull())
 
-        val minIndex = distances.indexOf(distances.minOrNull()) //find the smallest distance
-
-        //find the two shortest distances to fin dthe end of teh bow and set those points as pair1 and pair2
-        val (pair1, pair2) = when (minIndex) {
-            0 -> Pair(bowPoints!![0] to bowPoints!![1], bowPoints!![2] to bowPoints!![3])
-            1 -> Pair(bowPoints!![1] to bowPoints!![2], bowPoints!![3] to bowPoints!![0])
-            2 -> Pair(bowPoints!![2] to bowPoints!![3], bowPoints!![0] to bowPoints!![1])
-            else -> Pair(bowPoints!![3] to bowPoints!![0], bowPoints!![1] to bowPoints!![2])
+        val (pair1, pair2) = when (i) {
+            0 -> bowPoints!![0] to bowPoints!![1] to (bowPoints!![2] to bowPoints!![3])
+            1 -> bowPoints!![1] to bowPoints!![2] to (bowPoints!![3] to bowPoints!![0])
+            2 -> bowPoints!![2] to bowPoints!![3] to (bowPoints!![0] to bowPoints!![1])
+            else -> bowPoints!![3] to bowPoints!![0] to (bowPoints!![1] to bowPoints!![2])
+        }.let { (a, b) ->
+            Pair(a, b)
         }
 
         val mid1 = listOf((pair1.first.x + pair1.second.x) / 2, (pair1.first.y + pair1.second.y) / 2)
@@ -554,334 +405,291 @@ class Detector (
         return if (dx == 0.0) {
             mutableListOf(Double.POSITIVE_INFINITY, mid1[0])
         } else {
-            val slope = dy / dx
-            val intercept = mid1[1] - slope * mid1[0]
-            mutableListOf(slope, intercept)
+            val m = dy / dx
+            val b = mid1[1] - m * mid1[0]
+            mutableListOf(m, b)
         }
     }
 
     private fun getVerticalLines(): MutableList<MutableList<Double>> {
-        System.out.println(stringPoints)
-        // Extracting corner points
-        val topLeft = stringPoints!![0]
-        val topRight = stringPoints!![1]
-        val botRight = stringPoints!![2]
-        val botLeft = stringPoints!![3]
-        // Left vertical line (from topLeft to botLeft)
+        val tl = stringPoints!![0]
+        val tr = stringPoints!![1]
+        val br = stringPoints!![2]
+        val bl = stringPoints!![3]
 
-        // Calculate the horizontal distance between the left points
-        val dxLeft = topLeft.x - botLeft.x
-        // Initialize slope and y-intercept for the left side
-        val leftSlope: Double
-        val leftYint: Double
-
-        if (dxLeft == 0.0) {
-            leftSlope = Double.POSITIVE_INFINITY
-            leftYint = -1.0  // Use -1.0 as a flag for undefined intercept
-        } else {
-            // Calculate slope
-            leftSlope = (topLeft.y - botLeft.y) / dxLeft
-            // Calculate y-intercept
-            leftYint = topLeft.y - leftSlope * topLeft.x
+        fun line(p1: Point, p2: Point): MutableList<Double> {
+            val dx = p1.x - p2.x
+            return if (dx == 0.0) {
+                mutableListOf(Double.POSITIVE_INFINITY, -1.0, p1.y, p2.y)
+            } else {
+                val m = (p1.y - p2.y) / dx
+                val b = p1.y - m * p1.x
+                mutableListOf(m, b, p1.y, p2.y)
+            }
         }
-
-        // Right vertical line (from topRight to botRight)
-
-        val dxRight = topRight.x - botRight.x
-        val rightSlope: Double
-        val rightYint: Double
-
-        if (dxRight == 0.0) {
-            rightSlope = Double.POSITIVE_INFINITY
-            rightYint = -1.0
-        } else {
-            rightSlope = (topRight.y - botRight.y) / dxRight
-            rightYint = topRight.y - rightSlope * topRight.x
-        }
-
-        // Heights of each side (just the y-coordinates of top and bottom points)
-        val leftTopY = topLeft.y
-        val leftBotY = botLeft.y
-        val rightTopY = topRight.y
-        val rightBotY = botRight.y
-
-        // Each line is a MutableList: [slope, intercept, topY, bottomY]
-        val leftLine = mutableListOf(leftSlope, leftYint, leftTopY, leftBotY)
-        val rightLine = mutableListOf(rightSlope, rightYint, rightTopY, rightBotY)
-
-        // return a list of both lines
-        return mutableListOf(leftLine, rightLine)
+        return mutableListOf(line(tl, bl), line(tr, br))
     }
-
-
 
     private fun intersectsVertical(
         linearLine: MutableList<Double>,
         verticalLines: MutableList<MutableList<Double>>
     ): Int {
-        //println("linear: $linearLine\nvertical: $verticalLines")
+        val m = linearLine[0]
+        val b = linearLine[1]
 
-        // Midline parameters
-        val m = linearLine[0] // slope of the midline
-        val b = linearLine[1] // y-intercept of the midline
+        fun intersect(v: List<Double>, xRef: Double): Point? {
+            val mv = v[0]
+            val bv = v[1]
+            val yTop = v[2]
+            val yBot = v[3]
 
-        // extracts the first vertical line (left side): [slope, yInt, topY, botY]
-        val verticalOne = verticalLines[0]
-        val verticalTwo = verticalLines[1]
-
-        // Calculates the intersection of the midline with a vertical line
-        fun getIntersection(vLine: List<Double>, xRef: Double): Point? {
-            val slopeV = vLine[0]
-            val interceptV = vLine[1]
-            val topY = vLine[2]
-            val botY = vLine[3]
-
-            val x: Double
-            val y: Double
-
-            if (slopeV == Double.POSITIVE_INFINITY || interceptV == -1.0) {
-                x = xRef
-                if (m == Double.POSITIVE_INFINITY) return null // both lines vertical
-                y = m * x + b
-            } else if (m == Double.POSITIVE_INFINITY) {
-                // Case: vertical midline
-                x = b
-                y = slopeV * x + interceptV
-            } else if (kotlin.math.abs(m - slopeV) < 1e-6) {
-                // parallel lines means no intersection
-                return null
-            } else {
-                x = (interceptV - b) / (m - slopeV)
-                y = m * x + b
-            }
-            // Makes sure intersection y-value is within the vertical segment's range
-            val yMin = minOf(topY, botY)
-            val yMax = maxOf(topY, botY)
-
-            if (yMin > y || y > yMax) {
-                //println("Intersection y=$y is outside vertical range ($yMin, $yMax)")
-                return null
+            val (x, y) = when {
+                mv == Double.POSITIVE_INFINITY || bv == -1.0 -> {
+                    val x0 = xRef
+                    if (m == Double.POSITIVE_INFINITY) return null
+                    x0 to (m * x0 + b)
+                }
+                m == Double.POSITIVE_INFINITY -> {
+                    val x0 = b
+                    x0 to (mv * x0 + bv)
+                }
+                abs(m - mv) < 1e-6 -> return null
+                else -> {
+                    val x0 = (bv - b) / (m - mv)
+                    x0 to (m * x0 + b)
+                }
             }
 
-
-            return Point(x,y)
+            val yMin = min(yTop, yBot)
+            val yMax = max(yTop, yBot)
+            if (y !in yMin..yMax) return null
+            return Point(x, y)
         }
 
-        // Determine x positions from the bounding box
         val xLeft = stringPoints!![0].x
         val xRight = stringPoints!![1].x
+        var p1 = intersect(verticalLines[0], xLeft)
+        var p2 = intersect(verticalLines[1], xRight)
 
-        // Calculate intersections of midline with both vertical string lines
-        var pt1 = getIntersection(verticalOne, xLeft)
-        var pt2 = getIntersection(verticalTwo, xRight)
-        Log.d("INTERSECTION", pt1.toString() + " " + pt2.toString())
-
-        if (pt1 == null && pt2 == null) {
-            //println("One or both intersections invalid")
-            Log.d("BOW", "INVALID INTERSECTION")
-            return 1
-        }
-        if (pt1 == null) {
-            pt1 = pt2
-        }
-        if (pt2 == null){
-            pt2 = pt1
-        }
-        return bowHeightIntersection(mutableListOf(pt1!!, pt2!!), mutableListOf(verticalOne, verticalTwo))
+        if (p1 == null && p2 == null) return 1
+        if (p1 == null) p1 = p2
+        if (p2 == null) p2 = p1
+        return bowHeightIntersection(mutableListOf(p1!!, p2!!), mutableListOf(verticalLines[0], verticalLines[1]))
     }
-
-
-    /*
-     * Determines the height level at which the linear line intersects the vertical lines.
-
-        Returns:
-        - 3: Intersection is near top of the box (ht1 or ht2)
-        - 2: Intersection is near bottom (hb1 or hb2)
-        - 0: Intersection is in middle
-     */
-
 
     private fun bowHeightIntersection(
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val top_zone_percentage = 0.3
-        val bottom_zone_percentage = 0.15
+        val topPct = 0.10
+        val botPct = 0.15
 
-        val vertical_one = verticalLines[0]
-        val vertical_two = verticalLines[1]
+        val v1 = verticalLines[0]
+        val v2 = verticalLines[1]
 
-        val top_y1 = vertical_one[2]
-        val top_y2 = vertical_two[2]
-        val bot_y1 = vertical_one[3]
-        val bot_y2 = vertical_two[3]
+        val topY1 = v1[2]
+        val topY2 = v2[2]
+        val botY1 = v1[3]
+        val botY2 = v2[3]
 
-        val height = abs(((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0)
+        val height = abs(((botY1 - topY1) + (botY2 - topY2)) / 2.0)
         if (height == 0.0) return 0
 
-        val avg_top_y = (top_y1 + top_y2) / 2.0
-        val avg_bot_y = (bot_y1 + bot_y2) / 2.0
+        val avgTop = (topY1 + topY2) / 2.0
+        val avgBot = (botY1 + botY2) / 2.0
 
-        val too_high_threshold = avg_top_y + height * top_zone_percentage
-        val too_low_threshold = avg_bot_y - height * bottom_zone_percentage
+        val tooHigh = avgTop + height * topPct
+        val tooLow  = avgBot - height * botPct
 
-        val intersection_y = intersectionPoints.map { it.y }.average()
+        val yAvg = intersectionPoints.map { it.y }.average()
 
-        if (intersection_y <= too_high_threshold) {
-            return 2
-        }
-
-        if (intersection_y >= too_low_threshold) {
-            return 3
-        }
-
-        return 0
-    }
-
-    private fun averageYCoordinate(stringBoxCoords: MutableList<Point>) {
-        /*
-        Recalculate and updates new string Y coordinate heights for every
-        n frames.
-         */
-
-        // sort coordinate points so points in consistent order
-        val sortedCoords: MutableList<Point> = stringBoxCoords
-
-        // increase frame counter. create and add y coord list of each frame to one list
-        frameCounter += 1
-        val yCoords = sortedCoords.map { it.y.toInt() } // get Y values from each point
-        stringYCoordHeights.add(yCoords)
-
-
-        // recalculate new y coordinate heights when certain number of frames past
-        if (frameCounter % numWaitFrames == 0) {
-
-            // get median of coordinates
-            val topLeftAvg: Double = median(stringYCoordHeights.map { it[0] })
-            val topRightAvg: Double = median(stringYCoordHeights.map { it[1] })
-            val botRightAvg: Double = median(stringYCoordHeights.map { it[2] })
-            val botLeftAvg: Double = median(stringYCoordHeights.map { it[3] })
-
-            // map them to string points
-            stringPoints!![0].y = topLeftAvg
-            stringPoints!![1].y = topRightAvg
-            stringPoints!![2].y = botRightAvg
-            stringPoints!![3].y = botLeftAvg
-            yAvg = mutableListOf(topLeftAvg, topRightAvg)
-            yLocked = true
-            stringYCoordHeights = mutableListOf()
+        return when {
+            yAvg <= tooHigh -> 2
+            yAvg >= tooLow  -> 3
+            else            -> 0
         }
     }
 
-    /*
-        Returns median item of a list
-     */
-    private fun median(values: List<Int>): Double {
-        if (values.isEmpty()) throw IllegalArgumentException("Empty list has no median.")
-
-        val sorted = values.sorted()
-        val middle = sorted.size / 2
-
-        return if (sorted.size % 2 == 0) {
-            (sorted[middle - 1] + sorted[middle]) / 2.0
-        } else {
-            sorted[middle].toDouble()
-        }
+    private fun degrees(radians: Double) = radians * (180.0 / Math.PI)
+    private fun logFinal(out: returnBow) {
+        Log.d(
+            "CheckDel2",
+            buildString {
+                append("FINAL RESULTS → class=${out.classification}, angle=${out.angle}\n")
+                append("BOW: ")
+                out.bow?.forEach { append("(${String.format("%.1f", it.x)}, ${String.format("%.1f", it.y)}) ") }
+                append("\nSTRING: ")
+                out.string?.forEach { append("(${String.format("%.1f", it.x)}, ${String.format("%.1f", it.y)}) ") }
+            }
+        )
     }
-
-    /*
-    converts radians to degrees
-     */
-    private fun degrees(radians: Double): Double {
-        return radians * (180.0 / PI)
-    }
-
-    /*
-    classifies bow angle relative to two vertical lines of string box
-     */
-    private fun bowAngle(bowLine: MutableList<Double>, verticalLines: MutableList<MutableList<Double>>): Int {
-        // flexibility of angle relative to 90 degrees
-        val max_angle = 15
-
-        // grab bow line and vertical lines
-        val m_bow: Double = bowLine[0]
+    private fun bowAngle(
+        bowLine: MutableList<Double>,
+        verticalLines: MutableList<MutableList<Double>>
+    ): Int {
+        val maxAngle = 15
+        val mBow = bowLine[0]
         val m1 = verticalLines[0][0]
-        val m2 = verticalLines[1][0]  // assuming format: [m1, b1, m2, b2]
-
-        // calculate angles formed for each vertical line's intersection with bow line
-        val angle_one: Double = abs(degrees(atan(abs(m_bow - m2) / (1 + m_bow * m2))))
-        val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
-
-        val min_angle: Double = abs(90 - min(angle_one, angle_two))
-        //println("ANGLE: $min_angle")
-
-        return if (min_angle > max_angle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
+        val m2 = verticalLines[1][0]
+        val a1 = abs(degrees(atan(abs(mBow - m2) / (1 + mBow * m2))))
+        val a2 = abs(degrees(atan(abs(m1 - mBow) / (1 + m1 * mBow))))
+        val minAngle = abs(90 - min(a1, a2))
+        return if (minAngle > maxAngle) 1 else 0
     }
-
-    data class returnBow(
-        var classification: Int?,
-        var bow: List<Point>?,
-        var string: List<Point>?,
-        var angle: Int?
-    )
-
 
     fun classify(results: YoloResults): returnBow {
-        val classResults = returnBow(
-            classification = null,
-            bow = null,
-            string = null,
-            angle = null
-        )
+        val out = returnBow(null, null, null, null)
+
         if (results.stringResults != null) {
             stringRepeat = 0
             stringPoints = results.stringResults
         } else if (stringRepeat < 5 && stringPoints != null) {
-            classResults.classification = -1
+            out.classification = -1
             stringRepeat++
             results.stringResults = stringPoints!!.toMutableList()
-        } else {
-            stringPoints = null
-        }
+        } else stringPoints = null
+
+
+
+
         if (results.bowResults != null) {
             bowRepeat = 0
             bowPoints = results.bowResults
         } else if (bowRepeat < 5 && bowPoints != null) {
-            classResults.classification = -1
+            out.classification = -1
             bowRepeat++
             results.bowResults = bowPoints!!.toMutableList()
-        } else {
-            bowPoints = null
-        }
+        } else bowPoints = null
+
         if (stringPoints == null && bowPoints == null) {
-            classResults.classification = -2
-            return classResults
+            out.classification = -2
+            logFinal(out)             // <— log before returning
+
+            return out
         }
         if (results.stringResults == null) {
-            classResults.classification = -1
-            classResults.bow = results.bowResults
-            return classResults
+            out.classification = -1
+            out.bow = results.bowResults
+            logFinal(out)             // <— log before returning
+
+            return out
         } else if (results.bowResults == null) {
-            classResults.classification = -1
-            classResults.string = results.stringResults
-            return classResults
+            out.classification = -1
+            out.string = results.stringResults
+            logFinal(out)             // <— log before returning
+
+            return out
         } else {
-            classResults.string = results.stringResults
-            classResults.bow = results.bowResults
+            out.string = results.stringResults
+            out.bow = results.bowResults
             updatePoints(results.stringResults!!, results.bowResults!!)
-            val midlines = getMidline()
-            val vert_lines = getVerticalLines()
-            val intersect_points = intersectsVertical(midlines, vert_lines)
-            classResults.angle = bowAngle(midlines, vert_lines)
-            classResults.classification = intersect_points
-            Log.d("BOW", classResults.classification.toString())
-            return classResults
+            val mid = getMidline()
+            val verts = getVerticalLines()
+            val intersectClass = intersectsVertical(mid, verts)
+            out.angle = bowAngle(mid, verts)
+            out.classification = intersectClass
+            Log.d("BOW", out.classification.toString())
+            logFinal(out)             // <— log before returning
+
+            return out
         }
+    }
+
+    // ===== Drawing =====
+    fun drawPointsOnBitmap(
+        bitmap: Bitmap,
+        points: YoloResults,
+        classification: Int?,
+        angle: Int?
+    ): Bitmap {
+        val canvas = Canvas(bitmap)
+        val hasIssue = (classification != null && classification != 0) || (angle == 1)
+        val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE
+
+        val paint = Paint().apply {
+            color = boxColor
+            style = Paint.Style.STROKE
+            strokeWidth = 8f
+            isAntiAlias = true
+        }
+
+        fun drawQuad(ps: List<Point>?) {
+            if (ps == null || ps.size < 4) return
+            canvas.drawLine(ps[0].x.toFloat(), ps[0].y.toFloat(), ps[1].x.toFloat(), ps[1].y.toFloat(), paint)
+            canvas.drawLine(ps[1].x.toFloat(), ps[1].y.toFloat(), ps[2].x.toFloat(), ps[2].y.toFloat(), paint)
+            canvas.drawLine(ps[2].x.toFloat(), ps[2].y.toFloat(), ps[3].x.toFloat(), ps[3].y.toFloat(), paint)
+            canvas.drawLine(ps[3].x.toFloat(), ps[3].y.toFloat(), ps[0].x.toFloat(), ps[0].y.toFloat(), paint)
+        }
+
+        drawQuad(points.stringResults)
+        drawQuad(points.bowResults)
+
+        val classificationLabels = mapOf(
+            0 to "",
+            1 to "Bow outside zone",
+            2 to "Bow too high",
+            3 to "Bow too low"
+        )
+        val angleLabels = mapOf(
+            0 to "",
+            1 to "Incorrect bow angle"
+        )
+
+        val textPaint = Paint().apply {
+            color = Color.rgb(255, 140, 0)
+            style = Paint.Style.FILL
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val strokePaint = Paint().apply {
+            color = Color.rgb(204, 85, 0)
+            style = Paint.Style.STROKE
+            strokeWidth = 6f
+            textSize = 56f
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+
+        val topMargin = 300f
+        val lineSpacing = 70f
+        val cx = bitmap.width / 2f
+        var y = topMargin
+
+        if (classification != null && classification != 0) {
+            val msg = classificationLabels[classification] ?: ""
+            if (msg.isNotEmpty()) {
+                canvas.drawText(msg, cx, y, strokePaint)
+                canvas.drawText(msg, cx, y, textPaint)
+                y += lineSpacing
+            }
+        }
+        if (angle == 1) {
+            val msg = angleLabels[1]!!
+            canvas.drawText(msg, cx, y, strokePaint)
+            canvas.drawText(msg, cx, y, textPaint)
+        }
+        return bitmap
+    }
+
+    // Keep this if your module expects it to return an annotated frame
+    fun process_frame(bitmap: Bitmap): Bitmap {
+        val cls = classify(detect(bitmap))
+        return drawPointsOnBitmap(
+            bitmap,
+            YoloResults(
+                bowResults = cls.bow?.toMutableList(),
+                stringResults = cls.string?.toMutableList()
+            ),
+            cls.classification,
+            cls.angle
+        )
     }
 
     interface DetectorListener {
         fun noDetect()
         fun detected(results: YoloResults, sourceWidth: Int, sourceHeight: Int)
     }
-
 }

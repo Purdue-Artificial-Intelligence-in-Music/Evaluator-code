@@ -1,6 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.gms.google-services"
+apply plugin: "com.google.firebase.appdistribution"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
@@ -102,6 +104,7 @@ android {
             keyPassword 'android'
         }
     }
+
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
@@ -124,6 +127,7 @@ android {
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
+
 }
 
 // Apply static values from `gradle.properties` to the `android.packagingOptions`
@@ -145,7 +149,12 @@ android {
         }
     }
 }
-
+firebaseAppDistribution {
+    appId = "1:78505815305:android:d6b9652566476aab2777d8"               // from Firebase project settings
+    serviceCredentialsFile = file("../evaluator-890d1-ebc9602bb39f.json") // or omit and use FIREBASE_TOKEN
+    testers = "angrymuffin23@gmail.com"
+    releaseNotes = "Test build from Gradle"
+}
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
