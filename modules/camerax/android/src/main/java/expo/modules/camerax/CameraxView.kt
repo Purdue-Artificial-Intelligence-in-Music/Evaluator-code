@@ -294,7 +294,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
                 imageProxy.planes[0].buffer.rewind()
                 handLandmarkerHelper.detectLiveStream(
                     imageProxy,
-                    false //CHANGE TO TRUE ONCE WE SWITCH TO FRONT CAMERA, WILL ALSO HAVE TO MIRROR IMAGE FOR DETECTOR PROCESSING
+                    lensType != CameraSelector.LENS_FACING_BACK //CHANGE TO TRUE ONCE WE SWITCH TO FRONT CAMERA, WILL ALSO HAVE TO MIRROR IMAGE FOR DETECTOR PROCESSING
                 )
             }
 
@@ -305,7 +305,9 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
             Log.d("DEVICE ROTATION HEIGHT", imageProxy.height.toString())
             val matrix = Matrix().apply {
                 postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                //postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+                if (lensType != CameraSelector.LENS_FACING_BACK){
+                    postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+                }
                 //UNCOMMENT THIS WHEN DOING FRONT CAMERA
             }
 
@@ -317,7 +319,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
 
             android.util.Log.d("live", "Calling detector.detect() with bitmap: ${rotatedBitmap.width}x${rotatedBitmap.height}")
             // Perform detection
-            performDetection(rotatedBitmap, imageProxy.width, imageProxy.height)
+            performDetection(rotatedBitmap)
 
         } catch (e: Exception) {
             // Handle error
@@ -326,7 +328,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         }
     }
 
-    private fun performDetection(bitmap: Bitmap, sourceWidth: Int, sourceHeight: Int) {
+    private fun performDetection(bitmap: Bitmap) {
         // Use the actual detector
         detector?.detect(bitmap)
     }
@@ -339,7 +341,7 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         }
 
         val bowPoints = detector?.classify(results)
-
+/*
         val overlayWidth = overlayView.width
         val overlayHeight = overlayView.height
         val scaleFactor = max(
@@ -361,6 +363,8 @@ class CameraxView(context: Context, appContext: AppContext) : ExpoView(context, 
         }
 
         println("DETECTED")
+
+ */
         latestBowResults = bowPoints
 
         /*activity.runOnUiThread {

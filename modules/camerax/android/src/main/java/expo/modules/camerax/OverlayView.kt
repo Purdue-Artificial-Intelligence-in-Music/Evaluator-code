@@ -130,8 +130,8 @@ class OverlayView @JvmOverloads constructor(
             return
         }
 
-        val scaleX = 1f
-        val scaleY = 1f
+        val scaleX = imageWidth * 1.5f
+        val scaleY = imageHeight * 1.5f
         val scaleFactor = 1f //max(scaleX, scaleY)
         if (results?.classification != -2) {
             val stringBox = results?.string
@@ -361,6 +361,7 @@ class OverlayView @JvmOverloads constructor(
 
         //need to be updated for non-live feed?
         handsScaleFactor = min(scaleX, scaleY)
+        android.util.Log.d("HAND STUFF", imageWidth.toString() + " " + imageHeight.toString() + " " + handsScaleFactor.toString())
     }
 
     fun clear() {
