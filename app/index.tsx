@@ -250,7 +250,7 @@ export default function HomePage() {
     <SafeAreaView style={styles.container}>
       <View style={styles.buttonStyle}>
       {/* logout */}
-      <View style={{ marginTop: 8 }}>
+      <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 999 }}>
         <LogoutButton />
       </View>
 
