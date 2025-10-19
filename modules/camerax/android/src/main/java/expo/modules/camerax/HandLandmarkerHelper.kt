@@ -831,8 +831,8 @@ class HandLandmarkerHelper(
         // Draw hand message if there's an issue
         if (handHasIssue) {
             val handMessage = when (handClass) {
-                1 -> "Supination"
-                2 -> "Too much pronation"
+                1 -> "Pronate your wrist more"    // Supination
+                2 -> "Supinate your wrist more"    // Too much pronation
                 else -> ""
             }
             if (handMessage.isNotEmpty()) {
@@ -844,8 +844,8 @@ class HandLandmarkerHelper(
         // Draw pose message if there's an issue
         if (poseHasIssue) {
             val poseMessage = when (poseClass) {
-                1 -> "Low elbow"
-                2 -> "Elbow too high"
+                1 -> "Raise your elbow a bit"    // Low elbow
+                2 -> "Lower your elbow a bit"    // Elbow too high
                 else -> ""
             }
             if (poseMessage.isNotEmpty()) {

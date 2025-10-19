@@ -195,14 +195,14 @@ class OverlayView @JvmOverloads constructor(
             // Classification labels - only show if not correct
             val classificationLabels = mapOf(
                 0 to "",  // Correct - don't display
-                1 to "Bow outside zone",
-                2 to "Bow too high",
-                3 to "Bow too low"
+                1 to "Keep the bow in zone",    // Bow outside zone
+                2 to "Lower the bow",    // Bow too high
+                3 to "Lift the bow"    // Bow too low
             )
 
             val angleLabels = mapOf(
                 0 to "",  // Correct - don't display
-                1 to "Incorrect bow angle"
+                1 to "Adjust your bow angle"    // Incorrect bow angle
             )
 
             // Prepare text paint styles for bow/string classification
@@ -313,8 +313,8 @@ class OverlayView @JvmOverloads constructor(
         // Draw hand message if there's an issue
         if (handClass in 1..2) {
             val handMessage = when (handClass) {
-                1 -> "Supination"
-                2 -> "Too much pronation"
+                1 -> "Pronate your wrist more"    // Supination
+                2 -> "Supinate your wrist more"    // Too much pronation
                 else -> ""
             }
             if (handMessage.isNotEmpty()) {
@@ -326,8 +326,8 @@ class OverlayView @JvmOverloads constructor(
         // Draw pose message if there's an issue
         if (poseClass in 1..2) {
             val poseMessage = when (poseClass) {
-                1 -> "Low elbow"
-                2 -> "Elbow too high"
+                1 -> "Raise your elbow a bit"    // Low elbow
+                2 -> "Lower your elbow a bit"    // Elbow too high
                 else -> ""
             }
             if (poseMessage.isNotEmpty()) {
