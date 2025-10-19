@@ -185,6 +185,7 @@ class Detector (
 
         //println(tensorWidth)
         //println(tensorHeight)
+        Log.d("TENSOR DIMS", tensorWidth.toString() + " " + tensorHeight.toString())
         val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
 
         val tensorImage = TensorImage(INPUT_IMAGE_TYPE)
@@ -213,17 +214,39 @@ class Detector (
         //val ogWidth = 1
         //val ogHeight = 1
 
+        //Log.d("BOXES123", bestBoxes.size.toString())
         for (box in bestBoxes) {
+
             if (box.cls == 0 && box.conf > bowConf) {
-                results.bowResults = rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList()
+                Log.d("BOX INITAL BOW", box.toString())
+                results.bowResults = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList()
                 bowConf = box.conf
+//                var newBowResults = results.bowResults
+//                for (i in 1..4) {
+//                    //newBowResults!![i].x = newBowResults!![i].x * ogWidth
+//                    newBowResults!![i].y = newBowResults!![i].y * ogHeight/ogWidth
+//                }
+//                results.bowResults = newBowResults
+                Log.d("BOX BOW", results.bowResults.toString())
+
             } else if (box.cls == 1 && box.conf > stringConf) {
+                Log.d("BOX INITAL STRING", box.toString())
+                results.stringResults = sortStringPoints(rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList())
+                /*
                 if (box.width > box.height) {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight * 1.0f, box.angle + Math.PI.toFloat() / 2).toMutableList())
+                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle + Math.PI.toFloat() / 2).toMutableList())
                 } else {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight * 1.0f, box.angle).toMutableList())
+                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList())
                 }
+                 */
+//                var newBowResults = results.stringResults
+//                for (i in 1..4) {
+//                    //newBowResults!![i].x = newBowResults!![i].x * ogWidth
+//                    newBowResults!![i].y = newBowResults!![i].y * ogHeight/ogWidth
+//                }
+//                results.stringResults = newBowResults
                 stringConf = box.conf
+                Log.d("BOX STRING", results.stringResults.toString())
             }
         }
         inferenceTime = SystemClock.uptimeMillis() - inferenceTime
@@ -233,9 +256,12 @@ class Detector (
 
         if (results.bowResults == null && results.stringResults == null) {
             listener?.noDetect()
+            Log.d("BOW RESULTS", "NO DETECTIONS")
         } else {
+            Log.d("BOXES123", "SOMETHING DETECTED")
+            //println(results)
             listener?.detected(results, frame.width, frame.height)
-            print(results)
+            //print(results)
         }
         return results
     }
@@ -397,7 +423,7 @@ class Detector (
 
 
 
-    private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float): List<Point> {
+    private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float, frameWidth: Float, frameHeight: Float): List<Point> {
         val halfW = w / 2
         val halfH = h / 2
         println("ANGLE $angleRad")
@@ -412,6 +438,7 @@ class Detector (
         return corners.map { (x, y) ->
             val xRot = x * cosA - y * sinA + cx
             val yRot = x * sinA + y * cosA + cy
+            //Point(xRot.toDouble() * frameWidth, yRot.toDouble() * frameHeight)
             Point(xRot.toDouble(), yRot.toDouble())
         }
     }
@@ -461,7 +488,9 @@ class Detector (
     ) {
 
         bowPoints = bowBox //change bow points to mutable list
-
+        stringPoints = sortStringPoints(stringBox)
+        Log.d("sorted points", stringPoints.toString())
+        /*
         if (!yLocked) {
             //just assign class variable string points to this
             stringPoints = stringBox
@@ -469,6 +498,7 @@ class Detector (
             //first sort strings if y is locked
             val sortedString = sortStringPoints(stringBox)
             stringPoints = sortedString
+            Log.d("sorted points", stringPoints.toString())
 
             //stringPoints!![0].y = yAvg!![0]
             //stringPoints!![1].y = yAvg!![1]
@@ -476,6 +506,8 @@ class Detector (
             //println("y_avg: $yAvg")
             //println("string_points: $stringPoints")
         }
+
+         */
 
     }
     //
@@ -490,7 +522,7 @@ class Detector (
         return (topPoints + bottomPoints).toMutableList()
     }
 
-    fun getMidline(): MutableList<Int> {
+    fun getMidline(): MutableList<Double> {
         fun distance(pt1: Point, pt2: Point): Double {
             //just distance formula
             return (pt1.x - pt2.x) * (pt1.x - pt2.x) + (pt1.y - pt2.y) * (pt1.y - pt2.y)
@@ -520,11 +552,11 @@ class Detector (
         val dx = mid1[0] - mid2[0]
 
         return if (dx == 0.0) {
-            mutableListOf(Float.POSITIVE_INFINITY.toInt(), mid1[0].toInt())
+            mutableListOf(Double.POSITIVE_INFINITY, mid1[0])
         } else {
             val slope = dy / dx
             val intercept = mid1[1] - slope * mid1[0]
-            mutableListOf(slope.toInt(), intercept.toInt())
+            mutableListOf(slope, intercept)
         }
     }
 
@@ -584,14 +616,14 @@ class Detector (
 
 
     private fun intersectsVertical(
-        linearLine: MutableList<Int>,
+        linearLine: MutableList<Double>,
         verticalLines: MutableList<MutableList<Double>>
     ): Int {
         //println("linear: $linearLine\nvertical: $verticalLines")
 
         // Midline parameters
-        val m = linearLine[0].toDouble() // slope of the midline
-        val b = linearLine[1].toDouble() // y-intercept of the midline
+        val m = linearLine[0] // slope of the midline
+        val b = linearLine[1] // y-intercept of the midline
 
         // extracts the first vertical line (left side): [slope, yInt, topY, botY]
         val verticalOne = verticalLines[0]
@@ -632,7 +664,6 @@ class Detector (
             }
 
 
-
             return Point(x,y)
         }
 
@@ -643,6 +674,7 @@ class Detector (
         // Calculate intersections of midline with both vertical string lines
         var pt1 = getIntersection(verticalOne, xLeft)
         var pt2 = getIntersection(verticalTwo, xRight)
+        Log.d("INTERSECTION", pt1.toString() + " " + pt2.toString())
 
         if (pt1 == null && pt2 == null) {
             //println("One or both intersections invalid")
@@ -673,8 +705,8 @@ class Detector (
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val top_zone_percentage = 0.1
-        val bottom_zone_percentage = 0.1
+        val top_zone_percentage = 0.3
+        val bottom_zone_percentage = 0.15
 
         val vertical_one = verticalLines[0]
         val vertical_two = verticalLines[1]
@@ -767,12 +799,12 @@ class Detector (
     /*
     classifies bow angle relative to two vertical lines of string box
      */
-    private fun bowAngle(bowLine: MutableList<Int>, verticalLines: MutableList<MutableList<Double>>): Int {
+    private fun bowAngle(bowLine: MutableList<Double>, verticalLines: MutableList<MutableList<Double>>): Int {
         // flexibility of angle relative to 90 degrees
         val max_angle = 15
 
         // grab bow line and vertical lines
-        val m_bow: Double = bowLine[0].toDouble()
+        val m_bow: Double = bowLine[0]
         val m1 = verticalLines[0][0]
         val m2 = verticalLines[1][0]  // assuming format: [m1, b1, m2, b2]
 
