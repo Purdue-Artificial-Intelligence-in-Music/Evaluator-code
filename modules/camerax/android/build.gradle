@@ -33,7 +33,7 @@ repositories {
 
   // ✅ Required so Gradle can find Qualcomm LiteRT AARs and .so libraries
   flatDir {
-    dirs "H:/Downloads/QualcommSDK/qairt/2.38.0.250901/lib/aarch64-android"
+    dirs "C:\\Users\\trevo\\Desktop\\v2.39.0.250926\\qairt\\2.39.0.250926\\lib\\aarch64-android\\"
   }
 }
 
