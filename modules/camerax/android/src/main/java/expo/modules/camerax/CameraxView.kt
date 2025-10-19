@@ -62,7 +62,8 @@ class CameraxView(
     private lateinit var handLandmarkerHelper: HandLandmarkerHelper
 
     private val profile = Profile()
-    private val userId = "session" // You can dynamically change this per user
+    private var userId: String = "default_user"
+    //private val userId = "session" // You can dynamically change this per user
 
     private var isDetectionEnabled = false
     private var isCameraActive = false
@@ -120,6 +121,11 @@ class CameraxView(
     }
 
     // ===== React Native Props =====
+    fun setUserId(newUserId: String) {
+        userId = newUserId
+        Log.d("Data Collection", "User ID set to: $userId")
+    }
+
     fun setDetectionEnabled(enabled: Boolean) {
         if (isDetectionEnabled == enabled) return
         isDetectionEnabled = enabled

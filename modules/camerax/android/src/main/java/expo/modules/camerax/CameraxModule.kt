@@ -8,6 +8,10 @@ class CameraxModule : Module() {
         Name("Camerax")
 
         View(CameraxView::class) {
+            Prop("userId") { view: CameraxView, userId: String ->
+                view.setUserId(userId)
+            }
+
             Prop("detectionEnabled") { view: CameraxView, enabled: Boolean ->
                 view.setDetectionEnabled(enabled)
             }
