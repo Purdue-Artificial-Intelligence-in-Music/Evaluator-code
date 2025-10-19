@@ -283,14 +283,14 @@ class Detector(
 
             if (b.cls == 0 && b.conf > bowConf) {
                 // Bow: subtract π/2 to align long side horizontally (same convention as your old file)
-                val bowAngle = b.angle
+//                val bowAngle = b.angle
 
-                results.bowResults = rotatedRectToPoints(cx, cy, ww, hh, bowAngle).toMutableList()
+                results.bowResults = rotatedRectToPoints(cx, cy, ww, hh, b.angle + Math.PI.toFloat()/2.0f).toMutableList()
                 bowConf = b.conf
             } else if (b.cls == 1 && b.conf > stringConf) {
                 // String: use angle as-is
                 results.stringResults = sortStringPoints(
-                    rotatedRectToPoints(cx, cy, ww, hh, b.angle).toMutableList()
+                    rotatedRectToPoints(cx, cy, ww, hh, b.angle + Math.PI.toFloat()/2.0f).toMutableList()
                 )
                 stringConf = b.conf
             }
@@ -481,7 +481,7 @@ class Detector(
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val topPct = 0.10
+        val topPct = 0.20
         val botPct = 0.15
 
         val v1 = verticalLines[0]
