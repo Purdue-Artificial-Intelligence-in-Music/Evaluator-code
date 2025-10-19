@@ -321,15 +321,15 @@ class Detector (
         // -2: No detection, -1: Partial, 0: Correct, 1: Outside, 2: Too high, 3: Too low
         val classificationLabels = mapOf(
             0 to "",  // Correct - don't display
-            1 to "Bow outside zone",
-            2 to "Bow too high",
-            3 to "Bow too low"
+            1 to "Keep the bow in zone",    // Bow outside zone
+            2 to "Lower the bow",    // Bow too high
+            3 to "Lift the bow"    // Bow too low
         )
 
         // Angle labels: 0 = correct, 1 = wrong
         val angleLabels = mapOf(
             0 to "",  // Correct - don't display
-            1 to "Incorrect bow angle"
+            1 to "Adjust your bow angle"    // Incorrect bow angle
         )
 
         // Prepare text paint styles
