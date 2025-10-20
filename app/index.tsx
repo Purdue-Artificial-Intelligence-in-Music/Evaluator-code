@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as VideoAnalyzer from '../modules/expo-video-analyzer/src/ExpoVideoAnalyzer';
 import CameraComponent from './CameraComponent';
 
+import LogoutButton from '../components/LogoutButton';
+
 import { TouchableOpacity} from 'react-native';
 import ChooseVideoIcon from '../assets/images/ChooseVideo.png';
 import OpenCamera from '../assets/images/OpenCamera.png';
@@ -248,10 +250,14 @@ export default function HomePage() {
     <SafeAreaView style={styles.container}>
       <View style={styles.buttonStyle}>
 
+      <View style={styles.logoutContainer}>
+        <LogoutButton />
+      </View>
+
       <TouchableOpacity
         onPress={pickVideo}
         style={{
-          width: 320,    // smaller width to allow multiple buttons per row
+          width: 320,    // smaller width
           height: 60,
           margin: 5,     // margin to add space between buttons
         }}
@@ -483,5 +489,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
   },
-
+  logoutContainer: {
+    width: '100%',
+    alignItems: 'flex-end',
+    paddingRight: 30,
+    paddingTop: 5,
+    marginBottom: 5,
+  },
 });

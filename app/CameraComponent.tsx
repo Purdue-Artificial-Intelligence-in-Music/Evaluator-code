@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { requireNativeViewManager } from 'expo-modules-core';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CameraxView = requireNativeViewManager('Camerax');
 
@@ -8,6 +9,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
   const [lensType, setLensType] = useState('back'); // use front or back camera
+  const [userId, setUserId] = useState('default_user');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -21,15 +23,32 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setLensType(prev => prev === 'back' ? 'front' : 'back');
   };
 
+  // load user id
+  useEffect(() => {
+    const loadUserId = async () => {
+      try {
+        const email = await AsyncStorage.getItem('userEmail');
+        if (email) {
+          setUserId(email);
+          console.log('User ID loaded for camera:', email);
+        } else {
+          console.warn('No user email found, using default');
+        }
+      } catch (error) {
+        console.error('Error loading user ID:', error);
+      }
+    };
+    loadUserId();
+  }, []);
+
   return (
     <View style={styles.container}>
       <CameraxView
         style={styles.camera}
+        userId={userId}
         cameraActive={isCameraActive}
         detectionEnabled={isDetectionEnabled}
         lensType={lensType}
-        // onDetectionResult={(event) => console.log('Detection:', event.nativeEvent)}
-        // onNoDetection={(event) => console.log('No detection:', event.message)}
       />
       
       <TouchableOpacity
