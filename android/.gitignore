@@ -17,4 +17,5 @@ local.properties
 
 # Google Services:
 android/app/google-services.json
+android/app/firebase-appdist-service-account.json
 android/app/evaluator-890d1-firebase-adminsdk-fbsvc-432c00f521.json
