@@ -275,9 +275,9 @@ class CameraxView(
                 imageProxy.height,
                 Bitmap.Config.ARGB_8888
             )
-            imageProxy.planes[0].buffer.apply {
-                bitmapBuffer.copyPixelsFromBuffer(this)
-                rewind()
+            imageProxy.use {
+                bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
+                imageProxy.planes[0].buffer.rewind()
                 handLandmarkerHelper.detectLiveStream(
                     imageProxy,
                     lensType == CameraSelector.LENS_FACING_FRONT
