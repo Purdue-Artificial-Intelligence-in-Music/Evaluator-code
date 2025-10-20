@@ -1,21 +1,23 @@
-# OSX
-#
+# macOS
 .DS_Store
 
-# Android/IntelliJ
-#
+# Android / IntelliJ
 build/
-.idea
-.gradle
+.idea/
+.gradle/
 local.properties
 *.iml
 *.hprof
 .cxx/
 
-# Bundle artifacts
+# JS / React Native bundle artifacts
 *.jsbundle
 
-# Google Services:
-android/app/google-services.json
+# Google & Firebase secrets (DO NOT COMMIT)
+android/app/google-services.json        # optional: commit only if API keys are restricted
 android/app/firebase-appdist-service-account.json
 android/app/evaluator-890d1-firebase-adminsdk-fbsvc-432c00f521.json
+
+# Keystores / signing files
+*.keystore
+*.jks
