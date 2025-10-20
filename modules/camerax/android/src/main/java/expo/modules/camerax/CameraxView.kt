@@ -268,10 +268,7 @@ class CameraxView(
 
     private fun processImage(imageProxy: ImageProxy) {
         try {
-            handLandmarkerHelper.detectLiveStream(
-                imageProxy,
-                lensType == CameraSelector.LENS_FACING_FRONT
-            )
+
 
             val bitmapBuffer = createBitmap(
                 imageProxy.width,
@@ -281,6 +278,10 @@ class CameraxView(
             imageProxy.planes[0].buffer.apply {
                 bitmapBuffer.copyPixelsFromBuffer(this)
                 rewind()
+                handLandmarkerHelper.detectLiveStream(
+                    imageProxy,
+                    lensType == CameraSelector.LENS_FACING_FRONT
+                )
             }
 
             val matrix = Matrix().apply {
@@ -312,6 +313,7 @@ class CameraxView(
         if (bowPoints != null) {
             profile.addSessionData(userId, bowPoints)
         }
+        /*
 
         val overlayWidth = overlayView.width.coerceAtLeast(1)
         val overlayHeight = overlayView.height.coerceAtLeast(1)
@@ -332,6 +334,8 @@ class CameraxView(
             p.x = (p.x * scaleFactor) - offsetX
             p.y = (p.y * scaleFactor) - offsetY
         }
+
+         */
 
         latestBowResults = bowPoints
         updateOverlay()
