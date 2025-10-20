@@ -1,6 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: 'com.google.gms.google-services'
+apply plugin: 'com.google.firebase.appdistribution'
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
@@ -151,6 +153,9 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+//    implementation(files("libs/ffmpeg-kit-min-gpl-6.0-2.aar"))
+    implementation(files("${rootDir}/../modules/expo-video-analyzer/android/libs/ffmpeg-kit-min-gpl-6.0-2.aar"))
+
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
@@ -175,4 +180,12 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+}
+
+
+firebaseAppDistribution {
+    serviceCredentialsFile = file("$projectDir/firebase-appdist-service-account.json")
+    appId = "1:78505815305:android:d6b9652566476aab2777d8"
+    releaseNotes = "EvalCV release build"
+    groups = "Test1"
 }
