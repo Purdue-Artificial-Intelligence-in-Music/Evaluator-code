@@ -27,6 +27,9 @@ import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.max
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+
 
 // MediaPipe
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -223,31 +226,34 @@ class CameraxView(
 
         val rotation = viewFinder.display.rotation
 
-        // CameraProvider
         val cameraProvider = cameraProvider
             ?: throw IllegalStateException("Camera initialization failed.")
 
-        // CameraSelector
-        val cameraSelector = CameraSelector.Builder().requireLensFacing(lensType).build()
+        val cameraSelector = CameraSelector.Builder()
+            .requireLensFacing(lensType)
+            .build()
 
         val aspectRatioStrategy = AspectRatioStrategy(
-            AspectRatio.RATIO_16_9, AspectRatioStrategy.FALLBACK_RULE_NONE
+            AspectRatio.RATIO_16_9,
+            AspectRatioStrategy.FALLBACK_RULE_NONE
         )
         val resolutionSelector = ResolutionSelector.Builder()
             .setAspectRatioStrategy(aspectRatioStrategy)
             .build()
 
-        // Preview setup (older CameraX syntax)
-        preview = Preview.Builder()
-            .setResolutionSelector(resolutionSelector)
+        // --- Create and safely unwrap Preview ---
+        val safePreview = Preview.Builder()
+            .setTargetAspectRatio(AspectRatio.RATIO_16_9)
             .setTargetRotation(rotation)
             .build()
 
+        preview = safePreview
+
+        // --- Build use case group ---
         val useCaseGroupBuilder = UseCaseGroup.Builder()
-            .addUseCase(preview)
+            .addUseCase(safePreview)
 
-        // Analyzer only when detection is enabled
-
+        // --- Add analyzer if enabled ---
         if (isDetectionEnabled) {
             imageAnalyzer = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -263,58 +269,66 @@ class CameraxView(
             useCaseGroupBuilder.addUseCase(imageAnalyzer!!)
         }
 
+        val useCaseGroup = useCaseGroupBuilder.build()
 
-        // Bind to lifecycle
+        // --- Bind everything safely ---
         cameraProvider.unbindAll()
         try {
-            preview.surfaceProvider = viewFinder.surfaceProvider
-            val newCamera = cameraProvider.bindToLifecycle(
+            safePreview.surfaceProvider = viewFinder.surfaceProvider
+            camera = cameraProvider.bindToLifecycle(
                 activity as AppCompatActivity,
                 cameraSelector,
-                useCaseGroupBuilder.build()
+                useCaseGroup
             )
-            camera = newCamera
-            preview.surfaceProvider = viewFinder.surfaceProvider
         } catch (exc: Exception) {
             Log.e(TAG, "Failed to bind camera use cases", exc)
         }
     }
 
 
+
     private fun processImage(imageProxy: ImageProxy) {
         try {
-
-
             val bitmapBuffer = createBitmap(
                 imageProxy.width,
                 imageProxy.height,
                 Bitmap.Config.ARGB_8888
             )
+
             imageProxy.use {
                 bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
                 imageProxy.planes[0].buffer.rewind()
+
+                // Run MediaPipe live stream hand detection
                 handLandmarkerHelper.detectLiveStream(
                     imageProxy,
                     lensType != CameraSelector.LENS_FACING_BACK
                 )
 
-            val matrix = Matrix().apply {
-                postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                if (lensType == CameraSelector.LENS_FACING_FRONT) {
-                    postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+                // Rotate + mirror if needed
+                val matrix = Matrix().apply {
+                    postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
+                    if (lensType == CameraSelector.LENS_FACING_FRONT) {
+                        postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
+                    }
                 }
-            }
 
-            val rotatedBitmap = Bitmap.createBitmap(
-                bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true
-            )
-            performDetection(rotatedBitmap)
+                val rotatedBitmap = Bitmap.createBitmap(
+                    bitmapBuffer, 0, 0,
+                    bitmapBuffer.width, bitmapBuffer.height,
+                    matrix, true
+                )
+
+                // Perform YOLO detection
+                performDetection(rotatedBitmap)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Analyzer failure", e)
         } finally {
             imageProxy.close()
         }
     }
+
 
     private fun performDetection(bitmap: Bitmap) {
         detector?.detect(bitmap)
