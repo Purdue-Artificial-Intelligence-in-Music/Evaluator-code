@@ -33,5 +33,5 @@ export default function RootLayout() {
     checkAuth();
   }, [mounted]);
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{}} />;
 }
