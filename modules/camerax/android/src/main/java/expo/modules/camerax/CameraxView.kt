@@ -96,14 +96,17 @@ class CameraxView(
         viewFinder.isFocusableInTouchMode = true
         viewFinder.requestFocusFromTouch()
         installHierarchyFitter(viewFinder)
+        viewFinder.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        viewFinder.scaleType = PreviewView.ScaleType.FILL_CENTER
         frameLayout.addView(viewFinder)
 
         // Overlay
-        overlayView = OverlayView(context)
-        overlayView.layoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        )
+        overlayView = OverlayView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
         frameLayout.addView(overlayView)
 
         // Initialize detection tools
