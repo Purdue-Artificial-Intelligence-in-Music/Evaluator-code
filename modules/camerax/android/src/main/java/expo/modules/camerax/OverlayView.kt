@@ -130,7 +130,7 @@ class OverlayView @JvmOverloads constructor(
             return
         }
 
-        var currentY = 300f
+        var currentY = 160f
 
         val scaleX = imageWidth * 1.5f
         val scaleY = imageHeight * 1.5f
@@ -308,6 +308,8 @@ class OverlayView @JvmOverloads constructor(
         val poseMatch = handClassRegex.find(poseDetect)
         val poseClass = poseMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
+        currentY = 300f
+
         // Hand/pose classification text paint styles
         val textPaint = Paint().apply {
             color = Color.BLACK
@@ -325,13 +327,9 @@ class OverlayView @JvmOverloads constructor(
             isAntiAlias = true
         }
 
-        val handTopMargin = 160f
-        val poseTopMargin = 230f
         val centerX = width / 2f
 
         val padding = 16f
-
-
 
         // Draw hand message if there's an issue
         if (handClass in 1..2) {
