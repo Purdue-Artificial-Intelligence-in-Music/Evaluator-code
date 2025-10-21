@@ -50,6 +50,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import kotlin.plus
 
 class HandLandmarkerHelper(
     var minHandDetectionConfidence: Float = DEFAULT_HAND_DETECTION_CONFIDENCE,
@@ -802,31 +803,27 @@ class HandLandmarkerHelper(
 
         // Prepare text paint styles
         val textPaint = Paint().apply {
-            color = Color.rgb(255, 140, 0) // Vivid orange
+            color = Color.BLACK
             style = Paint.Style.FILL
             textSize = 56f
             isAntiAlias = true
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER // Center align text
+            textAlign = Paint.Align.CENTER
         }
 
-        val strokePaint = Paint().apply {
-            color = Color.rgb(204, 85, 0) // Darker orange shade for contrast
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-            textSize = 56f
+        // Semi-transparent white rectangle paint
+        val labelBackgroundPaint = Paint().apply {
+            color = Color.argb(180, 255, 255, 255) // semi-transparent white
+            style = Paint.Style.FILL
             isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER // Center align text
         }
 
         // Fixed positions from top with margin - centered horizontally
-        val topMargin = 160f  // Increased from 80f to 160f
-        val lineSpacing = 70f
+        val topMargin = 120f
+        var currentY = topMargin
+        val lineSpacing = 60f
         val centerX = imageWidth / 2f  // Horizontal center of the image
-
-        val handMessageY = topMargin
-        val poseMessageY = topMargin + lineSpacing
+        val padding = 16f
 
         // Draw hand message if there's an issue
         if (handHasIssue) {
@@ -836,8 +833,20 @@ class HandLandmarkerHelper(
                 else -> ""
             }
             if (handMessage.isNotEmpty()) {
-                canvas.drawText(handMessage, centerX, handMessageY, strokePaint)
-                canvas.drawText(handMessage, centerX, handMessageY, textPaint)
+                val textWidth = textPaint.measureText(handMessage)
+                val fm = textPaint.fontMetrics
+                val textHeight = fm.bottom - fm.top
+
+                // Rectangle coordinates
+                val left = centerX - textWidth / 2 - padding
+                val top = currentY + fm.top - padding
+                val right = centerX + textWidth / 2 + padding
+                val bottom = currentY + fm.bottom + padding
+
+                canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+
+                canvas.drawText(handMessage, centerX, currentY, textPaint)
+                currentY += (fm.bottom - fm.top) + lineSpacing
             }
         }
 
@@ -849,8 +858,19 @@ class HandLandmarkerHelper(
                 else -> ""
             }
             if (poseMessage.isNotEmpty()) {
-                canvas.drawText(poseMessage, centerX, poseMessageY, strokePaint)
-                canvas.drawText(poseMessage, centerX, poseMessageY, textPaint)
+                val textWidth = textPaint.measureText(poseMessage)
+                val fm = textPaint.fontMetrics
+                val textHeight = fm.bottom - fm.top
+
+                // Rectangle coordinates
+                val left = centerX - textWidth / 2 - padding
+                val top = currentY + fm.top - padding
+                val right = centerX + textWidth / 2 + padding
+                val bottom = currentY + fm.bottom + padding
+
+                canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+
+                canvas.drawText(poseMessage, centerX, currentY, textPaint)
             }
         }
 

@@ -360,7 +360,7 @@ class Detector (
 
         // Prepare text paint styles
         val textPaint = Paint().apply {
-            color = Color.rgb(255, 140, 0) // Orange
+            color = Color.BLACK
             style = Paint.Style.FILL
             textSize = 56f
             isAntiAlias = true
@@ -368,20 +368,18 @@ class Detector (
             textAlign = Paint.Align.CENTER
         }
 
-        val strokePaint = Paint().apply {
-            color = Color.rgb(204, 85, 0) // Dark orange
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-            textSize = 56f
+        // Semi-transparent white rectangle paint
+        val labelBackgroundPaint = Paint().apply {
+            color = Color.argb(180, 255, 255, 255) // semi-transparent white
+            style = Paint.Style.FILL
             isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
         }
 
         // Fixed positions from top - below the hand/pose classifications
-        val topMargin = 300f  // Below hand (160f) and pose (230f) messages
-        val lineSpacing = 70f
+        val topMargin = 375f  // Below hand (160f) and pose (230f) messages
+        val lineSpacing = 60f
         val centerX = bitmap.width / 2f
+        val padding = 16f
 
         var currentY = topMargin
 
@@ -389,9 +387,20 @@ class Detector (
         if (classification != null && classification != 0) {
             val message = classificationLabels[classification] ?: ""
             if (message.isNotEmpty()) {
-                canvas.drawText(message, centerX, currentY, strokePaint)
+                val textWidth = textPaint.measureText(message)
+                val fm = textPaint.fontMetrics
+                val textHeight = fm.bottom - fm.top
+
+                // Rectangle coordinates
+                val left = centerX - textWidth / 2 - padding
+                val top = currentY + fm.top - padding
+                val right = centerX + textWidth / 2 + padding
+                val bottom = currentY + fm.bottom + padding
+
+                canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+
                 canvas.drawText(message, centerX, currentY, textPaint)
-                currentY += lineSpacing
+                currentY += (fm.bottom - fm.top) + lineSpacing
             }
         }
 
@@ -399,7 +408,18 @@ class Detector (
         if (angle != null && angle == 1) {
             val message = angleLabels[angle] ?: ""
             if (message.isNotEmpty()) {
-                canvas.drawText(message, centerX, currentY, strokePaint)
+                val textWidth = textPaint.measureText(message)
+                val fm = textPaint.fontMetrics
+                val textHeight = fm.bottom - fm.top
+
+                // Rectangle coordinates
+                val left = centerX - textWidth / 2 - padding
+                val top = currentY + fm.top - padding
+                val right = centerX + textWidth / 2 + padding
+                val bottom = currentY + fm.bottom + padding
+
+                canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+
                 canvas.drawText(message, centerX, currentY, textPaint)
             }
         }
