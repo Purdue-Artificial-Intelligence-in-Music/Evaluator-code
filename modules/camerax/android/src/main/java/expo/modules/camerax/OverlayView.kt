@@ -138,8 +138,8 @@ class OverlayView @JvmOverloads constructor(
 
         var currentY = 160f
 
-        val scaleX = bowImageWidth.toFloat() * 1.5f
-        val scaleY = bowImageHeight.toFloat() * 1.5f
+        val scaleX = 720f * 1.5f
+        val scaleY = 1280f * 1.5f
         val scaleFactor = 1f //max(scaleX, scaleY)
 
         if (results?.classification != -2) {
