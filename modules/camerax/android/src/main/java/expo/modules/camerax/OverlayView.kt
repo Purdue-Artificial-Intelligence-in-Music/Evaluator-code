@@ -45,6 +45,8 @@ class OverlayView @JvmOverloads constructor(
     private var xOffset: Float = 0f
     private var yOffset: Float = 0f
     private var handsScaleFactor = 0f
+    private var bowImageWidth = 1
+    private var bowImageHeight = 1
 
     companion object {
         // Classification constants
@@ -123,6 +125,10 @@ class OverlayView @JvmOverloads constructor(
         println("NEW WIDTH AND HEIGHT: $width, $height")
         return Pair(width, height)
     }
+    fun getBowDims(width: Int, height: Int) {
+        bowImageHeight = height
+        bowImageWidth = width
+    }
 
     override fun onDraw(canvas: Canvas) {
         if (results == null && handLandmarkerResult == null && handDetect.isEmpty() && poseDetect.isEmpty()) {
@@ -132,8 +138,8 @@ class OverlayView @JvmOverloads constructor(
 
         var currentY = 160f
 
-        val scaleX = imageWidth * 1.5f
-        val scaleY = imageHeight * 1.5f
+        val scaleX = bowImageWidth.toFloat() * 1.5f
+        val scaleY = bowImageHeight.toFloat() * 1.5f
         val scaleFactor = 1f //max(scaleX, scaleY)
 
         if (results?.classification != -2) {
