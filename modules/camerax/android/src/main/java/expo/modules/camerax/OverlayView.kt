@@ -318,16 +318,6 @@ class OverlayView @JvmOverloads constructor(
             textAlign = Paint.Align.CENTER
         }
 
-        val strokePaint = Paint().apply {
-            color = Color.BLACK // Use same black for stroke if you want an outline
-            style = Paint.Style.STROKE
-            strokeWidth = 6f
-            textSize = 56f
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-
         // Semi-transparent white rectangle paint
         val labelBackgroundPaint = Paint().apply {
             color = Color.argb(180, 255, 255, 255) // semi-transparent white
