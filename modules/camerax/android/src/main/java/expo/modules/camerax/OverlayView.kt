@@ -24,7 +24,6 @@ class OverlayView @JvmOverloads constructor(
     private var imageWidth = 1
     private var imageHeight = 1
     private var boxPaint : Paint = Paint()
-    private var textPaint = Paint()
     private var anglePaint = Paint()
 
     private var handLandmarkerResult: HandLandmarkerResult? = null
@@ -76,14 +75,26 @@ class OverlayView @JvmOverloads constructor(
         const val LANDMARK_STROKE_WIDTH = 8f
     }
 
+    val textPaint = Paint().apply {
+        color = Color.BLACK
+        style = Paint.Style.FILL
+        textSize = 56f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+
+    // Semi-transparent white rectangle paint
+    val labelBackgroundPaint = Paint().apply {
+        color = Color.argb(180, 255, 255, 255) // semi-transparent white
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+
     init {
         boxPaint.setColor(Color.GREEN)
         boxPaint.style = Paint.Style.STROKE
         boxPaint.strokeWidth = 8f
-
-        textPaint.setColor(Color.GREEN)
-        textPaint.style = Paint.Style.FILL
-        textPaint.textSize = 48f
 
         anglePaint.setColor(Color.GREEN)
         anglePaint.style = Paint.Style.FILL
@@ -129,9 +140,9 @@ class OverlayView @JvmOverloads constructor(
             // detection stopped, do not draw anything
             return
         }
-
-        var currentY = 160f
-
+        var currentY = 120f
+        val lineSpacing = 60f
+        val padding = 16f
         val scaleX = imageWidth * 1.5f
         val scaleY = imageHeight * 1.5f
         val scaleFactor = 1f //max(scaleX, scaleY)
@@ -208,46 +219,27 @@ class OverlayView @JvmOverloads constructor(
                 1 to "Adjust your bow angle"    // Incorrect bow angle
             )
 
-            // Prepare text paint styles for bow/string classification
-            val labelBackgroundPaint = Paint().apply {
-                color = Color.argb(180, 255, 255, 255) // semi-transparent white
-                style = Paint.Style.FILL
-                isAntiAlias = true
-            }
-
-            val labelTextPaint = Paint().apply {
-                color = Color.BLACK
-                textSize = 48f
-                isAntiAlias = true
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.LEFT
-                setShadowLayer(6f, 2f, 2f, Color.BLACK) // soft shadow for clarity
-            }
-
             // Fixed positions from top - below hand/pose classifications
-            val topMargin = 300f
-            val lineSpacing = 70f
             val centerX = width / 2f
 
-            //var currentY = topMargin
 
             // Draw classification message if there's an issue
             if (results?.classification != null && results?.classification != 0) {
                 val message = classificationLabels[results?.classification] ?: ""
                 if (message.isNotEmpty()) {
-                    val textWidth = labelTextPaint.measureText(message)
-                    val textHeight = labelTextPaint.fontMetrics.run {bottom - top}
+                    val textWidth = textPaint.measureText(message)
+                    val fm = textPaint.fontMetrics
+                    val textHeight = fm.bottom - fm.top
 
-                    val fm = labelTextPaint.fontMetrics
-
-                    val left = centerX - textWidth / 2 - 16f
-                    val top = currentY + fm.top - 16f
-                    val right = centerX + textWidth / 2 + 16f
-                    val bottom = currentY + labelTextPaint.fontMetrics.bottom + 16f
+                    // Rectangle coordinates
+                    val left = centerX - textWidth / 2 - padding
+                    val top = currentY + fm.top - padding
+                    val right = centerX + textWidth / 2 + padding
+                    val bottom = currentY + fm.bottom + padding
 
                     canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-                    canvas.drawText(message, centerX, currentY, labelTextPaint)
+                    canvas.drawText(message, centerX, currentY, textPaint)
                     currentY += (fm.bottom - fm.top) + lineSpacing
                 }
             }
@@ -256,19 +248,19 @@ class OverlayView @JvmOverloads constructor(
             if (results?.angle != null && results?.angle == 1) {
                 val message = angleLabels[results?.angle] ?: ""
                 if (message.isNotEmpty()) {
-                    val textWidth = labelTextPaint.measureText(message)
-                    val textHeight = labelTextPaint.fontMetrics.run {bottom - top}
+                    val textWidth = textPaint.measureText(message)
+                    val fm = textPaint.fontMetrics
+                    val textHeight = fm.bottom - fm.top
 
-                    val fm = labelTextPaint.fontMetrics
-
-                    val left = centerX - textWidth / 2 - 16f
-                    val top = currentY + fm.top - 16f
-                    val right = centerX + textWidth / 2 + 16f
-                    val bottom = currentY + labelTextPaint.fontMetrics.bottom + 16f
+                    // Rectangle coordinates
+                    val left = centerX - textWidth / 2 - padding
+                    val top = currentY + fm.top - padding
+                    val right = centerX + textWidth / 2 + padding
+                    val bottom = currentY + fm.bottom + padding
 
                     canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-                    canvas.drawText(message, centerX, currentY, labelTextPaint)
+                    canvas.drawText(message, centerX, currentY, textPaint)
                     currentY += (fm.bottom - fm.top) + lineSpacing
                 }
             }
@@ -308,28 +300,7 @@ class OverlayView @JvmOverloads constructor(
         val poseMatch = handClassRegex.find(poseDetect)
         val poseClass = poseMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
 
-        currentY = 300f
-
-        // Hand/pose classification text paint styles
-        val textPaint = Paint().apply {
-            color = Color.BLACK
-            style = Paint.Style.FILL
-            textSize = 56f
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-
-        // Semi-transparent white rectangle paint
-        val labelBackgroundPaint = Paint().apply {
-            color = Color.argb(180, 255, 255, 255) // semi-transparent white
-            style = Paint.Style.FILL
-            isAntiAlias = true
-        }
-
         val centerX = width / 2f
-
-        val padding = 16f
 
         // Draw hand message if there's an issue
         if (handClass in 1..2) {
@@ -354,7 +325,7 @@ class OverlayView @JvmOverloads constructor(
 
                 canvas.drawText(handMessage, centerX, currentY, textPaint)
 
-                currentY += (fm.bottom - fm.top) + 70f
+                currentY += (fm.bottom - fm.top) + lineSpacing
             }
         }
 
