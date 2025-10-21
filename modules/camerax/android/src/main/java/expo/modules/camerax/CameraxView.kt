@@ -153,7 +153,7 @@ class CameraxView(
     }
 
     fun setLensType(type: String) {
-        val newLensType = when (type.lowercase(Locale.ROOT)) {
+        val newLensType = when (type.lowercase()) {
             "front" -> CameraSelector.LENS_FACING_FRONT
             else -> CameraSelector.LENS_FACING_BACK
         }
@@ -219,16 +219,27 @@ class CameraxView(
     }
 
     private fun bindCameraUseCases() {
-        val cameraProvider = cameraProvider ?: return
+        if (viewFinder.display == null) return
 
-        val rotation = viewFinder.display?.rotation ?: Surface.ROTATION_0
-        val cameraSelector = CameraSelector.Builder()
-            .requireLensFacing(lensType)
+        val rotation = viewFinder.display.rotation
+
+        // CameraProvider
+        val cameraProvider = cameraProvider
+            ?: throw IllegalStateException("Camera initialization failed.")
+
+        // CameraSelector
+        val cameraSelector = CameraSelector.Builder().requireLensFacing(lensType).build()
+
+        val aspectRatioStrategy = AspectRatioStrategy(
+            AspectRatio.RATIO_16_9, AspectRatioStrategy.FALLBACK_RULE_NONE
+        )
+        val resolutionSelector = ResolutionSelector.Builder()
+            .setAspectRatioStrategy(aspectRatioStrategy)
             .build()
 
         // Preview setup (older CameraX syntax)
-        val preview = Preview.Builder()
-            .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+        preview = Preview.Builder()
+            .setResolutionSelector(resolutionSelector)
             .setTargetRotation(rotation)
             .build()
 
@@ -236,18 +247,22 @@ class CameraxView(
             .addUseCase(preview)
 
         // Analyzer only when detection is enabled
-        imageAnalyzer = if (isDetectionEnabled) {
-            ImageAnalysis.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
-                .setTargetRotation(rotation)
+
+        if (isDetectionEnabled) {
+            imageAnalyzer = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .build().apply {
-                    setAnalyzer(cameraExecutor) { imageProxy ->
-                        processImage(imageProxy)
-                    }
-                }.also { useCaseGroupBuilder.addUseCase(it) }
-        } else null
+                .setResolutionSelector(resolutionSelector)
+                .setTargetRotation(rotation)
+                .build()
+
+            imageAnalyzer?.setAnalyzer(cameraExecutor) { imageProxy ->
+                processImage(imageProxy)
+            }
+
+            useCaseGroupBuilder.addUseCase(imageAnalyzer!!)
+        }
+
 
         // Bind to lifecycle
         cameraProvider.unbindAll()
@@ -268,20 +283,20 @@ class CameraxView(
 
     private fun processImage(imageProxy: ImageProxy) {
         try {
-            handLandmarkerHelper.detectLiveStream(
-                imageProxy,
-                lensType == CameraSelector.LENS_FACING_FRONT
-            )
+
 
             val bitmapBuffer = createBitmap(
                 imageProxy.width,
                 imageProxy.height,
                 Bitmap.Config.ARGB_8888
             )
-            imageProxy.planes[0].buffer.apply {
-                bitmapBuffer.copyPixelsFromBuffer(this)
-                rewind()
-            }
+            imageProxy.use {
+                bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
+                imageProxy.planes[0].buffer.rewind()
+                handLandmarkerHelper.detectLiveStream(
+                    imageProxy,
+                    lensType != CameraSelector.LENS_FACING_BACK
+                )
 
             val matrix = Matrix().apply {
                 postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
@@ -293,7 +308,7 @@ class CameraxView(
             val rotatedBitmap = Bitmap.createBitmap(
                 bitmapBuffer, 0, 0, bitmapBuffer.width, bitmapBuffer.height, matrix, true
             )
-            performDetection(rotatedBitmap, imageProxy.width, imageProxy.height)
+            performDetection(rotatedBitmap)
         } catch (e: Exception) {
             Log.e(TAG, "Analyzer failure", e)
         } finally {
@@ -301,7 +316,7 @@ class CameraxView(
         }
     }
 
-    private fun performDetection(bitmap: Bitmap, sourceWidth: Int, sourceHeight: Int) {
+    private fun performDetection(bitmap: Bitmap) {
         detector?.detect(bitmap)
     }
 
@@ -312,27 +327,6 @@ class CameraxView(
         if (bowPoints != null) {
             profile.addSessionData(userId, bowPoints)
         }
-
-        val overlayWidth = overlayView.width.coerceAtLeast(1)
-        val overlayHeight = overlayView.height.coerceAtLeast(1)
-        val scaleFactor = max(
-            overlayWidth.toFloat() / sourceWidth.toFloat(),
-            overlayHeight.toFloat() / sourceHeight.toFloat()
-        )
-        val scaledImageWidth = sourceWidth.toFloat() * scaleFactor
-        val scaledImageHeight = sourceHeight.toFloat() * scaleFactor
-        val offsetX = (scaledImageWidth - overlayWidth.toFloat()) / 2f
-        val offsetY = (scaledImageHeight - overlayHeight.toFloat()) / 2f
-
-        bowPoints?.bow?.forEach { p ->
-            p.x = (p.x * scaleFactor) - offsetX
-            p.y = (p.y * scaleFactor) - offsetY
-        }
-        bowPoints?.string?.forEach { p ->
-            p.x = (p.x * scaleFactor) - offsetX
-            p.y = (p.y * scaleFactor) - offsetY
-        }
-
         latestBowResults = bowPoints
         updateOverlay()
         sendDetectionResults()
