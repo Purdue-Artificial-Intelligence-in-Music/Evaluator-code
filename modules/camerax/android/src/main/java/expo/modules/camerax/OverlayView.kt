@@ -12,6 +12,7 @@ import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import kotlin.math.min
 import kotlin.math.max
+import android.util.Log
 
 
 import kotlin.text.toFloat
@@ -157,7 +158,32 @@ class OverlayView @JvmOverloads constructor(
         if (results?.classification != -2) {
             val stringBox = results?.string
             val bowBox = results?.bow
+            Log.d("CheckDelCoords", "stringBox value: $stringBox")
 
+            Log.d("CheckDelCoords", "bowBox value: $bowBox")
+            if (stringBox != null) {
+                stringBox.forEachIndexed { index, point ->
+                    val x = point.x.toFloat()
+                    val y = point.y.toFloat()
+                    if (x > 1 || y > 1) {
+                        Log.d("CheckDelStringBoxCoords", "Point[$index] has coords > 1: x=$x, y=$y - NEEDS DIVISION BY 640")
+                    } else {
+                        Log.d("CheckDelStringBoxCoords", "Point[$index] is normalized: x=$x, y=$y")
+                    }
+                }
+            }
+
+            if (bowBox != null) {
+                bowBox.forEachIndexed { index, point ->
+                    val x = point.x.toFloat()
+                    val y = point.y.toFloat()
+                    if (x > 1 || y > 1) {
+                        Log.d("CheckDelBowBoxCoords", "Point[$index] has coords > 1: x=$x, y=$y - NEEDS DIVISION BY 640")
+                    } else {
+                        Log.d("CheckDelBowBoxCoords", "Point[$index] is normalized: x=$x, y=$y")
+                    }
+                }
+            }
             // Determine if there's an issue
             val hasIssue = (results?.classification != null && results?.classification != 0) ||
                     (results?.angle != null && results?.angle == 1)
@@ -167,51 +193,103 @@ class OverlayView @JvmOverloads constructor(
 
             // Update boxPaint color dynamically
             boxPaint.color = boxColor
-
             if (stringBox != null) {
-                canvas.drawLine(stringBox[0].x.toFloat() * scaleX,
-                    stringBox[0].y.toFloat() * scaleY,
-                    stringBox[1].x.toFloat() * scaleX,
-                    stringBox[1].y.toFloat() * scaleY,
+                canvas.drawLine(
+                    (stringBox[0].x.toFloat() / 640f) * scaleX,
+                    (stringBox[0].y.toFloat() / 640f) * scaleY,
+                    (stringBox[1].x.toFloat() / 640f) * scaleX,
+                    (stringBox[1].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                canvas.drawLine(stringBox[1].x.toFloat() * scaleX,
-                    stringBox[1].y.toFloat() * scaleY,
-                    stringBox[2].x.toFloat()  * scaleX,
-                    stringBox[2].y.toFloat() * scaleY,
+                canvas.drawLine(
+                    (stringBox[1].x.toFloat() / 640f) * scaleX,
+                    (stringBox[1].y.toFloat() / 640f) * scaleY,
+                    (stringBox[2].x.toFloat() / 640f) * scaleX,
+                    (stringBox[2].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                canvas.drawLine(stringBox[2].x.toFloat() * scaleX,
-                    stringBox[2].y.toFloat() * scaleY,
-                    stringBox[3].x.toFloat()  * scaleX,
-                    stringBox[3].y.toFloat() * scaleY,
+                canvas.drawLine(
+                    (stringBox[2].x.toFloat() / 640f) * scaleX,
+                    (stringBox[2].y.toFloat() / 640f) * scaleY,
+                    (stringBox[3].x.toFloat() / 640f) * scaleX,
+                    (stringBox[3].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                canvas.drawLine(stringBox[3].x.toFloat() * scaleX,
-                    stringBox[3].y.toFloat() * scaleY,
-                    stringBox[0].x.toFloat()  * scaleX,
-                    stringBox[0].y.toFloat() * scaleY
-                    , boxPaint)
+                canvas.drawLine(
+                    (stringBox[3].x.toFloat() / 640f) * scaleX,
+                    (stringBox[3].y.toFloat() / 640f) * scaleY,
+                    (stringBox[0].x.toFloat() / 640f) * scaleX,
+                    (stringBox[0].y.toFloat() / 640f) * scaleY,
+                    boxPaint)
             }
+
             if (bowBox != null) {
-                canvas.drawLine(bowBox[0].x.toFloat() * scaleX,
-                    bowBox[0].y.toFloat() * scaleY,
-                    bowBox[1].x.toFloat() * scaleX,
-                    bowBox[1].y.toFloat() * scaleY,
+                canvas.drawLine(
+                    (bowBox[0].x.toFloat() / 640f) * scaleX,
+                    (bowBox[0].y.toFloat() / 640f) * scaleY,
+                    (bowBox[1].x.toFloat() / 640f) * scaleX,
+                    (bowBox[1].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                canvas.drawLine(bowBox[1].x.toFloat() * scaleX,
-                    bowBox[1].y.toFloat() * scaleY,
-                    bowBox[2].x.toFloat()  * scaleX,
-                    bowBox[2].y.toFloat() * scaleY,
+                canvas.drawLine(
+                    (bowBox[1].x.toFloat() / 640f) * scaleX,
+                    (bowBox[1].y.toFloat() / 640f) * scaleY,
+                    (bowBox[2].x.toFloat() / 640f) * scaleX,
+                    (bowBox[2].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                canvas.drawLine(bowBox[2].x.toFloat() * scaleX,
-                    bowBox[2].y.toFloat() * scaleY,
-                    bowBox[3].x.toFloat()  * scaleX,
-                    bowBox[3].y.toFloat() * scaleY,
+                canvas.drawLine(
+                    (bowBox[2].x.toFloat() / 640f) * scaleX,
+                    (bowBox[2].y.toFloat() / 640f) * scaleY,
+                    (bowBox[3].x.toFloat() / 640f) * scaleX,
+                    (bowBox[3].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                canvas.drawLine(bowBox[3].x.toFloat() * scaleX,
-                    bowBox[3].y.toFloat() * scaleY,
-                    bowBox[0].x.toFloat()  * scaleX,
-                    bowBox[0].y.toFloat() * scaleY
-                    , boxPaint)
+                canvas.drawLine(
+                    (bowBox[3].x.toFloat() / 640f) * scaleX,
+                    (bowBox[3].y.toFloat() / 640f) * scaleY,
+                    (bowBox[0].x.toFloat() / 640f) * scaleX,
+                    (bowBox[0].y.toFloat() / 640f) * scaleY,
+                    boxPaint)
             }
+//            if (stringBox != null) {
+//                canvas.drawLine(stringBox[0].x.toFloat() * scaleX,
+//                    stringBox[0].y.toFloat() * scaleY,
+//                    stringBox[1].x.toFloat() * scaleX,
+//                    stringBox[1].y.toFloat() * scaleY,
+//                    boxPaint)
+//                canvas.drawLine(stringBox[1].x.toFloat() * scaleX,
+//                    stringBox[1].y.toFloat() * scaleY,
+//                    stringBox[2].x.toFloat()  * scaleX,
+//                    stringBox[2].y.toFloat() * scaleY,
+//                    boxPaint)
+//                canvas.drawLine(stringBox[2].x.toFloat() * scaleX,
+//                    stringBox[2].y.toFloat() * scaleY,
+//                    stringBox[3].x.toFloat()  * scaleX,
+//                    stringBox[3].y.toFloat() * scaleY,
+//                    boxPaint)
+//                canvas.drawLine(stringBox[3].x.toFloat() * scaleX,
+//                    stringBox[3].y.toFloat() * scaleY,
+//                    stringBox[0].x.toFloat()  * scaleX,
+//                    stringBox[0].y.toFloat() * scaleY
+//                    , boxPaint)
+//            }
+//            if (bowBox != null) {
+//                canvas.drawLine(bowBox[0].x.toFloat() * scaleX,
+//                    bowBox[0].y.toFloat() * scaleY,
+//                    bowBox[1].x.toFloat() * scaleX,
+//                    bowBox[1].y.toFloat() * scaleY,
+//                    boxPaint)
+//                canvas.drawLine(bowBox[1].x.toFloat() * scaleX,
+//                    bowBox[1].y.toFloat() * scaleY,
+//                    bowBox[2].x.toFloat()  * scaleX,
+//                    bowBox[2].y.toFloat() * scaleY,
+//                    boxPaint)
+//                canvas.drawLine(bowBox[2].x.toFloat() * scaleX,
+//                    bowBox[2].y.toFloat() * scaleY,
+//                    bowBox[3].x.toFloat()  * scaleX,
+//                    bowBox[3].y.toFloat() * scaleY,
+//                    boxPaint)
+//                canvas.drawLine(bowBox[3].x.toFloat() * scaleX,
+//                    bowBox[3].y.toFloat() * scaleY,
+//                    bowBox[0].x.toFloat()  * scaleX,
+//                    bowBox[0].y.toFloat() * scaleY
+//                    , boxPaint)
+//            }
 
             // Classification labels - only show if not correct
             val classificationLabels = mapOf(

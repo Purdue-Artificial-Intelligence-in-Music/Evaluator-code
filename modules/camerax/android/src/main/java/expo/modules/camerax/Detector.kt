@@ -14,7 +14,6 @@ import android.util.Log
 // import org.tensorflow.lite.InterpreterApi
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.nnapi.NnApiDelegate
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.common.ops.CastOp
 import org.tensorflow.lite.support.common.ops.NormalizeOp
@@ -24,6 +23,9 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import java.util.concurrent.CountDownLatch
 import org.tensorflow.lite.gpu.CompatibilityList
 import org.tensorflow.lite.gpu.GpuDelegate
+import com.qualcomm.qti.QnnDelegate
+import com.qualcomm.qti.QnnDelegate.Options.BackendType
+import java.io.File
 import kotlin.math.*
 import android.graphics.Typeface
 
@@ -34,8 +36,8 @@ class Detector (
 ){
 
     private var interpreter: Interpreter
-    private var nnApiDelegate: NnApiDelegate? = null
-    private var labels = mutableListOf<String>()
+    private var qnnDelegate: QnnDelegate? = null
+    private var tfliteGpu: GpuDelegate? = null
 
     private var tensorWidth = 0
     private var tensorHeight = 0
@@ -57,14 +59,43 @@ class Detector (
     //private var ogHeight: Int = 1
 
 
-
+    private fun Double.f1() = String.format("%.1f", this)
+    private fun Double.f3() = String.format("%.3f", this)
+    private fun Float.f2() = String.format("%.2f", this)
 
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
+    private fun nativeLibDir(): String = context.applicationInfo.nativeLibraryDir
+    private fun tryLoadQnnAndPickSkelDir(): String? {
+        val mustLoad = listOf("QnnSystem", "QnnHtp", "QnnHtpPrepare")
+        for (name in mustLoad) {
+            try { System.loadLibrary(name) }
+            catch (e: UnsatisfiedLinkError) {
+                Log.w(TAG, "QNN: failed to load $name: ${e.message}. nativeLibDir=${nativeLibDir()}")
+                return null
+            }
+        }
+        val base = nativeLibDir()
+        val skels = listOf(
+            "libQnnHtpV79Skel.so",
+            "libQnnHtpV75Skel.so",
+            "libQnnHtpV73Skel.so",
+            "libQnnHtpV69Skel.so"
+        )
+        val chosen = skels.firstOrNull { File("$base/$it").exists() }
+        if (chosen == null) {
+            Log.w(TAG, "QNN: no HTP skel found under $base")
+            return null
+        }
+        Log.i(TAG, "QNN: using skel=$chosen in $base")
+        return base
+    }
 
     companion object {
+        private const val TAG = "CheckDel"
+        private const val MODEL_ASSET = "nanoV2.tflite" // <-- set your model file name here
         private const val INPUT_MEAN = 0f
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
@@ -73,85 +104,75 @@ class Detector (
     }
 
     init {
-        val options = Interpreter.Options().apply{
-            //this.setNumThreads(4)
-            //this.setUseXNNPACK(true)
-            //Log.i("Detector", "isDelegateSupportedOnThisDevice: ${CompatibilityList().isDelegateSupportedOnThisDevice}")
-            //this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-            /*
-            try {
-                this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-            } catch (e: Exception) {
-                println("Gpu delegate failed")
-            }
-            */
+        interpreter = createInterpreterWithFallbacks(context)
 
-            //this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-
-            if (CompatibilityList().isDelegateSupportedOnThisDevice) {
-                this.addDelegate(GpuDelegate(CompatibilityList().bestOptionsForThisDevice))
-            } else {
-                this.setNumThreads(4)
-                this.setUseXNNPACK(true)
-            }
-
-
-
-
-
-
-            //this.setNumThreads(4)
-        }
-
-        /*
-        interpreter = Interpreter.create(
-            FileUtil.loadMappedFile(
-                MainActivity.applicationContext(),
-                "nano_best_float32.tflite"
-            ),
-            options
-        )
-         */
-        val model = FileUtil.loadMappedFile(context, "best_nano_float16.tflite")
-        interpreter = Interpreter(model, options)
-
-        modelReadyLatch.countDown()
-
+        // Cache tensor shapes (NHWC or NCHW)
         val inputShape = interpreter.getInputTensor(0)?.shape()
         val outputShape = interpreter.getOutputTensor(0)?.shape()
-        /*
-        println("output shape")
-        for (x in outputShape!!) {
-            println(x)
-        }
 
-         */
-
-
-
-        if (inputShape != null) {
-            tensorWidth = inputShape[1]
-            tensorHeight = inputShape[2]
-
-            // If in case input shape is in format of [1, 3, ..., ...]
-            if (inputShape[1] == 3) {
+        if (inputShape != null && inputShape.size >= 4) {
+            if (inputShape[1] == 3) {           // NCHW: [1,3,H,W]
+                tensorWidth = inputShape[3]
+                tensorHeight = inputShape[2]
+            } else {                            // NHWC: [1,H,W,3]
                 tensorWidth = inputShape[2]
-                tensorHeight = inputShape[3]
+                tensorHeight = inputShape[1]
             }
         }
 
-        if (outputShape != null) {
-            numElements = outputShape[2]
+        if (outputShape != null && outputShape.size == 3) {
             numChannel = outputShape[1]
+            numElements = outputShape[2]
         }
 
-        //println("Numelements, numchannel: $numElements, $numChannel")
-
+        modelReadyLatch.countDown()
     }
+    private fun createInterpreterWithFallbacks(context: Context): Interpreter {
+        val model = FileUtil.loadMappedFile(context, MODEL_ASSET)
+        val options = Interpreter.Options()
+
+        // 1) Qualcomm NPU (QNN/HTP)
+        val skelDir = tryLoadQnnAndPickSkelDir()
+        if (skelDir != null) {
+            try {
+                val qOpts = QnnDelegate.Options().apply {
+                    setBackendType(BackendType.HTP_BACKEND)
+                    setSkelLibraryDir(skelDir)
+                }
+                qnnDelegate = QnnDelegate(qOpts)
+                options.addDelegate(qnnDelegate)
+                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
+                return Interpreter(model, options)
+            } catch (t: Throwable) {
+                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
+            }
+        }
+
+        // 2) GPU
+        try {
+            val cl = CompatibilityList()
+            if (cl.isDelegateSupportedOnThisDevice) {
+                tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
+                options.addDelegate(tfliteGpu)
+                Log.i(TAG, "Using TFLite GPU delegate")
+                return Interpreter(model, options)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "GPU delegate unavailable: ${t.message}")
+        }
+
+        // 3) CPU/XNNPACK
+        Log.i(TAG, "Falling back to CPU/XNNPACK")
+        try { options.setUseXNNPACK(true) } catch (_: Throwable) {}
+        options.setNumThreads(4)
+        return Interpreter(model, options)
+    }
+
     fun close() {
-        interpreter.close()
+        try { interpreter.close() } catch (_: Throwable) {}
+        try { tfliteGpu?.close() } catch (_: Throwable) {}
+        try { qnnDelegate?.close() } catch (_: Throwable) {}
     }
-
     data class YoloResults(
         var bowResults: MutableList<Point>?,
         var stringResults: MutableList<Point>?
@@ -171,41 +192,62 @@ class Detector (
      */
 
 
-    fun detect(frame: Bitmap, sourceWidth: Int = 1, sourceHeight: Int = 1): YoloResults{
-        Log.d("DIMENSIONS WIDTH", frame.width.toString())
-        Log.d("DIMENSIONS HEIGHT", frame.height.toString())
-        //ogWdith = frame.width
-        //ogHeight = frame.height
-        var inferenceTime = SystemClock.uptimeMillis()
-        var results = YoloResults(null, null)
-        if (tensorWidth == 0
-            || tensorHeight == 0
-            || numChannel == 0
-            || numElements == 0) println("MODEL ERROR")
+    fun detect(frame: Bitmap, sourceWidth: Int = 1, sourceHeight: Int = 1): YoloResults {
+        val results = YoloResults(null, null)
 
-        //println(tensorWidth)
-        //println(tensorHeight)
-        Log.d("TENSOR DIMS", tensorWidth.toString() + " " + tensorHeight.toString())
-        val resizedBitmap = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
-
-        val tensorImage = TensorImage(INPUT_IMAGE_TYPE)
-        tensorImage.load(resizedBitmap)
-        val processedImage = imageProcessor.process(tensorImage)
-        val imageBuffer = processedImage.buffer
-        val output = TensorBuffer.createFixedSize(intArrayOf(1, numChannel, numElements), OUTPUT_IMAGE_TYPE)
-
-        interpreter.run(imageBuffer, output.buffer)
-
-
-
-        val bestBoxes = newBestBox(output.floatArray)
-        /*
-        val newBoxes = mutableListOf<PointF>()
-        for (box in bestBoxes) {
-            val points = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle)
-            newBoxes.addAll(points)
+        if (tensorWidth == 0 || tensorHeight == 0 || numChannel == 0 || numElements == 0) {
+            Log.e(TAG, "MODEL ERROR: invalid tensor shapes")
+            return results
         }
-        */
+
+        // Resize → normalize → cast
+        val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        val tensorImage = TensorImage(INPUT_IMAGE_TYPE).also { it.load(resized) }
+        val processed = imageProcessor.process(tensorImage)
+        val imageBuffer = processed.buffer
+
+        // Model output buffer
+        val output = TensorBuffer.createFixedSize(
+            intArrayOf(1, numChannel, numElements),
+            OUTPUT_IMAGE_TYPE
+        )
+
+        // Inference
+        val t0 = SystemClock.uptimeMillis()
+        interpreter.run(imageBuffer, output.buffer)
+        val inferMs = SystemClock.uptimeMillis() - t0
+        Log.d(TAG, "inference ${inferMs}ms")
+
+        // Handle output layout: [1, 7, N] vs [1, N, 7] (e.g., 8400)
+        val outShape = interpreter.getOutputTensor(0).shape()
+        val raw = output.floatArray
+
+        val (C, N, parsed) = if (outShape.size == 3 && outShape[1] == 8400 && outShape[2] == 7) {
+            // Flattened [1, 8400, 7] → [1, 7, 8400]
+            Triple(7, 8400, transposeN7To7N(raw, N = outShape[1], C = outShape[2]))
+        } else {
+            // Assume [1, 7, N]
+            Triple(outShape[1], outShape[2], raw)
+        }
+
+        // Parse best boxes from [1, 7, N]
+        val bestBoxes = newBestBox(parsed, N)
+
+        // Log a peek
+        Log.d(
+            "CheckDelBox",
+            buildString {
+                append("POSTPROCESS BOXES (${bestBoxes.size}) →\n")
+                bestBoxes.take(5).forEachIndexed { i, b ->
+                    append(
+                        "[$i] cls=${b.cls}, conf=${b.conf.f2()}, " +
+                                "x=${b.x.f2()}, y=${b.y.f2()}, w=${b.width.f2()}, h=${b.height.f2()}, ang=${b.angle.f2()}\n"
+                    )
+                }
+                if (bestBoxes.size > 5) append("... (${bestBoxes.size - 5} more)\n")
+            }
+        )
+
 
         var bowConf = 0f
         var stringConf = 0f
@@ -249,7 +291,6 @@ class Detector (
                 Log.d("BOX STRING", results.stringResults.toString())
             }
         }
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
         //println("TRUE INFERENCE TIME: $inferenceTime")
         //println("NUMBER OF BOXES: ${bestBoxes.size}")
         //println("bow conf, string conf: $bowConf, $stringConf")
@@ -267,7 +308,20 @@ class Detector (
     }
 
 
-
+    private fun transposeN7To7N(src: FloatArray, N: Int = 8400, C: Int = 7): FloatArray {
+        val dst = FloatArray(C * N)
+        var n = 0
+        while (n < N) {
+            val base = n * C
+            var c = 0
+            while (c < C) {
+                dst[c * N + n] = src[base + c]
+                c++
+            }
+            n++
+        }
+        return dst
+    }
     fun drawPointsOnBitmap(
         bitmap: Bitmap,
         points: YoloResults,
@@ -463,22 +517,23 @@ class Detector (
         }
     }
 
-    private fun newBestBox(array : FloatArray) : List<OrientedBoundingBox> {
-        val boundingBoxes = mutableListOf<OrientedBoundingBox>()
+    private fun newBestBox(array: FloatArray, N: Int): List<OrientedBoundingBox> {
+        val out = mutableListOf<OrientedBoundingBox>()
 
-        for (r in 0 until numElements) {
-            val stringCnf = array[5 * numElements + r]
-            val bowCnf = array[4 * numElements + r]
+        for (r in 0 until N) {
+            val stringCnf = array[5 * N + r]
+            val bowCnf = array[4 * N + r]
             val cls = if (stringCnf > bowCnf) 1 else 0
-            val cnf = if (stringCnf > bowCnf) stringCnf else bowCnf
-            if (cnf > CONFIDENCE_THRESHOLD) {
-                val x = array[r]
-                val y = array[1 * numElements + r]
-                var h = array[2 * numElements + r]
-                var w = array[3 * numElements + r]
+            val cnf = max(stringCnf, bowCnf)
 
-                val angle = array[6 * numElements + r]
-                boundingBoxes.add(
+            if (cnf > CONFIDENCE_THRESHOLD) {
+                val x = array[0 * N + r]
+                val y = array[1 * N + r]
+                val h = array[2 * N + r]
+                val w = array[3 * N + r]
+                val angle = array[6 * N + r]
+
+                out.add(
                     OrientedBoundingBox(
                         x = x, y = y, height = h, width = w,
                         conf = cnf, cls = cls, angle = angle
@@ -487,8 +542,7 @@ class Detector (
             }
         }
 
-
-        return boundingBoxes
+        return out
     }
 
 

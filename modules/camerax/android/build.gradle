@@ -31,16 +31,52 @@ if (useManagedAndroidSdkVersions) {
   }
 }
 
+
+repositories {
+  google()
+  mavenCentral()
+
+  // ✅ Required so Gradle can find Qualcomm LiteRT AARs and .so libraries
+  flatDir {
+    dirs "H:/Downloads/QualcommSDK/qairt/2.38.0.250901/lib/aarch64-android"
+  }
+}
+
 android {
   namespace "expo.modules.camerax"
   defaultConfig {
     versionCode 1
     versionName "0.6.3"
+    ndk {
+      abiFilters "arm64-v8a" // QNN/HTP is arm64-only
+    }
+    packaging {
+      jniLibs.useLegacyPackaging = true
+    }
   }
   lintOptions {
     abortOnError false
   }
+  packagingOptions {
+    pickFirst "lib/**/libQnn*.so"
+    pickFirst "lib/**/libc++_shared.so"
+
+  }
+
+// ✅ This mimics the old “jniLibs.useLegacyPackaging = true”
+
+
+  compileOptions {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
 }
+
+
 
 dependencies {
   // CameraX dependencies
@@ -69,4 +105,6 @@ dependencies {
   
   // Other
   implementation 'androidx.fragment:fragment-ktx:1.6.2'
+  implementation "com.qualcomm.qti:qnn-runtime:2.38.0"
+  implementation "com.qualcomm.qti:qnn-litert-delegate:2.38.0"
 }

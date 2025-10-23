@@ -38,3 +38,7 @@ cv/.cxx/
 
 expo-env.d.ts
 # @end expo-cli
+
+android/app/google-services.json
+android/app/*firebase*-service-account.json
+android/app/*firebase*-adminsdk-*.json

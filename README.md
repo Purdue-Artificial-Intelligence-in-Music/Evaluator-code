@@ -33,6 +33,22 @@
 3. Connect to Android device - Start Virtual device or connect to physical device via USB
    
    Run ```adb devices``` to verify connection
+
+## NPU + QNN SETUP (works with emulator)
+- Download the entire Qualcomm AI SDK from here https://www.qualcomm.com/developer/software/qualcomm-ai-engine-direct-sdk
+- In modules\camerax\android\build.gradle, replace flatDir{} path 
+with the path of aarch64-android in your Qualcomm AI SDK folder.
+Path in SDK folder should be roughly "QualcommSDK/qairt/2.38.0.250901/lib/aarch64-android", but verify.
+- create two folders "jniLibs" and "arm64-v8a" within that folder if they don't exist in the
+folder path "modules/camerax/android/src/main/jniLibs"
+- Download all files from here https://drive.google.com/drive/folders/1qA3KZxN9eVqKu0i0XrEHumIE49JOg6mx?usp=sharing
+- Move all files into arm64-v8a folder
+- IMPORTANT: Everything should be set, after running the first successful build 
+delete all files within arm64-v8a (but not the folder), because Android Studio
+creates a copy in a cache directory and will get confused if you build again
+without deleting the ones in arm64-v8a because there's two of them.
+
+
 5. Build and Run on Android
   ```bash
   npx expo run:android # This may take a while
