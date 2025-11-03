@@ -32,3 +32,6 @@ target 'temp' do
     )
   end
 end
+
+use_frameworks!
+pod 'TensorFlowLiteSwift'
