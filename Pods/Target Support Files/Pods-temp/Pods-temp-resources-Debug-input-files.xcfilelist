@@ -1,0 +1,4 @@
+${PODS_ROOT}/Target Support Files/Pods-temp/Pods-temp-resources.sh
+${PODS_CONFIGURATION_BUILD_DIR}/TensorFlowLiteC/TensorFlowLiteC.bundle
+${PODS_CONFIGURATION_BUILD_DIR}/TensorFlowLiteC/TensorFlowLiteCCoreML.bundle
+${PODS_CONFIGURATION_BUILD_DIR}/TensorFlowLiteSwift/TensorFlowLite.bundle

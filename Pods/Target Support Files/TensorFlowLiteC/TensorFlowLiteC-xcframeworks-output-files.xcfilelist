@@ -1,0 +1,2 @@
+${PODS_XCFRAMEWORKS_BUILD_DIR}/TensorFlowLiteC/Core/TensorFlowLiteC.framework
+${PODS_XCFRAMEWORKS_BUILD_DIR}/TensorFlowLiteC/CoreML/TensorFlowLiteCCoreML.framework
