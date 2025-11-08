@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+//import { requireNativeModule, requireNativeViewManager } from 'expo-modules-core';
 import { requireNativeViewManager } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const CameraxView = requireNativeViewManager('Camerax');
+//const Camerax = requireNativeModule('Camerax');
 
 const CameraComponent = ({ startDelay, onClose }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
   const [lensType, setLensType] = useState('back'); // use front or back camera
   const [userId, setUserId] = useState('default_user');
+
+  const ref = useRef<any>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {

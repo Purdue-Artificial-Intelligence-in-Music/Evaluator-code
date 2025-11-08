@@ -1,38 +1,54 @@
 import ExpoModulesCore
-import WebKit
+import AVFoundation
+import UIKit
 
-// This view will be used as a native component. Make sure to inherit from `ExpoView`
-// to apply the proper styling (e.g. border radius and shadows).
 class CameraxView: ExpoView {
-  let webView = WKWebView()
-  let onLoad = EventDispatcher()
-  var delegate: WebViewDelegate?
+  let session = AVCaptureSession()
+  let previewLayer: AVCaptureVideoPreviewLayer
 
   required init(appContext: AppContext? = nil) {
+    self.previewLayer = AVCaptureVideoPreviewLayer(session: session)
     super.init(appContext: appContext)
-    clipsToBounds = true
-    delegate = WebViewDelegate { url in
-      self.onLoad(["url": url])
-    }
-    webView.navigationDelegate = delegate
-    addSubview(webView)
+
+    previewLayer.videoGravity = .resizeAspectFill
+    layer.addSublayer(previewLayer)
+
+    let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)!
+    let input = try! AVCaptureDeviceInput(device: device)
+    session.addInput(input)
   }
 
   override func layoutSubviews() {
-    webView.frame = bounds
-  }
-}
-
-class WebViewDelegate: NSObject, WKNavigationDelegate {
-  let onUrlChange: (String) -> Void
-
-  init(onUrlChange: @escaping (String) -> Void) {
-    self.onUrlChange = onUrlChange
+    super.layoutSubviews()
+    previewLayer.frame = self.bounds 
   }
 
-  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation) {
-    if let url = webView.url {
-      onUrlChange(url.absoluteString)
+  func start() {
+    if !session.isRunning {
+      session.startRunning()
     }
+  }
+
+  func stop() {
+    if session.isRunning {
+      session.stopRunning()
+    }
+  }
+
+  func setLensType(_ lensType: String) {
+    session.beginConfiguration()
+
+    if let currentInput = session.inputs.first {
+      session.removeInput(currentInput)
+    }
+
+    let position: AVCaptureDevice.Position = (lensType == "front") ? .front : .back
+
+    if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) {
+      let input = try! AVCaptureDeviceInput(device: device)
+      session.addInput(input)
+    }
+
+    session.commitConfiguration()
   }
 }
