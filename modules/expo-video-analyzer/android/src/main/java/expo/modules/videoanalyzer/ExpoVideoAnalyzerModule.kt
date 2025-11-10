@@ -23,6 +23,8 @@ import com.arthenica.ffmpegkit.ReturnCode
 import android.os.Environment
 
 import kotlin.time.measureTime
+import expo.modules.camerax.HandLandmarkerHelper
+
 
 class ExpoVideoAnalyzerModule : Module() {
     private var detector: Detector? = null
@@ -36,12 +38,15 @@ class ExpoVideoAnalyzerModule : Module() {
     var resultsAsync = HashMap<Long, Bitmap?>() // Holds bitmap with time as key
     // Boolean for when done reading more bitmaps
     var readingBitmaps = false
+    // Boolean for when done running detection on bitmaps
+    var detecting = false
 
     // Mutexes for accessing async aspects
     var inputMutexes: Array<Mutex>? = null
     val outputMutex = Mutex()
     val readingBitmapsMutex = Mutex()
     val processingMutex = Mutex()
+    val detectingMutex = Mutex()
     var processing = false
     var outputVideoPath: String? = null
 
@@ -236,36 +241,50 @@ class ExpoVideoAnalyzerModule : Module() {
 
                     Log.d("ProcessVideo", "Starting video processing for: $videoUri")
 
-                    var processedFrameCount = 0
+                    processing = true
+
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(appContext.reactContext, Uri.parse(videoUri))
+
+                    val duration = 5_000L
+                    /*(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong()
+                        ?: 0L) / 2L // in milliseconds*/
+
+                    val videoWidth =
+                        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt()
+                            ?: 1920
+                    val videoHeight =
+                        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt()
+                            ?: 1080
+
+                    val rotation =
+                        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                            ?.toInt() ?: 0
+
+                    // Adjust width and height by rotating
+                    val (outputWidth, outputHeight) = if (rotation == 90 || rotation == 270) {
+                        Pair(videoHeight, videoWidth)
+                    } else {
+                        Pair(videoWidth, videoHeight)
+                    }
+
+                    retriever.release()
+
+                    Log.d("Encode", "Original video: ${videoWidth}x${videoHeight}, rotation: $rotation")
+                    Log.d("Encode", "Output video: ${outputWidth}x${outputHeight}")
+
+                    val targetFPS = 15
+                    val processedFrameCount = (duration * targetFPS) / 1_000L.toInt()
 
                     // Use processVideoStream function to loop through and annotate frames
-                    processVideoStreamAsync(videoUri, targetFPS=15) { annotatedFrame, index ->
-                        try {
-                            processedFrameCount++
-                            Log.d(
-                                "ProcessFrame",
-                                "Processed frame $processedFrameCount at index ${index}μs"
-                            )
-
-                            // Frame processing is complete, just count and log
-
-                        } catch (e: Exception) {
-                            Log.e(
-                                "ProcessFrame",
-                                "Failed to process frame $processedFrameCount: ${e.message}"
-                            )
-                        } finally {
-                            // Always recycle the bitmap to prevent memory leaks
-                            //annotatedFrame.recycle()
-                        }
-                    }
+                    processVideoStreamAsync(videoUri, duration, outputHeight, outputWidth, targetFPS)
 
                     withContext(Dispatchers.Main) {
                         while (processingMutex.withLock {processing}) {
                             delay(100)
                             Log.d("waiting", "waiting for processing to finish")
                         }
-                        if ((outputVideoPath != null) && processedFrameCount > 0) {
+                        if (outputVideoPath != null) {
                             Log.d(
                                 "ProcessVideo",
                                 "Successfully processed $processedFrameCount frames"
@@ -503,152 +522,6 @@ class ExpoVideoAnalyzerModule : Module() {
         return results
     }
 
-    private suspend fun getVideoAnnotationsAsync(
-        videoURI: String, targetFPS: Int = 30,
-        maxTime: Float = -1.0f, numDetectors: Int = 2
-    ): Boolean {
-        val maxTimeLong: Long = 1000000L * maxTime.toLong()
-        Log.d("maxTimeLong:", "$maxTimeLong")
-
-        // Initialize results
-        val results = mutableListOf<Pair<Detector.returnBow, Long>>()
-
-        // Set time delta using fps
-        val timeDelta: Long = (1000 / targetFPS) * 1000L // Convert milliseconds to microseconds
-
-        val jobs = mutableListOf<Job>()
-
-        // Set awaiting for bitmaps to be done reading
-        readingBitmapsMutex.withLock {
-            readingBitmaps = true
-        }
-
-        // Continuously add bitmaps to the input for the detectors to run inference on
-        jobs.add(CoroutineScope(Dispatchers.Default).launch {
-            val timeTaken = measureTime {
-                var bitmapOverTime: Boolean = false
-                var timeUsBitmap: Long = 0
-                var bitmapImage: Bitmap? = extractFrameFromVideo(videoURI, timeUsBitmap)
-                var bitmapIndex = 0
-                while ((!bitmapOverTime) && (bitmapImage != null)) {
-                    // Add bitmap image to inputs
-                    val arrayMember = inputBitmaps!![bitmapIndex]
-                    val arrayMutex = inputMutexes!![bitmapIndex]
-                    arrayMutex.withLock {
-                        arrayMember.addFirst(bitmapImage!!)
-                    }
-
-                    timeUsBitmap += timeDelta
-                    bitmapIndex++
-                    if (bitmapIndex >= numDetectors) {
-                        bitmapIndex = 0
-                    }
-
-                    // might add a sleep or something here to prevent over blocking access to bitmaps
-
-                    // Check over max time (including -1 as whole video)
-                    if (timeUsBitmap > maxTimeLong) {
-                        Log.d(
-                            "OverMaxTime",
-                            "timeUsBitmap: $timeUsBitmap maxTimeLong: $maxTimeLong"
-                        )
-                        bitmapOverTime = true
-                    }
-
-                    bitmapImage = extractFrameFromVideo(videoURI, timeUsBitmap)
-                }
-
-                // Mark reading bitmaps as done
-                readingBitmapsMutex.withLock {
-                    readingBitmaps = false
-                }
-            }
-            Log.d("OverMaxTime", "Bitmap total time: $timeTaken")
-        })
-
-        // Launch both detectors to do inference on their sets of images
-        repeat(numDetectors) { index ->
-            jobs.add(CoroutineScope(Dispatchers.Default).launch {
-                val timeTaken = measureTime {
-                    var overTime: Boolean = false
-                    var timeUs: Long = (index) * timeDelta
-                    var isBitmapEmpty = true
-                    // get this detector's mutex
-                    var inputMutex = inputMutexes!![index]
-                    // get this detector's input bitmap array
-                    var inputArray = inputBitmaps!![index]
-                    // Await first bitmap
-                    while (isBitmapEmpty) {
-                        delay(10)
-                        inputMutex.withLock {
-                            isBitmapEmpty = inputArray.isEmpty()
-                        }
-                    }
-                    // Get first bitmap image
-                    var bitmapImage: Bitmap? = null
-                    inputMutex.withLock {
-                        bitmapImage = inputArray.removeFirst()
-                    }
-                    var isReadingBitmaps = true
-                    while ((!overTime) || ((isReadingBitmaps) && (bitmapImage != null))) {
-                        try {
-                            Log.d("Interpreter", "TfLite.initialize() completed successfully")
-                            Log.d(
-                                "Timing",
-                                "Index: $index time is ${(timeUs.toDouble() / 1000000.0)}"
-                            )
-                            bitmapImage.let {
-                                val index = (timeUs / timeDelta).toInt()
-                                detector!!.modelReadyLatch.await()
-                                val result: Pair<Detector.returnBow, Long>
-                                val timeTaken = measureTime {
-                                    result =
-                                        Pair(detector!!.classify(detector!!.detect(it!!)), timeUs)
-                                }
-                                /*outputMutex.withLock {
-                                    resultsAsync!![index] = result
-                                }*/
-                                Log.d("InferenceTime", "Time Taken: $timeTaken")
-                            }
-                        } catch (e: Exception) {
-                            Log.e("Interpreter", "Error during evaluation", e)
-                        }
-                        timeUs += numDetectors.toLong() * timeDelta
-
-                        if (timeUs > (maxTimeLong - numDetectors.toLong() * timeDelta)) {
-                            Log.d(
-                                "OverMaxTime",
-                                "index: $index timeUs: $timeUs maxTimeLong: $maxTimeLong"
-                            )
-                            overTime = true
-                        }
-
-                        // Check if still waiting for more bitmaps
-                        readingBitmapsMutex.withLock {
-                            isReadingBitmaps = readingBitmaps
-                        }
-                        // If bitmaps are still being read in, wait
-                        while (isBitmapEmpty && isReadingBitmaps) {
-                            delay(10)
-                            inputMutex.withLock {
-                                isBitmapEmpty = inputArray.isEmpty()
-                            }
-                        }
-                        // Get next bitmap
-                        if (isReadingBitmaps) {
-                            inputMutex.withLock {
-                                bitmapImage = inputArray.removeFirst()
-                            }
-                        }
-                    }
-                }
-                Log.d("OverMaxTime", "Index: $index Total Time: $timeTaken")
-            })
-        }
-
-        return true
-    }
-
 
     /*
      * Returns a list of <Bitmap, Long> pairs from a passed in video.
@@ -849,44 +722,19 @@ class ExpoVideoAnalyzerModule : Module() {
     // detect() and drawPointsOnBitmap() from detector to get annotated frames.
     private fun processVideoStreamAsync(
         videoURI: String,
-        targetFPS: Int = 15,
-        onFrameProcessed: (Bitmap, Long) -> Unit
+        duration: Long,
+        outputHeight: Int,
+        outputWidth: Int,
+        targetFPS: Int = 15
     ) {
-        processing = true
-        val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
-        val numDetectors = 4
+        val numDetectors = 1
+        val timeDelta = 1_000_000L / targetFPS // microsecond，30fps = 33,333 microseconds
+        val maxTimeLong: Long = 1000L * duration // milliseconds to microseconds
+
         inputBitmaps = Array(numDetectors) {ArrayDeque<Bitmap>()}
         inputMutexes = Array(numDetectors) {Mutex()}
-        val timeDelta = 1_000_000L / targetFPS // microsecond，30fps = 33,333 microseconds
-        val duration = (retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong()
-                ?: 0L) / 2L // in milliseconds
-        val maxTimeLong: Long = 1000L * duration // milliseconds to microseconds
+
         Log.d("duration", "duration: $duration maxTimeLong: $maxTimeLong")
-
-        val videoWidth =
-            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt()
-                ?: 1920
-        val videoHeight =
-            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt()
-                ?: 1080
-
-        val rotation =
-            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                ?.toInt() ?: 0
-
-        // Adjust width and height by rotating
-        val (outputWidth, outputHeight) = if (rotation == 90 || rotation == 270) {
-            Pair(videoHeight, videoWidth)
-        } else {
-            Pair(videoWidth, videoHeight)
-        }
-
-        retriever.release()
-
-        Log.d("Encode", "Original video: ${videoWidth}x${videoHeight}, rotation: $rotation")
-        Log.d("Encode", "Output video: ${outputWidth}x${outputHeight}")
-
 
         //val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
         //val outputPath = File(publicMoviesDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
@@ -900,25 +748,123 @@ class ExpoVideoAnalyzerModule : Module() {
 
         Log.d("Encode", "Target frame interval: ${timeDelta}μs, Total frames: $totalFrames")
 
+        readBitmapsAsync(videoURI, maxTimeLong, targetFPS, numDetectors)
 
-        try {
-            Log.d("maxTimeLong:", "$maxTimeLong")
+        // Launch all detectors to do inference on their arrays of images
+        detecting = true
+        /* Inputs:
+        * detecting/detectingMutex
+        * inputArray/inputMutex/resultsAsync
+        * timeDelta/maxTimeLong
+        * outputPath, outputWidth, outputHeight, fps
+        * numDetecting
+        */
+        detectBitmapsAsync(maxTimeLong, targetFPS, numDetectors)
 
-            // Set for awaiting for bitmaps to be done
-            readingBitmaps = true
 
-            // Continuously add bitmaps to the input for the detectors to run inference on
-            CoroutineScope(Dispatchers.Default).launch {
+        // Encoder can wait for and encode output
+        /* Inputs:
+         * detecting/detectingMutex
+         * resultsAsync
+         * timeDelta
+         * outputPath, outputWidth, outputHeight, fps
+         */
+        encodeBitmapsAsync(maxTimeLong, outputPath, outputWidth, outputHeight, targetFPS)
+    }
+
+    private fun encodeBitmapsAsync(maxTimeLong: Long, outputPath: String, outputWidth: Int,
+                                   outputHeight: Int, targetFPS: Int) {
+        CoroutineScope(Dispatchers.Default).launch {
+            val executionTime = measureTime {
+                val timeDelta = 1_000_000L / targetFPS
+                // Use the original video's resolution and the same FPS
+                val encoder =
+                    VideoEncoder(File(outputPath), outputWidth, outputHeight, fps = targetFPS)
+                var index = 0
+                var timeUs = 0L
+                var result: Pair<Bitmap, Long>? = null
+                var frame: Bitmap? = null
+                var frameTime: Long = 0L
+                // encode images while detecting is happening
+                while ((detectingMutex.withLock { detecting })) {
+                    while (!outputMutex.withLock { resultsAsync.containsKey(timeUs) } &&
+                        (detectingMutex.withLock { detecting })) {
+                        delay(100);
+                        Log.d("Encode", "Awaiting next image")
+                    }
+
+                    while (outputMutex.withLock { resultsAsync.containsKey(timeUs) }) {
+                        outputMutex.withLock {
+                            frame = resultsAsync.remove(timeUs)
+                        }
+                        if (frame!!.isRecycled()) {
+                            Log.d("Encode", "FRAME IS RECYCLED")
+                        } else {
+                            index = (timeUs / timeDelta).toInt()
+                            encoder.encodeFrame(frame!!)
+                            frame!!.recycle()
+                            Log.d("Detecting", "Frame $index encoded")
+                        }
+                        timeUs += timeDelta
+                    }
+                }
+                // Ensures that all images were processed before exiting
+                while (outputMutex.withLock { resultsAsync.containsKey(timeUs) }) {
+                    outputMutex.withLock {
+                        frame = resultsAsync.remove(timeUs)
+                    }
+                    if (frame!!.isRecycled()) {
+                        Log.d("Encode", "FRAME IS RECYCLED")
+                    } else {
+                        index = (timeUs / timeDelta).toInt()
+                        encoder.encodeFrame(frame!!)
+                        frame!!.recycle()
+                        Log.d("Detecting", "Frame $index encoded")
+                    }
+                    timeUs += timeDelta
+                }
+
+                encoder.finish()
+                Log.d("Encode", "Video encoding completed. Total frames processed: $index")
+                // Check output file was generated
+                val fileExists = File(outputPath).exists() && File(outputPath).length() > 0
+                if (fileExists) {
+                    outputVideoPath = outputPath
+                } else {
+                    outputVideoPath = null
+                }
+
+                processingMutex.withLock {
+                    processing = false
+                }
+            }
+            Log.d("Runtime", "Total runtime was $executionTime")
+        }
+    }
+
+    private fun readBitmapsAsync(videoURI: String, maxTimeLong: Long,
+                             targetFPS: Int = 15, numDetectors: Int = 1) {
+
+        // Set for awaiting for bitmaps to be done
+        readingBitmaps = true
+        CoroutineScope(Dispatchers.Default).launch {
+            val retriever = MediaMetadataRetriever()
+            try {
+                Log.d("maxTimeLong:", "$maxTimeLong")
+                val timeDelta = 1_000_000L / targetFPS
                 var frame: Bitmap? = null
                 var processedFrame: Bitmap? = null
                 var bitmapOverTime: Boolean = false
                 var timeUsBitmap: Long = 0
                 var frameIndex = 0
                 var bitmapIndex = 0
-                val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
                 // Extract specific frame
-                frame = retriever.getFrameAtTime(timeUsBitmap, MediaMetadataRetriever.OPTION_CLOSEST)
+                frame =
+                    retriever.getFrameAtTime(
+                        timeUsBitmap,
+                        MediaMetadataRetriever.OPTION_CLOSEST
+                    )
                 frame?.let { originalFrame ->
                     // convert format to ARGB_8888
                     processedFrame = if (originalFrame.config != Bitmap.Config.ARGB_8888) {
@@ -936,7 +882,7 @@ class ExpoVideoAnalyzerModule : Module() {
                     val arrayMember = inputBitmaps!![bitmapIndex]
                     val arrayMutex = inputMutexes!![bitmapIndex]
                     Log.d("Detecting", "adding bitmap $frameIndex to input $bitmapIndex")
-                    if (arrayMutex.withLock{arrayMember.size > 20}) {
+                    if (arrayMutex.withLock { arrayMember.size > 20 }) {
                         delay(100)
                         Log.d("bitmap", "awaiting detector processing")
                         bitmapIndex++
@@ -945,7 +891,7 @@ class ExpoVideoAnalyzerModule : Module() {
                         }
                     } else {
                         arrayMutex.withLock {
-                            arrayMember.addFirst(processedFrame!!)
+                            arrayMember.addLast(processedFrame!!)
                         }
 
                         timeUsBitmap += timeDelta
@@ -955,10 +901,8 @@ class ExpoVideoAnalyzerModule : Module() {
                             bitmapIndex = 0
                         }
 
-                        // might add a sleep or something here to prevent over blocking access to bitmaps
-
-                        // Check over max time (including -1 as whole video)
-                        if (timeUsBitmap > maxTimeLong) {
+                        // Check over max time
+                        if (timeUsBitmap + timeDelta > maxTimeLong) {
                             Log.d(
                                 "OverMaxTime",
                                 "timeUsBitmap: $timeUsBitmap maxTimeLong: $maxTimeLong"
@@ -966,52 +910,61 @@ class ExpoVideoAnalyzerModule : Module() {
                             bitmapOverTime = true
                         }
 
-                        // Extract specific frame
-                        frame =
-                            retriever.getFrameAtTime(timeUsBitmap, MediaMetadataRetriever.OPTION_CLOSEST)
-                        frame?.let { originalFrame ->
-                            // convert format to ARGB_8888
-                            processedFrame = if (originalFrame.config != Bitmap.Config.ARGB_8888) {
-                                val convertedBitmap =
-                                    originalFrame.copy(Bitmap.Config.ARGB_8888, false)
-                                Log.d("bitmap", "recycling originalFrame")
-                                originalFrame.recycle()
-                                frame = null // Avoid repeated recycling
-                                convertedBitmap
-                            } else {
-                                originalFrame
+                        if (!bitmapOverTime) {
+                            // Extract specific frame
+                            frame = retriever.getFrameAtTime(
+                                timeUsBitmap,
+                                MediaMetadataRetriever.OPTION_CLOSEST
+                            )
+                            frame?.let { originalFrame ->
+                                // convert format to ARGB_8888
+                                processedFrame =
+                                    if (originalFrame.config != Bitmap.Config.ARGB_8888) {
+                                        val convertedBitmap =
+                                            originalFrame.copy(Bitmap.Config.ARGB_8888, false)
+                                        Log.d("bitmap", "recycling originalFrame")
+                                        originalFrame.recycle()
+                                        frame = null // Avoid repeated recycling
+                                        convertedBitmap
+                                    } else {
+                                        originalFrame
+                                    }
                             }
                         }
                     }
                 }
-
                 // Mark reading bitmaps as done
                 readingBitmapsMutex.withLock {
                     readingBitmaps = false
                 }
                 Log.d("OverMaxTime", "Bitmap done")
+            } catch (e: Exception) {
+                Log.e("VideoProcess", "Failed to process video: ${e.message}")
+            } finally {
+                retriever.release()
             }
-
-        } catch (e: Exception) {
-            Log.e("VideoProcess", "Failed to process video: ${e.message}")
-        } finally {
-            retriever.release()
         }
+    }
 
-        // Launch all detectors to do inference on their arrays of images
-        var detecting = true
-        val detectingMutex = Mutex();
+    private fun detectBitmapsAsync(maxTimeLong: Long, targetFPS: Int = 15, numDetectors: Int = 1) {
         var numDetecting = numDetectors
-        /* Inputs:
-        * detecting/detectingMutex
-        * inputArray/inputMutex/resultsAsync
-        * timeDelta/maxTimeLong
-        * outputPath, outputWidth, outputHeight, fps
-        * numDetecting
-        */
+
+        var landmarkerHelper: HandLandmarkerHelper? = null
+
+        // Initialize HandLandmarkerHelper
+        landmarkerHelper = HandLandmarkerHelper(
+            context = appContext.reactContext!!,
+            runningMode = RunningMode.VIDEO,
+            combinedLandmarkerHelperListener = null,
+            maxNumHands = 2
+        )
+
         repeat(numDetectors) { index ->
             CoroutineScope(Dispatchers.Default).launch {
-                var overTime: Boolean = false
+                var overTime = false
+                val timeDelta = 1_000_000L / targetFPS
+                val endTime = (maxTimeLong / numDetectors) * (index + 1)
+                Log.d("endtime", "$endTime")
                 var timeUs: Long = (index) * timeDelta
                 var isBitmapEmpty = true
                 // get this detector's mutex
@@ -1032,9 +985,9 @@ class ExpoVideoAnalyzerModule : Module() {
                     bitmapImage = inputArray.removeFirst()
                 }
                 var isReadingBitmaps = true
-                while ((!overTime) && ((isReadingBitmaps) ||
-                            !(inputMutex.withLock {inputArray.isEmpty()}))
-                            && (bitmapImage != null)) {
+                // Loop while more bitmaps are coming in or there are still some non-null left
+                while (((isReadingBitmaps) || !(inputMutex.withLock {inputArray.isEmpty()}))
+                    && (!overTime)) {
                     if (outputMutex.withLock {resultsAsync!!.size > 10}) {
                         delay(100)
                         Log.d("detector", "Awaiting results shrinking")
@@ -1042,12 +995,28 @@ class ExpoVideoAnalyzerModule : Module() {
                     val frameIndex = (timeUs / timeDelta).toInt()
                     try {
                         annotatedImage = detector!!.process_bitmap(bitmapImage!!)
-                        bitmapImage!!.recycle()
                         if (frameIndex == 0) {
                             Log.d(
                                 "Encode",
                                 "bitmap size = ${bitmapImage!!.height}x${bitmapImage!!.width}"
                             )
+                        }
+                        bitmapImage!!.recycle()
+
+                        val (landmarkerResult, mpAnnotatedFrame) = landmarkerHelper?.detectAndDrawVideoFrame(
+                            annotatedFrame,  // pass bitmap that has bow drawings
+                            timeUs / 1000
+                        ) ?: Pair(null, null)
+
+                        if (mpAnnotatedFrame != null) {
+                            annotatedFrame = mpAnnotatedFrame
+                            if (landmarkerResult != null) {
+                                Log.d("Encode", "Frame $frameIndex - Hand: ${landmarkerResult.handDetection}, Pose: ${landmarkerResult.poseDetection}")
+                            } else {
+                                Log.d("Encode", "landmarkerResult is null")
+                            }
+                        } else {
+                            Log.d("Encode", "Frame $frameIndex mpAnnotatedFrame is null")
                         }
 
                         // TODO: Logs. Remove later
@@ -1066,7 +1035,6 @@ class ExpoVideoAnalyzerModule : Module() {
                         outputMutex.withLock {
                             resultsAsync.put(timeUs, annotatedImage!!)
                         }
-                        onFrameProcessed(annotatedImage!!, timeUs)
                     } catch (e: Exception) {
                         Log.e(
                             "FrameProcess",
@@ -1076,33 +1044,29 @@ class ExpoVideoAnalyzerModule : Module() {
                         bitmapImage?.recycle()
                     }
                     timeUs += numDetectors.toLong() * timeDelta
-
-                    if (timeUs > (maxTimeLong - numDetectors.toLong() * timeDelta)) {
-                        Log.d(
-                            "OverMaxTime",
-                            "index: $index timeUs: $timeUs maxTimeLong: $maxTimeLong"
-                        )
+                    if ((timeUs + timeDelta) > endTime) {
                         overTime = true
-                    }
+                    } else {
 
-                    // set to await next bitmap
-                    isBitmapEmpty = true
+                        // set to await next bitmap
+                        isBitmapEmpty = true
 
-                    // Check if still waiting for more bitmaps
-                    readingBitmapsMutex.withLock {
-                        isReadingBitmaps = readingBitmaps
-                    }
-                    // If bitmaps are still being read in, wait
-                    while (isBitmapEmpty && isReadingBitmaps) {
-                        delay(10)
-                        inputMutex.withLock {
-                            isBitmapEmpty = inputArray.isEmpty()
+                        // Check if still waiting for more bitmaps
+                        readingBitmapsMutex.withLock {
+                            isReadingBitmaps = readingBitmaps
                         }
-                    }
-                    // Get next bitmap
-                    if (isReadingBitmaps) {
-                        inputMutex.withLock {
-                            bitmapImage = inputArray.removeFirst()
+                        // If bitmaps are still being read in, wait
+                        while (isBitmapEmpty && isReadingBitmaps) {
+                            delay(10)
+                            inputMutex.withLock {
+                                isBitmapEmpty = inputArray.isEmpty()
+                            }
+                        }
+                        // Get next bitmap
+                        if (isReadingBitmaps) {
+                            inputMutex.withLock {
+                                bitmapImage = inputArray.removeFirst()
+                            }
                         }
                     }
                 }
@@ -1112,82 +1076,10 @@ class ExpoVideoAnalyzerModule : Module() {
                         detecting = false;
                     }
                 }
-                Log.d("OverMaxTime", "Index: $index done")
-            }
-        }
-
-
-        // Encoder can wait for and encode output
-        /* Inputs:
-         * detecting/detectingMutex
-         * resultsAsync
-         * timeDelta
-         * outputPath, outputWidth, outputHeight, fps
-         */
-        CoroutineScope(Dispatchers.Default).launch {
-            // Use the original video's resolution and the same FPS
-            val encoder = VideoEncoder(File(outputPath), outputWidth, outputHeight, fps = targetFPS)
-            var index = 0
-            var timeUs = 0L
-            var result: Pair<Bitmap, Long>? = null
-            var frame: Bitmap? = null
-            var frameTime: Long = 0L
-            // encode images while detecting is happening
-            while ((detectingMutex.withLock { detecting })) {
-                while (!outputMutex.withLock { resultsAsync.containsKey(timeUs) } &&
-                    (detectingMutex.withLock { detecting })) {
-                    delay(100);
-                    Log.d("Encode", "Awaiting next image")
-                }
-
-                while (outputMutex.withLock {resultsAsync.containsKey(timeUs)}) {
-                    outputMutex.withLock {
-                        frame = resultsAsync.remove(timeUs)
-                    }
-                    if (frame!!.isRecycled()) {
-                        Log.d("Encode", "FRAME IS RECYCLED")
-                    } else {
-                        index = (timeUs / timeDelta).toInt()
-                        encoder.encodeFrame(frame!!)
-                        frame!!.recycle()
-                        Log.d("Detecting", "Frame $index encoded")
-                    }
-                    timeUs += timeDelta
-                }
-            }
-            // Ensures that all images were processed before exiting
-            while (outputMutex.withLock {resultsAsync.containsKey(timeUs)}) {
-                outputMutex.withLock {
-                    frame = resultsAsync.remove(timeUs)
-                }
-                if (frame!!.isRecycled()) {
-                    Log.d("Encode", "FRAME IS RECYCLED")
-                } else {
-                    index = (timeUs / timeDelta).toInt()
-                    encoder.encodeFrame(frame!!)
-                    frame!!.recycle()
-                    Log.d("Detecting", "Frame $index encoded")
-                }
-                timeUs += timeDelta
-            }
-
-            encoder.finish()
-            Log.d("Encode", "Video encoding completed. Total frames processed: $index")
-            // Check output file was generated
-            val fileExists = File(outputPath).exists() && File(outputPath).length() > 0
-            if (fileExists) {
-                outputVideoPath = outputPath
-            } else {
-                outputVideoPath = null
-            }
-
-            processingMutex.withLock {
-                processing = false
+                Log.d("OverMaxTime", "Index: $index done Time: $timeUs")
             }
         }
     }
-
-
 
     // Helper function. Compines frames into video using FFmpeg
     private fun combineFramesToVideo(
@@ -1239,6 +1131,8 @@ class ExpoVideoAnalyzerModule : Module() {
             return false
         }
     }
+
+
 
     private fun cleanupFrames(frameDir: File) {
         try {
