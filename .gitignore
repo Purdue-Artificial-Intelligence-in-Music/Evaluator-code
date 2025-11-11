@@ -42,3 +42,5 @@ expo-env.d.ts
 android/app/google-services.json
 android/app/*firebase*-service-account.json
 android/app/*firebase*-adminsdk-*.json
+
+modules/camerax/android/arm64-v8a/
