@@ -57,21 +57,26 @@ class OverlayView @JvmOverloads constructor(
     // Timers for each issue type (3-second persistence requirement)
     private var lastBowIssue: String? = null
     private var bowIssueStartTime: Long = 0L
+    private var bowIssueLastShownTime: Long = 0L
     private var displayBowIssue: String? = null
 
     private var lastAngleIssue: String? = null
     private var angleIssueStartTime: Long = 0L
+    private var angleIssueLastShownTime: Long = 0L
     private var displayAngleIssue: String? = null
 
     private var lastHandIssue: String? = null
     private var handIssueStartTime: Long = 0L
+    private var handIssueLastShownTime: Long = 0L
     private var displayHandIssue: String? = null
 
     private var lastPoseIssue: String? = null
     private var poseIssueStartTime: Long = 0L
+    private var poseIssueLastShownTime: Long = 0L
     private var displayPoseIssue: String? = null
 
     private val issueHoldDuration = 3000L // 3 seconds in milliseconds
+    private var issueMinDisplayTime: Long = 1000 // must remain visible 1s after disappearing
 
     companion object {
         // Classification constants
@@ -343,6 +348,7 @@ class OverlayView @JvmOverloads constructor(
                 if (bowMessage == lastBowIssue) {
                     if (now - bowIssueStartTime >= issueHoldDuration) {
                         displayBowIssue = bowMessage
+                        bowIssueLastShownTime = now
                     }
                 } else {
                     lastBowIssue = bowMessage
@@ -350,9 +356,12 @@ class OverlayView @JvmOverloads constructor(
                     displayBowIssue = null
                 }
             } else {
-                lastBowIssue = null
-                bowIssueStartTime = 0L
-                displayBowIssue = null
+                if (displayBowIssue != null && now - bowIssueLastShownTime >= issueMinDisplayTime) {
+                    lastBowIssue = null
+                    bowIssueStartTime = 0L
+                    displayBowIssue = null
+                    bowIssueLastShownTime = 0L
+                }
             }
 
             // Draw angle message if there's an issue
@@ -364,6 +373,8 @@ class OverlayView @JvmOverloads constructor(
                 if (angleMessage == lastAngleIssue) {
                     if (now - angleIssueStartTime >= issueHoldDuration) {
                         displayAngleIssue = angleMessage
+                        angleIssueLastShownTime = now
+
                     }
                 } else {
                     lastAngleIssue = angleMessage
@@ -371,9 +382,12 @@ class OverlayView @JvmOverloads constructor(
                     displayAngleIssue = null
                 }
             } else {
-                lastAngleIssue = null
-                angleIssueStartTime = 0L
-                displayAngleIssue = null
+                if (displayAngleIssue != null && now - angleIssueLastShownTime >= issueMinDisplayTime) {
+                    lastAngleIssue = null
+                    angleIssueStartTime = 0L
+                    displayAngleIssue = null
+                    angleIssueLastShownTime = 0L
+                }
             }
         }
 
@@ -415,7 +429,7 @@ class OverlayView @JvmOverloads constructor(
 
             canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-            canvas.drawText(bowMessage, centerX, currentY, textPaint)
+            canvas.drawText(displayBowIssue!!, centerX, currentY, textPaint)
             currentY += (fm.bottom - fm.top) + lineSpacing
         }
 
@@ -432,7 +446,7 @@ class OverlayView @JvmOverloads constructor(
 
             canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-            canvas.drawText(angleMessage, centerX, currentY, textPaint)
+            canvas.drawText(displayAngleIssue!!, centerX, currentY, textPaint)
             currentY += (fm.bottom - fm.top) + lineSpacing
         }
 
@@ -458,6 +472,8 @@ class OverlayView @JvmOverloads constructor(
                 if (currentHandIssue == lastHandIssue) {
                     if (now - handIssueStartTime >= issueHoldDuration) {
                         displayHandIssue = currentHandIssue
+                        handIssueLastShownTime = now
+
                     }
                 } else {
                     lastHandIssue = currentHandIssue
@@ -465,9 +481,12 @@ class OverlayView @JvmOverloads constructor(
                     displayHandIssue = null
                 }
             } else {
-                lastHandIssue = null
-                handIssueStartTime = 0L
-                displayHandIssue = null
+                if (displayHandIssue != null && now - handIssueLastShownTime >= issueMinDisplayTime) {
+                    lastHandIssue = null
+                    handIssueStartTime = 0L
+                    displayHandIssue = null
+                    handIssueLastShownTime = 0L
+                }
             }
 
             if (displayHandIssue != null) {
@@ -484,7 +503,7 @@ class OverlayView @JvmOverloads constructor(
 
                 canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-                canvas.drawText(currentHandIssue, centerX, currentY, textPaint)
+                canvas.drawText(displayHandIssue!!, centerX, currentY, textPaint)
 
                 currentY += (fm.bottom - fm.top) + lineSpacing
             }
@@ -501,6 +520,8 @@ class OverlayView @JvmOverloads constructor(
                 if (currentPoseIssue == lastPoseIssue) {
                     if (now - poseIssueStartTime >= issueHoldDuration) {
                         displayPoseIssue = currentPoseIssue
+                        poseIssueLastShownTime = now
+
                     }
                 } else {
                     lastPoseIssue = currentPoseIssue
@@ -508,9 +529,12 @@ class OverlayView @JvmOverloads constructor(
                     displayPoseIssue = null
                 }
             } else {
-                lastPoseIssue = null
-                poseIssueStartTime = 0L
-                displayPoseIssue = null
+                if (displayPoseIssue != null && now - poseIssueLastShownTime >= issueMinDisplayTime) {
+                    lastPoseIssue = null
+                    poseIssueStartTime = 0L
+                    displayPoseIssue = null
+                    poseIssueLastShownTime = 0L
+                }
             }
 
             if (displayPoseIssue != null) {
@@ -527,17 +551,19 @@ class OverlayView @JvmOverloads constructor(
 
                 canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-                canvas.drawText(currentPoseIssue, centerX, currentY, textPaint)
+                canvas.drawText(displayPoseIssue!!, centerX, currentY, textPaint)
 
             }
         }
     }
 
-    fun updateResults(results: Detector.returnBow?,
-                      hands:  HandLandmarkerResult?,
-                      pose:   PoseLandmarkerResult?,
-                      handDetection: String,
-                      poseDetection: String, ) {
+    fun updateResults(
+        results: Detector.returnBow?,
+        hands: HandLandmarkerResult?,
+        pose: PoseLandmarkerResult?,
+        handDetection: String,
+        poseDetection: String,
+    ) {
         this.results = results
         this.handLandmarkerResult = hands
         this.poseLandmarkerResult = pose
