@@ -33,6 +33,9 @@ class OverlayView @JvmOverloads constructor(
     private var handDetect: String = ""
     private var poseDetect: String = ""
 
+    private var centerX = 0F
+    private var now = 0L
+
     private var linePaint = Paint()
     private var pointPaint = Paint()
     private var poseLinePaint = Paint()
@@ -47,6 +50,33 @@ class OverlayView @JvmOverloads constructor(
     private var handsScaleFactor = 0f
     private var bowImageWidth = 1
     private var bowImageHeight = 1
+
+    private var bowMessage = ""
+    private var angleMessage = ""
+
+    // Timers for each issue type (3-second persistence requirement)
+    private var lastBowIssue: String? = null
+    private var bowIssueStartTime: Long = 0L
+    private var bowIssueLastShownTime: Long = 0L
+    private var displayBowIssue: String? = null
+
+    private var lastAngleIssue: String? = null
+    private var angleIssueStartTime: Long = 0L
+    private var angleIssueLastShownTime: Long = 0L
+    private var displayAngleIssue: String? = null
+
+    private var lastHandIssue: String? = null
+    private var handIssueStartTime: Long = 0L
+    private var handIssueLastShownTime: Long = 0L
+    private var displayHandIssue: String? = null
+
+    private var lastPoseIssue: String? = null
+    private var poseIssueStartTime: Long = 0L
+    private var poseIssueLastShownTime: Long = 0L
+    private var displayPoseIssue: String? = null
+
+    private val issueHoldDuration = 3000L // 3 seconds in milliseconds
+    private var issueMinDisplayTime: Long = 1000 // must remain visible 1s after disappearing
 
     companion object {
         // Classification constants
@@ -305,48 +335,58 @@ class OverlayView @JvmOverloads constructor(
             )
 
             // Fixed positions from top - below hand/pose classifications
-            val centerX = width / 2f
+            centerX = width / 2f
 
 
             // Draw classification message if there's an issue
+            now = System.currentTimeMillis()
             if (results?.classification != null && results?.classification != 0) {
-                val message = classificationLabels[results?.classification] ?: ""
-                if (message.isNotEmpty()) {
-                    val textWidth = textPaint.measureText(message)
-                    val fm = textPaint.fontMetrics
-                    val textHeight = fm.bottom - fm.top
+                bowMessage = classificationLabels[results?.classification] ?: ""
+            }
 
-                    // Rectangle coordinates
-                    val left = centerX - textWidth / 2 - padding
-                    val top = currentY + fm.top - padding
-                    val right = centerX + textWidth / 2 + padding
-                    val bottom = currentY + fm.bottom + padding
-
-                    canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
-
-                    canvas.drawText(message, centerX, currentY, textPaint)
-                    currentY += (fm.bottom - fm.top) + lineSpacing
+            if (bowMessage.isNotEmpty()) {
+                if (bowMessage == lastBowIssue) {
+                    if (now - bowIssueStartTime >= issueHoldDuration) {
+                        displayBowIssue = bowMessage
+                        bowIssueLastShownTime = now
+                    }
+                } else {
+                    lastBowIssue = bowMessage
+                    bowIssueStartTime = now
+                    displayBowIssue = null
+                }
+            } else {
+                if (displayBowIssue != null && now - bowIssueLastShownTime >= issueMinDisplayTime) {
+                    lastBowIssue = null
+                    bowIssueStartTime = 0L
+                    displayBowIssue = null
+                    bowIssueLastShownTime = 0L
                 }
             }
 
             // Draw angle message if there's an issue
             if (results?.angle != null && results?.angle == 1) {
-                val message = angleLabels[results?.angle] ?: ""
-                if (message.isNotEmpty()) {
-                    val textWidth = textPaint.measureText(message)
-                    val fm = textPaint.fontMetrics
-                    val textHeight = fm.bottom - fm.top
+                angleMessage = angleLabels[results?.angle] ?: ""
+            }
 
-                    // Rectangle coordinates
-                    val left = centerX - textWidth / 2 - padding
-                    val top = currentY + fm.top - padding
-                    val right = centerX + textWidth / 2 + padding
-                    val bottom = currentY + fm.bottom + padding
+            if (angleMessage.isNotEmpty()) {
+                if (angleMessage == lastAngleIssue) {
+                    if (now - angleIssueStartTime >= issueHoldDuration) {
+                        displayAngleIssue = angleMessage
+                        angleIssueLastShownTime = now
 
-                    canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
-
-                    canvas.drawText(message, centerX, currentY, textPaint)
-                    currentY += (fm.bottom - fm.top) + lineSpacing
+                    }
+                } else {
+                    lastAngleIssue = angleMessage
+                    angleIssueStartTime = now
+                    displayAngleIssue = null
+                }
+            } else {
+                if (displayAngleIssue != null && now - angleIssueLastShownTime >= issueMinDisplayTime) {
+                    lastAngleIssue = null
+                    angleIssueStartTime = 0L
+                    displayAngleIssue = null
+                    angleIssueLastShownTime = 0L
                 }
             }
         }
@@ -376,6 +416,40 @@ class OverlayView @JvmOverloads constructor(
             }
         }
 
+        if (displayBowIssue != null) {
+            val textWidth = textPaint.measureText(displayBowIssue)
+            val fm = textPaint.fontMetrics
+            val textHeight = fm.bottom - fm.top
+
+            // Rectangle coordinates
+            val left = centerX - textWidth / 2 - padding
+            val top = currentY + fm.top - padding
+            val right = centerX + textWidth / 2 + padding
+            val bottom = currentY + fm.bottom + padding
+
+            canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+
+            canvas.drawText(displayBowIssue!!, centerX, currentY, textPaint)
+            currentY += (fm.bottom - fm.top) + lineSpacing
+        }
+
+        if (displayAngleIssue != null) {
+            val textWidth = textPaint.measureText(displayAngleIssue)
+            val fm = textPaint.fontMetrics
+            val textHeight = fm.bottom - fm.top
+
+            // Rectangle coordinates
+            val left = centerX - textWidth / 2 - padding
+            val top = currentY + fm.top - padding
+            val right = centerX + textWidth / 2 + padding
+            val bottom = currentY + fm.bottom + padding
+
+            canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+
+            canvas.drawText(displayAngleIssue!!, centerX, currentY, textPaint)
+            currentY += (fm.bottom - fm.top) + lineSpacing
+        }
+
         // Parse hand classification
         val handClassRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
         val handMatch = handClassRegex.find(handDetect)
@@ -389,14 +463,35 @@ class OverlayView @JvmOverloads constructor(
 
         // Draw hand message if there's an issue
         if (handClass in 1..2) {
-            val handMessage = when (handClass) {
+            val currentHandIssue = when (handClass) {
                 1 -> "Pronate your wrist more"    // Supination
                 2 -> "Supinate your wrist more"    // Too much pronation
                 else -> ""
             }
-            if (handMessage.isNotEmpty()) {
+            if (currentHandIssue.isNotEmpty()) {
+                if (currentHandIssue == lastHandIssue) {
+                    if (now - handIssueStartTime >= issueHoldDuration) {
+                        displayHandIssue = currentHandIssue
+                        handIssueLastShownTime = now
 
-                val textWidth = textPaint.measureText(handMessage)
+                    }
+                } else {
+                    lastHandIssue = currentHandIssue
+                    handIssueStartTime = now
+                    displayHandIssue = null
+                }
+            } else {
+                if (displayHandIssue != null && now - handIssueLastShownTime >= issueMinDisplayTime) {
+                    lastHandIssue = null
+                    handIssueStartTime = 0L
+                    displayHandIssue = null
+                    handIssueLastShownTime = 0L
+                }
+            }
+
+            if (displayHandIssue != null) {
+
+                val textWidth = textPaint.measureText(displayHandIssue)
                 val fm = textPaint.fontMetrics
                 val textHeight = fm.bottom - fm.top
 
@@ -408,7 +503,7 @@ class OverlayView @JvmOverloads constructor(
 
                 canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-                canvas.drawText(handMessage, centerX, currentY, textPaint)
+                canvas.drawText(displayHandIssue!!, centerX, currentY, textPaint)
 
                 currentY += (fm.bottom - fm.top) + lineSpacing
             }
@@ -416,13 +511,35 @@ class OverlayView @JvmOverloads constructor(
 
         // Draw pose message if there's an issue
         if (poseClass in 1..2) {
-            val poseMessage = when (poseClass) {
+            val currentPoseIssue = when (poseClass) {
                 1 -> "Raise your elbow a bit"    // Low elbow
                 2 -> "Lower your elbow a bit"    // Elbow too high
                 else -> ""
             }
-            if (poseMessage.isNotEmpty()) {
-                val textWidth = textPaint.measureText(poseMessage)
+            if (currentPoseIssue.isNotEmpty()) {
+                if (currentPoseIssue == lastPoseIssue) {
+                    if (now - poseIssueStartTime >= issueHoldDuration) {
+                        displayPoseIssue = currentPoseIssue
+                        poseIssueLastShownTime = now
+
+                    }
+                } else {
+                    lastPoseIssue = currentPoseIssue
+                    poseIssueStartTime = now
+                    displayPoseIssue = null
+                }
+            } else {
+                if (displayPoseIssue != null && now - poseIssueLastShownTime >= issueMinDisplayTime) {
+                    lastPoseIssue = null
+                    poseIssueStartTime = 0L
+                    displayPoseIssue = null
+                    poseIssueLastShownTime = 0L
+                }
+            }
+
+            if (displayPoseIssue != null) {
+
+                val textWidth = textPaint.measureText(displayPoseIssue)
                 val fm = textPaint.fontMetrics
                 val textHeight = fm.bottom - fm.top
 
@@ -434,17 +551,19 @@ class OverlayView @JvmOverloads constructor(
 
                 canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
-                canvas.drawText(poseMessage, centerX, currentY, textPaint)
+                canvas.drawText(displayPoseIssue!!, centerX, currentY, textPaint)
 
             }
         }
     }
 
-    fun updateResults(results: Detector.returnBow?,
-                      hands:  HandLandmarkerResult?,
-                      pose:   PoseLandmarkerResult?,
-                      handDetection: String,
-                      poseDetection: String, ) {
+    fun updateResults(
+        results: Detector.returnBow?,
+        hands: HandLandmarkerResult?,
+        pose: PoseLandmarkerResult?,
+        handDetection: String,
+        poseDetection: String,
+    ) {
         this.results = results
         this.handLandmarkerResult = hands
         this.poseLandmarkerResult = pose
