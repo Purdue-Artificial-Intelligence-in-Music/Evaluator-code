@@ -24,7 +24,7 @@ class CameraxModule : Module() {
                 view.setCameraActive(active)
             }
 
-            Events("onDetectionResult", "onNoDetection")
+            Events("onDetectionResult", "onNoDetection", "onSessionEnd")
         }
     }
 }

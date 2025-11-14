@@ -50,6 +50,7 @@ class CameraxView(
 
     private val onDetectionResult by EventDispatcher()
     private val onNoDetection by EventDispatcher()
+    private val onSessionEnd by EventDispatcher()
 
     private val activity get() = requireNotNull(appContext.activityProvider?.currentActivity)
 
@@ -136,8 +137,16 @@ class CameraxView(
             profile.createNewID(userId)
         } else {
             // Stop and finalize JSON file
+            val detailedSummary = profile.getDetailedSummary(userId)
             val summary = profile.endSessionAndGetSummary(userId)
             saveSummaryToFile(summary)
+
+            // send summary for display
+            if (detailedSummary != null) {
+                sendDetailedSummary(detailedSummary)
+            } else {
+                onSessionEnd(mapOf("error" to "No data available"))
+            }
 
             // Reset overlay
             latestBowResults = null
@@ -150,6 +159,26 @@ class CameraxView(
 
         if (cameraProvider != null && isCameraActive) {
             bindCameraUseCases()
+        }
+    }
+
+    private fun sendDetailedSummary(summary: Profile.SessionSummary) {
+        try {
+            val summaryMap = mapOf(
+                "heightBreakdown" to summary.heightBreakdown,
+                "angleBreakdown" to summary.angleBreakdown,
+                "handPresenceBreakdown" to summary.handPresenceBreakdown,
+                "handPostureBreakdown" to summary.handPostureBreakdown,
+                "posePresenceBreakdown" to summary.posePresenceBreakdown,
+                "elbowPostureBreakdown" to summary.elbowPostureBreakdown,
+                "userId" to userId,
+                "timestamp" to SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            )
+
+            Log.d(TAG, "Sending session summary: $summaryMap")
+            onSessionEnd(summaryMap)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending session summary", e)
         }
     }
 

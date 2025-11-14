@@ -210,4 +210,13 @@ class Profile {
     private fun emptySummary(): SessionSummary {
         return SessionSummary(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
     }
+
+    fun getDetailedSummary(userId: String): SessionSummary? {
+        val session = sessionDict[userId] ?: return null
+        return if (session.isNotEmpty()) {
+            analyzeSession(session)
+        } else {
+            null
+        }
+    }
 }
