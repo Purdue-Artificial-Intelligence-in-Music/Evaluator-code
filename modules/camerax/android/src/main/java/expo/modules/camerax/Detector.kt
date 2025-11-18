@@ -132,7 +132,7 @@ class Detector (
         val options = Interpreter.Options()
 
         // 1) Qualcomm NPU (QNN/HTP)
-        val skelDir = tryLoadQnnAndPickSkelDir()
+        /*val skelDir = tryLoadQnnAndPickSkelDir()
         if (skelDir != null) {
             try {
                 val qOpts = QnnDelegate.Options().apply {
@@ -146,7 +146,7 @@ class Detector (
             } catch (t: Throwable) {
                 Log.w(TAG, "QNN delegate unavailable: ${t.message}")
             }
-        }
+        }*/
 
         // 2) GPU
         try {

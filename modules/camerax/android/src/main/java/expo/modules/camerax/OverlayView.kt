@@ -13,6 +13,8 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import kotlin.math.min
 import kotlin.math.max
 import android.util.Log
+import java.io.File
+import java.io.FileOutputStream
 
 
 import kotlin.text.toFloat
@@ -54,7 +56,12 @@ class OverlayView @JvmOverloads constructor(
     private var bowMessage = ""
     private var angleMessage = ""
 
-    // Timers for each issue type (3-second persistence requirement)
+    // to save frames, start by saving to bitmap
+    private var overlayBitmap: Bitmap? = null
+    private var tempCanvas: Canvas? = null
+
+    private var file_list: MutableList<String> = mutableListOf()
+
     private var lastBowIssue: String? = null
     private var bowIssueStartTime: Long = 0L
     private var bowIssueLastShownTime: Long = 0L
@@ -177,6 +184,11 @@ class OverlayView @JvmOverloads constructor(
             // detection stopped, do not draw anything
             return
         }
+
+        overlayBitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
+        tempCanvas = Canvas(overlayBitmap!!)
+        file_list.clear()
+
         var currentY = 120f
         val lineSpacing = 60f
         val padding = 16f
@@ -248,6 +260,42 @@ class OverlayView @JvmOverloads constructor(
                     (stringBox[0].x.toFloat() / 640f) * scaleX,
                     (stringBox[0].y.toFloat() / 640f) * scaleY,
                     boxPaint)
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (stringBox[0].x.toFloat() / 640f) * scaleX,
+                        (stringBox[0].y.toFloat() / 640f) * scaleY,
+                        (stringBox[1].x.toFloat() / 640f) * scaleX,
+                        (stringBox[1].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (stringBox[1].x.toFloat() / 640f) * scaleX,
+                        (stringBox[1].y.toFloat() / 640f) * scaleY,
+                        (stringBox[2].x.toFloat() / 640f) * scaleX,
+                        (stringBox[2].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (stringBox[2].x.toFloat() / 640f) * scaleX,
+                        (stringBox[2].y.toFloat() / 640f) * scaleY,
+                        (stringBox[3].x.toFloat() / 640f) * scaleX,
+                        (stringBox[3].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (stringBox[3].x.toFloat() / 640f) * scaleX,
+                        (stringBox[3].y.toFloat() / 640f) * scaleY,
+                        (stringBox[0].x.toFloat() / 640f) * scaleX,
+                        (stringBox[0].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
             }
 
             if (bowBox != null) {
@@ -275,6 +323,42 @@ class OverlayView @JvmOverloads constructor(
                     (bowBox[0].x.toFloat() / 640f) * scaleX,
                     (bowBox[0].y.toFloat() / 640f) * scaleY,
                     boxPaint)
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (bowBox[0].x.toFloat() / 640f) * scaleX,
+                        (bowBox[0].y.toFloat() / 640f) * scaleY,
+                        (bowBox[1].x.toFloat() / 640f) * scaleX,
+                        (bowBox[1].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (bowBox[1].x.toFloat() / 640f) * scaleX,
+                        (bowBox[1].y.toFloat() / 640f) * scaleY,
+                        (bowBox[2].x.toFloat() / 640f) * scaleX,
+                        (bowBox[2].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (bowBox[2].x.toFloat() / 640f) * scaleX,
+                        (bowBox[2].y.toFloat() / 640f) * scaleY,
+                        (bowBox[3].x.toFloat() / 640f) * scaleX,
+                        (bowBox[3].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
+                tempCanvas?.let { c ->
+                    c.drawLine(
+                        (bowBox[3].x.toFloat() / 640f) * scaleX,
+                        (bowBox[3].y.toFloat() / 640f) * scaleY,
+                        (bowBox[0].x.toFloat() / 640f) * scaleX,
+                        (bowBox[0].y.toFloat() / 640f) * scaleY,
+                        boxPaint
+                    )
+                }
             }
 //            if (stringBox != null) {
 //                canvas.drawLine(stringBox[0].x.toFloat() * scaleX,
@@ -329,9 +413,21 @@ class OverlayView @JvmOverloads constructor(
                 3 to "Lift the bow"    // Bow too low
             )
 
+            val fileLabelsBow = mapOf(
+                0 to "correct_bow",  // Correct - don't display
+                1 to "bow_outside_zone",    // Bow outside zone
+                2 to "bow_too_high",    // Bow too high
+                3 to "bow_too_low"    // Bow too low
+            )
+
             val angleLabels = mapOf(
                 0 to "",  // Correct - don't display
                 1 to "Adjust your bow angle"    // Incorrect bow angle
+            )
+
+            val fileLabelsAngle = mapOf(
+                0 to "correct_angle",  // Correct - don't display
+                1 to "incorrect_angle"    // Incorrect bow angle
             )
 
             // Fixed positions from top - below hand/pose classifications
@@ -342,6 +438,7 @@ class OverlayView @JvmOverloads constructor(
             now = System.currentTimeMillis()
             if (results?.classification != null && results?.classification != 0) {
                 bowMessage = classificationLabels[results?.classification] ?: ""
+                file_list.add(fileLabelsBow[results?.classification] ?: "")
             }
 
             if (bowMessage.isNotEmpty()) {
@@ -367,6 +464,7 @@ class OverlayView @JvmOverloads constructor(
             // Draw angle message if there's an issue
             if (results?.angle != null && results?.angle == 1) {
                 angleMessage = angleLabels[results?.angle] ?: ""
+                file_list.add(fileLabelsAngle[results?.angle] ?: "")
             }
 
             if (angleMessage.isNotEmpty()) {
@@ -403,6 +501,19 @@ class OverlayView @JvmOverloads constructor(
                         landmarks.get(connection.end()).y() * imageHeight * handsScaleFactor + yOffset,
                         linePaint
                     )
+                    tempCanvas?.let { c ->
+                        c.drawLine(
+                            landmarks.get(connection!!.start())
+                                .x() * imageWidth * handsScaleFactor + xOffset,
+                            landmarks.get(connection.start())
+                                .y() * imageHeight * handsScaleFactor + yOffset,
+                            landmarks.get(connection.end())
+                                .x() * imageWidth * handsScaleFactor + xOffset,
+                            landmarks.get(connection.end())
+                                .y() * imageHeight * handsScaleFactor + yOffset,
+                            linePaint
+                        )
+                    }
                 }
 
                 // Draw hand points
@@ -412,6 +523,13 @@ class OverlayView @JvmOverloads constructor(
                         normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
                         pointPaint
                     )
+                    tempCanvas?.let { c ->
+                        c.drawPoint(
+                            normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
+                            normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
+                            pointPaint
+                        )
+                    }
                 }
             }
         }
@@ -468,7 +586,13 @@ class OverlayView @JvmOverloads constructor(
                 2 -> "Supinate your wrist more"    // Too much pronation
                 else -> ""
             }
+            val wristFileLabel = when (handClass) {
+                1 -> "supination"    // Supination
+                2 -> "too_much_pronation"    // Too much pronation
+                else -> "good_pronation"
+            }
             if (currentHandIssue.isNotEmpty()) {
+                file_list.add(wristFileLabel)
                 if (currentHandIssue == lastHandIssue) {
                     if (now - handIssueStartTime >= issueHoldDuration) {
                         displayHandIssue = currentHandIssue
@@ -516,7 +640,13 @@ class OverlayView @JvmOverloads constructor(
                 2 -> "Lower your elbow a bit"    // Elbow too high
                 else -> ""
             }
+            val pose_file_name = when (poseClass) {
+                1 -> "low_elbow"    // Low elbow
+                2 -> "high_elbow"    // Elbow too high
+                else -> "good_elbow"
+            }
             if (currentPoseIssue.isNotEmpty()) {
+                file_list.add(pose_file_name)
                 if (currentPoseIssue == lastPoseIssue) {
                     if (now - poseIssueStartTime >= issueHoldDuration) {
                         displayPoseIssue = currentPoseIssue
@@ -552,7 +682,10 @@ class OverlayView @JvmOverloads constructor(
                 canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
                 canvas.drawText(displayPoseIssue!!, centerX, currentY, textPaint)
+            }
 
+            file_list.forEach { fName ->
+                saveOverlayBitmap(fName)
             }
         }
     }
@@ -573,8 +706,6 @@ class OverlayView @JvmOverloads constructor(
     }
 
     fun setImageDimensions(imgWidth: Int, imgHeight: Int) {
-
-
         imageWidth = imgWidth
         imageHeight = imgHeight
 
@@ -594,5 +725,25 @@ class OverlayView @JvmOverloads constructor(
         poseDetect = ""
         postInvalidate() // remove drawings
     }
+
+    fun saveOverlayBitmap(filename: String) {
+        overlayBitmap?.let { bitmap ->
+            // Use cache directory instead of filesDir
+            val dir = File(context.cacheDir, "summary_images")
+            if (!dir.exists()) dir.mkdirs()
+
+            val file = File(dir, "${filename}.png")
+            try {
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                Log.d("OverlayView", "Saved overlay to cache at ${file.absolutePath}")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+
 
 }
