@@ -105,6 +105,10 @@ export const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 10
   },
+  subTitle: {
+    fontSize: 15,
+    fontWeight: "bold",
+  },
   timestamp: {
     fontSize: 12,
     color: '#666',

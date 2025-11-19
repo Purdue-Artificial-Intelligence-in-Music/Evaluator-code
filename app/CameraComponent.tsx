@@ -42,6 +42,7 @@ interface SummaryData {
   };
   userId?: string;
   timestamp?: string;
+  sessionDuration?: string;
 }
 
 const CameraComponent = ({ startDelay, onClose }) => {
@@ -58,6 +59,9 @@ const CameraComponent = ({ startDelay, onClose }) => {
   // Settings modal state
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tempMaxAngle, setTempMaxAngle] = useState(15);
+
+  // Total playing time
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -104,6 +108,13 @@ const CameraComponent = ({ startDelay, onClose }) => {
       timestamp
     } = event.nativeEvent;
 
+    let finalDuration = "0s";
+    if (sessionStartTime) {
+      const endTime = new Date();
+      const diffMs = endTime.getTime() - sessionStartTime.getTime();
+      finalDuration = formatDuration(diffMs);
+    }
+
     const newSummaryData = {
       heightBreakdown,
       angleBreakdown,
@@ -112,7 +123,8 @@ const CameraComponent = ({ startDelay, onClose }) => {
       posePresenceBreakdown,
       elbowPostureBreakdown,
       userId: eventUserId,
-      timestamp
+      timestamp,
+      sessionDuration: finalDuration,
     };
 
     setSummaryData(newSummaryData);
@@ -137,6 +149,28 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setMaxAngle(tempMaxAngle);
     setSettingsVisible(false);
   };
+
+  let formattedTimestamp = "";
+
+  if (summaryData?.timestamp) {
+    const dt = new Date(summaryData.timestamp.replace(" ", "T"));
+
+    const weekday = dt.toLocaleString([], { weekday: "short" });
+    const date = dt.toLocaleDateString("en-CA");
+    const time = dt.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+
+    formattedTimestamp = `${weekday}, ${date}, ${time}`;
+  }
+
+  function formatDuration(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  }
 
   return (
     <View style={styles.container}>
@@ -176,8 +210,15 @@ const CameraComponent = ({ startDelay, onClose }) => {
                     <Text>Elbow too high: {summaryData.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
                   </View>
 
+                <View style={styles.section}>
+                  <Text style={styles.timestamp}>
+                    <Text style={styles.subTitle}>Total Playing Time: </Text>
+                    {summaryData?.sessionDuration || "0s"}
+                  </Text>
+                </View>
+
                   <View style={styles.section}>
-                    <Text style={styles.timestamp}>Time: {summaryData.timestamp}</Text>
+                    <Text style={styles.timestamp}>Completed On: {formattedTimestamp}</Text>
                   </View>
                 </>
               ) : (
@@ -272,6 +313,9 @@ const CameraComponent = ({ startDelay, onClose }) => {
         style={styles.detectionButton}
           onPress={() => {
             if (showSetupOverlay) setShowSetupOverlay(false);
+            if (!isDetectionEnabled) {
+              setSessionStartTime(new Date());
+            }
             setIsDetectionEnabled(!isDetectionEnabled);
           }}
       >
