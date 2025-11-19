@@ -58,6 +58,16 @@ class Detector (
     //private var ogWidth: Int = 1
     //private var ogHeight: Int = 1
 
+    // flexibility of angle relative to 90 degrees
+    // use 15 as default, and receive input (range 0-90) from the frontend
+    private var maxAngle: Int = 15
+
+    // add setter for MaxAngle
+    fun setMaxAngle(angle: Int) {
+        maxAngle = angle.coerceIn(0, 90)
+        Log.d("MaxAngle", "Max angle set to: $maxAngle")
+    }
+
 
     private fun Double.f1() = String.format("%.1f", this)
     private fun Double.f3() = String.format("%.3f", this)
@@ -132,21 +142,21 @@ class Detector (
         val options = Interpreter.Options()
 
         // 1) Qualcomm NPU (QNN/HTP)
-        val skelDir = tryLoadQnnAndPickSkelDir()
-        if (skelDir != null) {
-            try {
-                val qOpts = QnnDelegate.Options().apply {
-                    setBackendType(BackendType.HTP_BACKEND)
-                    setSkelLibraryDir(skelDir)
-                }
-                qnnDelegate = QnnDelegate(qOpts)
-                options.addDelegate(qnnDelegate)
-                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
-                return Interpreter(model, options)
-            } catch (t: Throwable) {
-                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
-            }
-        }
+//        val skelDir = tryLoadQnnAndPickSkelDir()
+//        if (skelDir != null) {
+//            try {
+//                val qOpts = QnnDelegate.Options().apply {
+//                    setBackendType(BackendType.HTP_BACKEND)
+//                    setSkelLibraryDir(skelDir)
+//                }
+//                qnnDelegate = QnnDelegate(qOpts)
+//                options.addDelegate(qnnDelegate)
+//                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
+//                return Interpreter(model, options)
+//            } catch (t: Throwable) {
+//                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
+//            }
+//        }
 
         // 2) GPU
         try {
@@ -874,9 +884,6 @@ class Detector (
     classifies bow angle relative to two vertical lines of string box
      */
     private fun bowAngle(bowLine: MutableList<Double>, verticalLines: MutableList<MutableList<Double>>): Int {
-        // flexibility of angle relative to 90 degrees
-        val max_angle = 15
-
         // grab bow line and vertical lines
         val m_bow: Double = bowLine[0]
         val m1 = verticalLines[0][0]
@@ -888,8 +895,7 @@ class Detector (
 
         val min_angle: Double = abs(90 - min(angle_one, angle_two))
         //println("ANGLE: $min_angle")
-
-        return if (min_angle > max_angle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
+        return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
     }
 
     data class returnBow(

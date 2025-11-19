@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-import { View, TouchableOpacity, Modal, Text, StyleSheet, ScrollView, Button, Dimensions, Platform } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, StyleSheet, ScrollView, Button, Dimensions, Platform, TextInput } from 'react-native';
 
 import { requireNativeViewManager } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -55,9 +55,13 @@ const CameraComponent = ({ startDelay, onClose }) => {
   const [userId, setUserId] = useState('default_user');
   const [showSetupOverlay, setShowSetupOverlay] = useState(true);
 
-
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [maxAngle, setMaxAngle] = useState(15);
+  
+  // Settings modal state
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [tempMaxAngle, setTempMaxAngle] = useState(15);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -75,7 +79,6 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setShowSetupOverlay(false);
   };
 
-  // load user id
   useEffect(() => {
     const loadUserId = async () => {
       try {
@@ -94,39 +97,54 @@ const CameraComponent = ({ startDelay, onClose }) => {
   }, []);
 
   const handleSessionEnd = (event: any) => {
-  const {
-    heightBreakdown,
-    angleBreakdown,
-    handPresenceBreakdown,
-    handPostureBreakdown,
-    posePresenceBreakdown,
-    elbowPostureBreakdown,
-    userId: eventUserId,
-    timestamp
-  } = event.nativeEvent;
+    const {
+      heightBreakdown,
+      angleBreakdown,
+      handPresenceBreakdown,
+      handPostureBreakdown,
+      posePresenceBreakdown,
+      elbowPostureBreakdown,
+      userId: eventUserId,
+      timestamp
+    } = event.nativeEvent;
 
-  const newSummaryData = {
-    heightBreakdown,
-    angleBreakdown,
-    handPresenceBreakdown,
-    handPostureBreakdown,
-    posePresenceBreakdown,
-    elbowPostureBreakdown,
-    userId: eventUserId,
-    timestamp
+    const newSummaryData = {
+      heightBreakdown,
+      angleBreakdown,
+      handPresenceBreakdown,
+      handPostureBreakdown,
+      posePresenceBreakdown,
+      elbowPostureBreakdown,
+      userId: eventUserId,
+      timestamp
+    };
+
+    setSummaryData(newSummaryData);
+    setSummaryVisible(true);
   };
-
-  setSummaryData(newSummaryData);
-  setSummaryVisible(true);
-};
 
   const closeSummary = () => {
     setSummaryVisible(false);
     setSummaryData(null);
   };
 
+  const openSettings = () => {
+    setTempMaxAngle(maxAngle);
+    setSettingsVisible(true);
+  };
+
+  const closeSettings = () => {
+    setSettingsVisible(false);
+  };
+
+  const saveSettings = () => {
+    setMaxAngle(tempMaxAngle);
+    setSettingsVisible(false);
+  };
+
   return (
     <View style={styles.container}>
+      {/* Summary Modal */}
       <Modal visible={summaryVisible} animationType="slide" transparent={true}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -176,6 +194,49 @@ const CameraComponent = ({ startDelay, onClose }) => {
         </View>
       </Modal>
 
+      {/* Settings Modal */}
+      <Modal visible={settingsVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.settingsModalContent}>
+            <Text style={styles.title}>Settings</Text>
+            
+            <View style={styles.settingsSection}>
+              <Text style={styles.settingsLabel}>Maximum Bow Angle Tolerance (0-90°)</Text>
+              <TextInput
+                style={styles.settingsInput}
+                keyboardType="numeric"
+                placeholder="Enter angle (0-90)"
+                value={tempMaxAngle.toString()}
+                onChangeText={(text) => {
+                  const num = parseInt(text) || 0;
+                  if (num >= 0 && num <= 90) {
+                    setTempMaxAngle(num);
+                  }
+                }}
+              />
+              <Text style={styles.settingsHint}>
+                Current value: {tempMaxAngle}° (Default: 15°)
+              </Text>
+            </View>
+
+            <View style={styles.settingsFooter}>
+              <TouchableOpacity 
+                style={styles.cancelButton} 
+                onPress={closeSettings}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.saveButton} 
+                onPress={saveSettings}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <CameraxView
         style={styles.camera}
@@ -184,6 +245,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
         detectionEnabled={isDetectionEnabled}
         lensType={lensType}
         onSessionEnd={handleSessionEnd}
+        maxBowAngle={maxAngle}
       />
       
       <TouchableOpacity
@@ -200,6 +262,14 @@ const CameraComponent = ({ startDelay, onClose }) => {
         activeOpacity={0.7}
       >
         <Text style={styles.flipButtonText}>🔄</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.settingsButton}
+        onPress={openSettings}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.settingsButtonText}>⚙️</Text>
       </TouchableOpacity>
       
       <TouchableOpacity
@@ -291,6 +361,20 @@ const styles = StyleSheet.create({
   flipButtonText: {
     fontSize: 22,
   },
+  settingsButton: {
+    position: 'absolute',
+    top: 150,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsButtonText: {
+    fontSize: 22,
+  },
   detectionButton: {
     position: 'absolute',
     bottom: 50,
@@ -320,6 +404,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 20
   },
+  settingsModalContent: {
+    width: '85%',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 24
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -338,6 +428,57 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     textAlign: 'center'
+  },
+
+  // Settings Modal Styles
+  settingsSection: {
+    marginBottom: 24
+  },
+  settingsLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8
+  },
+  settingsInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#f9f9f9'
+  },
+  settingsHint: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 6
+  },
+  settingsFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0'
+  },
+  saveButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#4a4a4a'
+  },
+  cancelButtonText: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  saveButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600'
   },
 
   vignette: {
@@ -433,7 +574,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.3,
   },
-
 });
 
 export default CameraComponent;

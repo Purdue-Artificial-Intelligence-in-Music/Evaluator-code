@@ -128,6 +128,10 @@ class CameraxView(
         Log.d("Data Collection", "User ID set to: $userId")
     }
 
+    fun setMaxBowAngle(angle: Int) {
+        detector?.setMaxAngle(angle)
+    }
+
     fun setDetectionEnabled(enabled: Boolean) {
         if (isDetectionEnabled == enabled) return
         isDetectionEnabled = enabled

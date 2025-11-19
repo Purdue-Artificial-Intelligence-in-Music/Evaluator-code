@@ -24,6 +24,10 @@ class CameraxModule : Module() {
                 view.setCameraActive(active)
             }
 
+            Prop("maxBowAngle") { view: CameraxView, angle: Int ->
+                view.setMaxBowAngle(angle)
+            }
+
             Events("onDetectionResult", "onNoDetection", "onSessionEnd")
         }
     }
