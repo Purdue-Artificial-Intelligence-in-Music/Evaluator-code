@@ -92,9 +92,22 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
     setSummaryVisible(true);
   };
 
-  const closeSummary = () => {
+  const closeSummary = async () => {
     setSummaryVisible(false);
     setSummaryData(null);
+
+    try {
+      const dir = `${FileSystem.cacheDirectory}summary_images`;
+      const info = await FileSystem.getInfoAsync(dir);
+
+      if (info.exists) {
+        await FileSystem.deleteAsync(dir, { idempotent: true });
+      }
+
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    } catch (e) {
+      console.error("Error clearing cache:", e);
+    }
   };
 
   const openDetail = (key: string) => {
@@ -107,20 +120,19 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
   };
 
   const imageMap: Record<string, string> = {
-    'Low elbow': 'low_elbow.png',
+    'Correct elbow': 'good_elbow.png',
     'Elbow too high': 'high_elbow.png',
-    Correct: 'good_elbow.png',
-    Supination: 'supination.png',
+    'Low elbow': 'low_elbow.png',
+    'Supination': 'supination.png',
     'Too much pronation': 'too_much_pronation.png',
+    'Correct hand posture': 'good_pronation.png',
     'Correct angle': 'correct_angle.png',
     'Incorrect angle': 'incorrect_angle.png',
-    'Correct bow': 'correct_bow.png',
-    'Bow outside zone': 'bow_outside_zone.png',
-    'Bow too high': 'bow_too_high.png',
-    'Bow too low': 'bow_too_low.png',
+    'Middle': 'correct_bow.png',
+    'Top': 'bow_too_high.png',
+    'Bottom': 'bow_too_low.png',
   };
 
-  // Helper to get file URI from cache
   const getImageFromCache = async (filename: string) => {
     if (!filename) return null;
     const path = `${FileSystem.cacheDirectory}summary_images/${filename}`;
@@ -170,14 +182,14 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
         break;
       case 'handPosture':
         items = [
-          { label: 'Correct', value: summaryData.handPostureBreakdown?.Correct },
+          { label: 'Correct hand posture', value: summaryData.handPostureBreakdown?.Correct },
           { label: 'Supination', value: summaryData.handPostureBreakdown?.Supination },
           { label: 'Too much pronation', value: summaryData.handPostureBreakdown?.['Too much pronation'] },
         ];
         break;
       case 'elbow':
         items = [
-          { label: 'Correct', value: summaryData.elbowPostureBreakdown?.Correct },
+          { label: 'Correct elbow', value: summaryData.elbowPostureBreakdown?.Correct },
           { label: 'Low elbow', value: summaryData.elbowPostureBreakdown?.['Low elbow'] },
           { label: 'Elbow too high', value: summaryData.elbowPostureBreakdown?.['Elbow too high'] },
         ];
@@ -189,8 +201,8 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
     return (
       <>
         <Text style={styles.sectionTitle}>{detailKey}</Text>
-        {items.map((item, idx) => (
-          <View key={idx} style={{ marginBottom: 16 }}>
+        {items.map(item => (
+          <View key={item.label} style={{ marginBottom: 16 }}>
             <Text style={{ fontWeight: 'bold', marginBottom: 6 }}>
               {item.label}: {item.value?.toFixed(1) || 0}%
             </Text>
@@ -200,6 +212,12 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
       </>
     );
   };
+
+  const renderBreakdownRow = (label: string, value?: number) => (
+    <Text key={label} style={{ fontWeight: 'bold', marginBottom: 4 }}>
+      {label}: {value?.toFixed(1) || 0}%
+    </Text>
+  );
 
   return (
     <View style={styles.container}>
@@ -211,27 +229,63 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
               <Text style={styles.title}>Session Summary</Text>
               {summaryData ? (
                 <>
-                  {['height', 'angle', 'handPosture', 'elbow'].map(section => (
-                    <View key={section} style={styles.section}>
-                      <Text style={styles.sectionTitle}>
-                        {section === 'height'
-                          ? 'Bow Height'
-                          : section === 'angle'
-                          ? 'Bow Angle'
-                          : section === 'handPosture'
-                          ? 'Hand Posture'
-                          : 'Elbow Posture'}
-                      </Text>
-                      <View style={{ marginTop: 10 }}>
-                        <TouchableOpacity
-                          style={styles.viewMoreBtn}
-                          onPress={() => openDetail(section)}
-                        >
-                          <Text style={styles.viewMoreText}>View More →</Text>
-                        </TouchableOpacity>
+                  {['height', 'angle', 'handPosture', 'elbow'].map(section => {
+                    let items: { label: string; value?: number }[] = [];
+                    switch (section) {
+                      case 'height':
+                        items = [
+                          { label: 'Top', value: summaryData.heightBreakdown?.Top },
+                          { label: 'Middle', value: summaryData.heightBreakdown?.Middle },
+                          { label: 'Bottom', value: summaryData.heightBreakdown?.Bottom },
+                        ];
+                        break;
+                      case 'angle':
+                        items = [
+                          { label: 'Correct angle', value: summaryData.angleBreakdown?.Correct },
+                          { label: 'Incorrect angle', value: summaryData.angleBreakdown?.Wrong },
+                        ];
+                        break;
+                      case 'handPosture':
+                        items = [
+                          { label: 'Correct', value: summaryData.handPostureBreakdown?.Correct },
+                          { label: 'Supination', value: summaryData.handPostureBreakdown?.Supination },
+                          { label: 'Too much pronation', value: summaryData.handPostureBreakdown?.['Too much pronation'] },
+                        ];
+                        break;
+                      case 'elbow':
+                        items = [
+                          { label: 'Correct', value: summaryData.elbowPostureBreakdown?.Correct },
+                          { label: 'Low elbow', value: summaryData.elbowPostureBreakdown?.['Low elbow'] },
+                          { label: 'Elbow too high', value: summaryData.elbowPostureBreakdown?.['Elbow too high'] },
+                        ];
+                        break;
+                    }
+
+                    return (
+                      <View key={section} style={styles.section}>
+                        <Text style={styles.sectionTitle}>
+                          {section === 'height'
+                            ? 'Bow Height'
+                            : section === 'angle'
+                            ? 'Bow Angle'
+                            : section === 'handPosture'
+                            ? 'Hand Posture'
+                            : 'Elbow Posture'}
+                        </Text>
+
+                        {items.map(item => renderBreakdownRow(item.label, item.value))}
+
+                        <View style={{ marginTop: 10 }}>
+                          <TouchableOpacity
+                            style={styles.viewMoreBtn}
+                            onPress={() => openDetail(section)}
+                          >
+                            <Text style={styles.viewMoreText}>View More →</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                   <View style={styles.section}>
                     <Text style={styles.timestamp}>Time: {summaryData.timestamp}</Text>
                   </View>
@@ -346,12 +400,12 @@ const styles = StyleSheet.create({
   bridgeGuide: { position: 'absolute', top: BODY_H * 0.46, left: BODY_W * 0.15, width: BODY_W * 0.7, borderTopWidth: 2, borderColor: 'white', borderStyle: 'dashed', opacity: 0.85 },
   endpinGuide: { position: 'absolute', top: BODY_H * 0.9, left: BODY_W * 0.5 - 1, height: BODY_H * 0.12, borderLeftWidth: 2, borderColor: 'white', borderStyle: 'dashed', opacity: 0.85 },
   instructionsCard: { position: 'absolute', bottom: Platform.select({ ios: 20, android: 16 }), left: 16, right: 16, padding: 14, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  cardTitle: { color: 'white', fontWeight: '700', fontSize: 16, letterSpacing: 0.2 },
+  cardTitle: { color: 'white', fontWeight: 'bold', fontSize: 16 },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 6 },
-  bulletDot: { width: 6, height: 6, borderRadius: 3, marginTop: 7, marginRight: 8, backgroundColor: 'white', opacity: 0.9 },
-  bulletText: { color: 'white', opacity: 0.95, fontSize: 14, lineHeight: 19, flexShrink: 1 },
-  readyBtn: { alignSelf: 'flex-end', marginTop: 10, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 999, backgroundColor: 'white' },
-  readyText: { color: '#111', fontWeight: '700', fontSize: 13, letterSpacing: 0.3 },
+  bulletDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'white', marginTop: 6, marginRight: 6 },
+  bulletText: { color: 'white', flex: 1, fontSize: 14 },
+  readyBtn: { marginTop: 14, padding: 12, borderRadius: 8, backgroundColor: '#FFF', alignItems: 'center' },
+  readyText: { color: 'black', fontWeight: 'bold', fontSize: 16 },
 });
 
 export default CameraComponent;

@@ -185,7 +185,7 @@ class OverlayView @JvmOverloads constructor(
             return
         }
 
-        overlayBitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
+        //overlayBitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
         tempCanvas = Canvas(overlayBitmap!!)
         file_list.clear()
 
@@ -414,7 +414,7 @@ class OverlayView @JvmOverloads constructor(
             )
 
             val fileLabelsBow = mapOf(
-                0 to "correct_bow",  // Correct - don't display
+                0 to "correct_bow",  // Correct
                 1 to "bow_outside_zone",    // Bow outside zone
                 2 to "bow_too_high",    // Bow too high
                 3 to "bow_too_low"    // Bow too low
@@ -426,7 +426,7 @@ class OverlayView @JvmOverloads constructor(
             )
 
             val fileLabelsAngle = mapOf(
-                0 to "correct_angle",  // Correct - don't display
+                0 to "correct_angle",  // Correct
                 1 to "incorrect_angle"    // Incorrect bow angle
             )
 
@@ -438,6 +438,8 @@ class OverlayView @JvmOverloads constructor(
             now = System.currentTimeMillis()
             if (results?.classification != null && results?.classification != 0) {
                 bowMessage = classificationLabels[results?.classification] ?: ""
+                file_list.add(fileLabelsBow[results?.classification] ?: "")
+            } else if (results?.classification == 0) {
                 file_list.add(fileLabelsBow[results?.classification] ?: "")
             }
 
@@ -464,6 +466,8 @@ class OverlayView @JvmOverloads constructor(
             // Draw angle message if there's an issue
             if (results?.angle != null && results?.angle == 1) {
                 angleMessage = angleLabels[results?.angle] ?: ""
+                file_list.add(fileLabelsAngle[results?.angle] ?: "")
+            } else if (results?.angle == 0) {
                 file_list.add(fileLabelsAngle[results?.angle] ?: "")
             }
 
@@ -614,7 +618,6 @@ class OverlayView @JvmOverloads constructor(
             }
 
             if (displayHandIssue != null) {
-
                 val textWidth = textPaint.measureText(displayHandIssue)
                 val fm = textPaint.fontMetrics
                 val textHeight = fm.bottom - fm.top
@@ -631,6 +634,8 @@ class OverlayView @JvmOverloads constructor(
 
                 currentY += (fm.bottom - fm.top) + lineSpacing
             }
+        } else {
+            file_list.add("good_pronation")
         }
 
         // Draw pose message if there's an issue
@@ -683,10 +688,12 @@ class OverlayView @JvmOverloads constructor(
 
                 canvas.drawText(displayPoseIssue!!, centerX, currentY, textPaint)
             }
+        } else {
+            file_list.add("good_elbow")
+        }
 
-            file_list.forEach { fName ->
-                saveOverlayBitmap(fName)
-            }
+        file_list.forEach { fName ->
+            saveOverlayBitmap(fName)
         }
     }
 
@@ -728,20 +735,28 @@ class OverlayView @JvmOverloads constructor(
 
     fun saveOverlayBitmap(filename: String) {
         overlayBitmap?.let { bitmap ->
-            // Use cache directory instead of filesDir
+            // Use cache directory
             val dir = File(context.cacheDir, "summary_images")
             if (!dir.exists()) dir.mkdirs()
-
-            val file = File(dir, "${filename}.png")
-            try {
-                FileOutputStream(file).use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            val file = File(dir, "$filename.png")
+            if (!file.exists()) {
+                try {
+                    FileOutputStream(file).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                    Log.d("OverlayView", "Saved overlay to cache at ${file.absolutePath}")
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-                Log.d("OverlayView", "Saved overlay to cache at ${file.absolutePath}")
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } else {
+                Log.d("OverlayView", "File already exists, skipping save: ${file.absolutePath}")
             }
         }
+    }
+
+
+    fun setBitmapFrame(frame: Bitmap) {
+        overlayBitmap = frame.copy(Bitmap.Config.ARGB_8888, true)
     }
 
 
