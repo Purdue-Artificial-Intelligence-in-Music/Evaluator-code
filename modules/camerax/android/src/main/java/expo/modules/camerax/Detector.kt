@@ -211,8 +211,13 @@ class Detector (
         }
 
         // Resize → normalize → cast
-        val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
-        val tensorImage = TensorImage(INPUT_IMAGE_TYPE).also { it.load(resized) }
+        //val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        val resizedNew = Bitmap.createScaledBitmap(frame, 360, 640, false)
+        val padded = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(padded)
+        canvas.drawBitmap(resizedNew, 0f, 0f, null)
+
+        val tensorImage = TensorImage(INPUT_IMAGE_TYPE).also { it.load(padded) }
         val processed = imageProcessor.process(tensorImage)
         val imageBuffer = processed.buffer
 
@@ -261,6 +266,7 @@ class Detector (
 
         var bowConf = 0f
         var stringConf = 0f
+
         val ogWidth = frame.width.toFloat()
         val ogHeight = frame.height.toFloat()
         //val ogWidth = 1
@@ -508,11 +514,28 @@ class Detector (
 
 
     private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float, frameWidth: Float, frameHeight: Float): List<Point> {
-        val halfW = w / 2
-        val halfH = h / 2
+//        val normalizedAngle = angleRad % Math.PI
+//        val swap = normalizedAngle >= Math.PI /2
+//        var newW = 0f
+//        var newH = 0f
+//        if (swap) {
+//            newW = h
+//            newH = w
+//        } else {
+//            newW = w
+//            newH = h
+//        }
+//        val newAngle = (angleRad % (Math.PI/2)).toFloat()
+
+
+        val halfW = (w) / 2
+        val halfH = (h) / 2
         println("ANGLE $angleRad")
-        val cosA = cos(angleRad - Math.PI.toFloat() / 2)
-        val sinA = sin(angleRad - Math.PI.toFloat() / 2)
+        val cosA = cos(angleRad)
+        val sinA = sin(angleRad)
+
+        //val xMult =
+        //val topRightX = cx * frameWidth +
         val corners = listOf(
             Pair(-halfW, -halfH),
             Pair(halfW, -halfH),
@@ -520,11 +543,17 @@ class Detector (
             Pair(-halfW, halfH)
         )
         return corners.map { (x, y) ->
+
             val xRot = x * cosA - y * sinA + cx
             val yRot = x * sinA + y * cosA + cy
+
             //Point(xRot.toDouble() * frameWidth, yRot.toDouble() * frameHeight)
-            Point(xRot.toDouble(), yRot.toDouble())
+            Point((xRot).toDouble() * 640f/360f, (yRot).toDouble())
         }
+
+
+
+        //val topRightX = cx * frameWidth + halfH * sinA + halfW * cosA
     }
 
     private fun newBestBox(array: FloatArray, N: Int): List<OrientedBoundingBox> {
@@ -539,8 +568,8 @@ class Detector (
             if (cnf > CONFIDENCE_THRESHOLD) {
                 val x = array[0 * N + r]
                 val y = array[1 * N + r]
-                val h = array[2 * N + r]
-                val w = array[3 * N + r]
+                val w = array[2 * N + r]
+                val h = array[3 * N + r]
                 val angle = array[6 * N + r]
 
                 out.add(
