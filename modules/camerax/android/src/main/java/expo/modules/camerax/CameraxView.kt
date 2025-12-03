@@ -82,6 +82,13 @@ class CameraxView(
     private var latestPoseDetection: String = ""
     // Toggle to hide offhand rendering (set to false to draw only the bow/right hand).
     private var showOffhand: Boolean = true
+    // Toggles to switch between MediaPipe Tasks and LiteRT/QNN paths.
+    private var useLiteRtPose: Boolean = false
+    private var useLiteRtHands: Boolean = false
+    private var poseLiteRt: Pose? = null
+    private var handsLiteRt: Hands? = null
+    private var litePoseResults: List<Pose.PoseLandmarks> = emptyList()
+    private var liteHandResults: List<Hands.HandResult> = emptyList()
 
     init {
         // Root layout
@@ -122,6 +129,24 @@ class CameraxView(
             currentDelegate = HandLandmarkerHelper.DELEGATE_CPU,
             combinedLandmarkerHelperListener = this
         )
+
+        // Default to LiteRT/QNN pipelines for hands and pose.
+        setUseLiteRtHands(true)
+        setUseLiteRtPose(true)
+    }
+
+    fun setUseLiteRtPose(enabled: Boolean) {
+        useLiteRtPose = enabled
+        if (enabled && poseLiteRt == null) {
+            poseLiteRt = Pose(context)
+        }
+    }
+
+    fun setUseLiteRtHands(enabled: Boolean) {
+        useLiteRtHands = enabled
+        if (enabled && handsLiteRt == null) {
+            handsLiteRt = Hands(context)
+        }
     }
 
     // ===== React Native Props =====
@@ -332,11 +357,13 @@ class CameraxView(
                 bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
                 imageProxy.planes[0].buffer.rewind()
 
-                // Run MediaPipe live stream hand detection
-                handLandmarkerHelper.detectLiveStream(
-                    imageProxy,
-                    lensType != CameraSelector.LENS_FACING_BACK
-                )
+                // Run MediaPipe live stream hand detection unless LiteRT hands is enabled.
+                if (!useLiteRtHands) {
+                    handLandmarkerHelper.detectLiveStream(
+                        imageProxy,
+                        lensType != CameraSelector.LENS_FACING_BACK
+                    )
+                }
 
                 // Rotate + mirror if needed
                 val matrix = Matrix().apply {
@@ -354,6 +381,22 @@ class CameraxView(
 
                 // Perform YOLO detection
                 performDetection(rotatedBitmap)
+
+                // Optional LiteRT pose path
+                if (useLiteRtPose) {
+                    if (poseLiteRt == null) poseLiteRt = Pose(context)
+                    litePoseResults = poseLiteRt?.detectAndLandmark(rotatedBitmap) ?: emptyList()
+                }
+                // Optional LiteRT hands path
+                if (useLiteRtHands) {
+                    if (handsLiteRt == null) handsLiteRt = Hands(context)
+                    liteHandResults = handsLiteRt?.detectAndLandmark(rotatedBitmap) ?: emptyList()
+                }
+
+                if (useLiteRtPose || useLiteRtHands) {
+                    overlayView.setImageDimensions(rotatedBitmap.width, rotatedBitmap.height)
+                    updateOverlay()
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Analyzer failure", e)
@@ -435,12 +478,14 @@ class CameraxView(
         activity.runOnUiThread {
             overlayView.updateResults(
                 results = latestBowResults,
-                hands = latestHandPoints.firstOrNull(),
-                pose = latestPosePoints.firstOrNull(),
+                hands = if (useLiteRtHands) null else latestHandPoints.firstOrNull(),
+                pose = if (useLiteRtPose) null else latestPosePoints.firstOrNull(),
                 handDetection = latestHandDetection,
                 poseDetection = latestPoseDetection,
                 isFrontCamera = lensType == CameraSelector.LENS_FACING_FRONT,
-                drawOffhand = showOffhand
+                drawOffhand = showOffhand,
+                poseLite = if (useLiteRtPose) litePoseResults else null,
+                handsLite = if (useLiteRtHands) liteHandResults else null
             )
         }
     }

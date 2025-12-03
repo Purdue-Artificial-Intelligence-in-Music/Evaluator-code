@@ -29,6 +29,8 @@ class OverlayView @JvmOverloads constructor(
 
     private var handLandmarkerResult: HandLandmarkerResult? = null
     private var poseLandmarkerResult: PoseLandmarkerResult? = null
+    private var poseLiteResult: List<Pose.PoseLandmarks>? = null
+    private var handLiteResult: List<Hands.HandResult>? = null
 
     private var handDetect: String = ""
     private var poseDetect: String = ""
@@ -570,6 +572,66 @@ class OverlayView @JvmOverloads constructor(
 
             }
         }
+
+        // Draw LiteRT pose (if provided).
+        poseLiteResult?.let { poses ->
+            val line = Paint().apply {
+                color = Color.WHITE
+                strokeWidth = LANDMARK_STROKE_WIDTH
+                style = Paint.Style.STROKE
+                isAntiAlias = true
+            }
+            val point = Paint().apply {
+                color = Color.CYAN
+                strokeWidth = LANDMARK_STROKE_WIDTH
+                style = Paint.Style.FILL
+                isAntiAlias = true
+            }
+            poses.forEach { pose ->
+                val pts = pose.landmarks
+                Pose.POSE_CONNECTIONS.forEach { (a, b) ->
+                    if (a < pts.size && b < pts.size) {
+                        val pa = pts[a]; val pb = pts[b]
+                        canvas.drawLine(pa.first, pa.second, pb.first, pb.second, line)
+                    }
+                }
+                pts.forEach { p ->
+                    canvas.drawCircle(p.first, p.second, 6f, point)
+                }
+            }
+        }
+
+        // Draw LiteRT hands (if provided).
+        handLiteResult?.let { hands ->
+            val rightColor = Color.BLUE
+            val leftColor = Color.CYAN
+            hands.forEach { hand ->
+                val line = Paint().apply {
+                    color = if (hand.handedness) rightColor else leftColor
+                    strokeWidth = LANDMARK_STROKE_WIDTH
+                    style = Paint.Style.STROKE
+                    isAntiAlias = true
+                }
+                val point = Paint().apply {
+                    color = if (hand.handedness) rightColor else leftColor
+                    strokeWidth = LANDMARK_STROKE_WIDTH
+                    style = Paint.Style.FILL
+                    isAntiAlias = true
+                }
+                // Simple connections: reuse MediaPipe hand connections if available.
+                HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
+                    val start = connection!!.start()
+                    val end = connection.end()
+                    if (start < hand.landmarks.size && end < hand.landmarks.size) {
+                        val pa = hand.landmarks[start]; val pb = hand.landmarks[end]
+                        canvas.drawLine(pa.first, pa.second, pb.first, pb.second, line)
+                    }
+                }
+                hand.landmarks.forEach { p ->
+                    canvas.drawCircle(p.first, p.second, 6f, point)
+                }
+            }
+        }
     }
 
     fun updateResults(
@@ -580,10 +642,14 @@ class OverlayView @JvmOverloads constructor(
         poseDetection: String,
         isFrontCamera: Boolean = false,
         drawOffhand: Boolean = true,
+        poseLite: List<Pose.PoseLandmarks>? = null,
+        handsLite: List<Hands.HandResult>? = null,
     ) {
         this.results = results
         this.handLandmarkerResult = hands
         this.poseLandmarkerResult = pose
+        this.poseLiteResult = poseLite
+        this.handLiteResult = handsLite
         this.handDetect = handDetection
         this.poseDetect = poseDetection
         this.isFrontCamera = isFrontCamera
@@ -609,6 +675,8 @@ class OverlayView @JvmOverloads constructor(
         results = null
         handLandmarkerResult = null
         poseLandmarkerResult = null
+        poseLiteResult = null
+        handLiteResult = null
         handDetect = ""
         poseDetect = ""
         postInvalidate() // remove drawings
