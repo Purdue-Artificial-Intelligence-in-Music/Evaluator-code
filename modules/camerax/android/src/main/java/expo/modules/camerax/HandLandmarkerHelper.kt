@@ -287,33 +287,37 @@ class HandLandmarkerHelper(
 
         var handCoords: FloatArray? = null
         var handPrediction: String = "No hand detected"
-        var targetHandIndex = -1
+        var targetHandIndex = selectRightHandIndexByPose(handResult, poseResult) ?: -1
 
         if (handResult != null && handResult.landmarks().isNotEmpty()) {
             val handednessList = handResult.handedness()
             val landmarksList = handResult.landmarks()
-            var maxY: Float = -1.0f
+            var selectedHandIndex = targetHandIndex
+            if (selectedHandIndex == -1) {
+                var maxY: Float = -1.0f
 
-            // traverse detected hands
-            handednessList.forEachIndexed { index, handedness ->
-                landmarksList.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { landmarks ->
-                    val wristY = landmarks[0].y()
+                // traverse detected hands
+                handednessList.forEachIndexed { index, _ ->
+                    landmarksList.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { landmarks ->
+                        val wristY = landmarks[0].y()
 
-                    // Find lowest hand (lowest hand has max wristY value)
-                    if (wristY > maxY) {
-                        maxY = wristY
-                        targetHandIndex = index
+                        // Find lowest hand (lowest hand has max wristY value)
+                        if (wristY > maxY) {
+                            maxY = wristY
+                            selectedHandIndex = index
+                        }
                     }
                 }
             }
 
             // Only process lowest hand
-            if (targetHandIndex != -1) {
-                handCoords = extractHandCoordinates(handResult, targetHandIndex)
+            if (selectedHandIndex != -1) {
+                handCoords = extractHandCoordinates(handResult, selectedHandIndex)
                 handCoords?.let {
                     handPrediction = runTFLiteInference(it)
                 }
             }
+            targetHandIndex = selectedHandIndex
         }
 
         var poseCoords: FloatArray? = null
@@ -412,6 +416,7 @@ class HandLandmarkerHelper(
                 var posePrediction = ""
                 var targetHandCoordinates: FloatArray? = null
                 val poseCoordinates = extractPoseCoordinates(latestPoseResult!!)
+                var targetHandIndex = selectRightHandIndexByPose(latestHandResult, latestPoseResult)
 
                 if (latestPoseResult!!.landmarks().isNotEmpty()) {
                     posePrediction = runTFLitePoseInference(poseCoordinates)
@@ -421,33 +426,28 @@ class HandLandmarkerHelper(
                 if (latestHandResult!!.landmarks().isNotEmpty()) {
                     val handednessList = latestHandResult!!.handedness()
                     val landmarksList = latestHandResult!!.landmarks()
-                    var targetHandIndex = -1
-                    var maxY: Float = -1.0f
-                    var finalHandResult: HandLandmarkerResult? = null
-
-                    // Iterate through all detected hands to find the target
-                    handednessList.forEachIndexed { index, handedness ->
-                        // checks for left hand
-                        //if (handedness.firstOrNull()?.displayName() == "Left") {
-                        // gets landmark for left hand
-                        landmarksList.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { landmarks ->
-                            val wristY = landmarks[0].y()
-                            // checks for lowest left hand
-                            if (wristY > maxY) {
-                                maxY = wristY
-                                targetHandIndex = index
+                    var selectedHandIndex = targetHandIndex
+                    if (selectedHandIndex == null || selectedHandIndex == -1) {
+                        var maxY: Float = -1.0f
+                        handednessList.forEachIndexed { index, _ ->
+                            landmarksList.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { landmarks ->
+                                val wristY = landmarks[0].y()
+                                if (wristY > maxY) {
+                                    maxY = wristY
+                                    selectedHandIndex = index
+                                }
                             }
                         }
-                        //}
                     }
 
-                    // process the lowest left hand
-                    if (targetHandIndex != -1) {
-                        targetHandCoordinates = extractHandCoordinates(latestHandResult!!, targetHandIndex)
+                    // process the selected hand
+                    if (selectedHandIndex != null && selectedHandIndex != -1) {
+                        targetHandCoordinates = extractHandCoordinates(latestHandResult!!, selectedHandIndex!!)
                         targetHandCoordinates?.let {
                             handPrediction = runTFLiteInference(it)
                         }
                     }
+                    targetHandIndex = selectedHandIndex
                 }
 
                 if (!isClosed && combinedLandmarkerHelperListener != null) {
@@ -461,7 +461,8 @@ class HandLandmarkerHelper(
                             handCoordinates = targetHandCoordinates,
                             poseCoordinates = poseCoordinates,
                             handDetection = handPrediction,
-                            poseDetection = posePrediction
+                            poseDetection = posePrediction,
+                            targetHandIndex = targetHandIndex ?: -1
                         )
                     )
                 }
@@ -470,6 +471,92 @@ class HandLandmarkerHelper(
                 latestPoseResult = null
             }
         }
+    }
+
+    // Assign each detected hand to left/right based on closest pose wrist/index anchors.
+    private fun assignHandsByPose(
+        handResult: HandLandmarkerResult?,
+        poseResult: PoseLandmarkerResult?
+    ): Map<Int, String> {
+        if (handResult == null || handResult.landmarks().isEmpty()) return emptyMap()
+        val poseLandmarks = poseResult?.landmarks()?.firstOrNull() ?: return emptyMap()
+
+        // Left refs: wrist (15) / index (19); Right refs: wrist (16) / index (20)
+        val leftRefs = listOfNotNull(poseLandmarks.getOrNull(15), poseLandmarks.getOrNull(19))
+        val rightRefs = listOfNotNull(poseLandmarks.getOrNull(16), poseLandmarks.getOrNull(20))
+
+        fun mean(refs: List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>): Pair<Float, Float>? {
+            if (refs.isEmpty()) return null
+            val sx = refs.sumOf { it.x().toDouble() }.toFloat()
+            val sy = refs.sumOf { it.y().toDouble() }.toFloat()
+            val n = refs.size.toFloat()
+            return Pair(sx / n, sy / n)
+        }
+
+        val leftMean = mean(leftRefs)
+        val rightMean = mean(rightRefs)
+        if (leftMean == null && rightMean == null) return emptyMap()
+
+        val labels = mutableMapOf<Int, String>()
+        handResult.landmarks().forEachIndexed { idx, handLandmarks ->
+            val wrist = handLandmarks.getOrNull(0) ?: return@forEachIndexed
+            val wx = wrist.x()
+            val wy = wrist.y()
+
+            val distLeft = leftMean?.let { (lx, ly) ->
+                val dx = wx - lx; val dy = wy - ly; dx * dx + dy * dy
+            }
+            val distRight = rightMean?.let { (rx, ry) ->
+                val dx = wx - rx; val dy = wy - ry; dx * dx + dy * dy
+            }
+
+            val label = when {
+                distLeft != null && distRight != null -> if (distRight <= distLeft) "right" else "left"
+                distRight != null -> "right"
+                distLeft != null -> "left"
+                else -> null
+            }
+            if (label != null) {
+                labels[idx] = label
+            }
+        }
+        return labels
+    }
+
+    // Select the right hand by pose anchors (returns null if none labeled right).
+    private fun selectRightHandIndexByPose(
+        handResult: HandLandmarkerResult?,
+        poseResult: PoseLandmarkerResult?
+    ): Int? {
+        if (handResult == null || handResult.landmarks().isEmpty()) return null
+        val poseLandmarks = poseResult?.landmarks()?.firstOrNull()
+        val rightRefs = poseLandmarks?.let {
+            listOfNotNull(it.getOrNull(16), it.getOrNull(20))
+        } ?: emptyList()
+        val rightMean = if (rightRefs.isNotEmpty()) {
+            val sx = rightRefs.sumOf { it.x().toDouble() }.toFloat()
+            val sy = rightRefs.sumOf { it.y().toDouble() }.toFloat()
+            Pair(sx / rightRefs.size, sy / rightRefs.size)
+        } else null
+
+        val labels = assignHandsByPose(handResult, poseResult)
+        var bestIdx: Int? = null
+        var bestDist = Float.MAX_VALUE
+        handResult.landmarks().forEachIndexed { idx, handLandmarks ->
+            if (labels[idx] == "right") {
+                val wrist = handLandmarks.getOrNull(0)
+                if (wrist != null) {
+                    val dist = rightMean?.let { (rx, ry) ->
+                        val dx = wrist.x() - rx; val dy = wrist.y() - ry; dx * dx + dy * dy
+                    } ?: 0f
+                    if (dist < bestDist) {
+                        bestDist = dist
+                        bestIdx = idx
+                    }
+                }
+            }
+        }
+        return bestIdx
     }
 
     /**
@@ -681,7 +768,7 @@ class HandLandmarkerHelper(
         const val DEFAULT_HAND_DETECTION_CONFIDENCE = 0.7F
         const val DEFAULT_HAND_TRACKING_CONFIDENCE = 0.7F
         const val DEFAULT_HAND_PRESENCE_CONFIDENCE = 0.5F
-        const val DEFAULT_NUM_HANDS = 1
+        const val DEFAULT_NUM_HANDS = 2
         const val OTHER_ERROR = 0
         const val GPU_ERROR = 1
 
@@ -730,74 +817,80 @@ class HandLandmarkerHelper(
         val handHasIssue = handClass in 1..2
         val poseHasIssue = poseClass in 1..2
 
-        if (result.handResults.isNotEmpty() && result.targetHandIndex != -1) {
+        if (result.handResults.isNotEmpty()) {
             val handResult = result.handResults[0]
+            val poseResult = result.poseResults.firstOrNull()
+            val labels = assignHandsByPose(handResult, poseResult)
             val landmarksList = handResult.landmarks()
             val handednessList = handResult.handedness()
 
-            if (result.targetHandIndex < landmarksList.size) {
-                val targetLandmarks = landmarksList[result.targetHandIndex]
+            landmarksList.forEachIndexed { idx, targetLandmarks ->
+                val side = labels[idx] ?: return@forEachIndexed
+                if (targetLandmarks.isEmpty()) return@forEachIndexed
 
-                if (targetLandmarks.isNotEmpty()) {
-                    // Choose color based on hand classification
-                    // Using a brighter, more saturated orange (Deep Orange/Amber)
-                    val handColor = if (handHasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Vivid orange or Blue
+                // Selfie camera mirrors the view; flip left/right color mapping when front camera is active.
+                val isRight = if (isFrontCameraActive) side != "right" else side == "right"
+                val handColor = when {
+                    isRight && handHasIssue -> Color.rgb(255, 140, 0) // right with issue: orange
+                    isRight -> Color.BLUE                                   // right normal: blue (existing default)
+                    else -> Color.rgb(0, 120, 255)                          // left: brighter blue
+                }
+                val pointColor = when {
+                    isRight && handHasIssue -> Color.rgb(255, 180, 50) // amber
+                    isRight -> Color.CYAN
+                    else -> Color.rgb(120, 200, 255)                   // light blue for left
+                }
 
-                    val linePaint = Paint().apply {
-                        color = handColor
-                        strokeWidth = 10f
-                        style = Paint.Style.STROKE
-                    }
+                val linePaint = Paint().apply {
+                    color = handColor
+                    strokeWidth = 10f
+                    style = Paint.Style.STROKE
+                }
 
-                    val pointPaint = Paint().apply {
-                        color = if (handHasIssue) Color.rgb(255, 180, 50) else Color.CYAN // Bright amber or Cyan
-                        strokeWidth = 10f
-                        style = Paint.Style.FILL
-                    }
+                val pointPaint = Paint().apply {
+                    color = pointColor
+                    strokeWidth = 10f
+                    style = Paint.Style.FILL
+                }
 
-                    // Draw hand connections
-                    HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
-                        val startLandmark = targetLandmarks[connection!!.start()]
-                        val endLandmark = targetLandmarks[connection.end()]
+                HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
+                    val startLandmark = targetLandmarks[connection!!.start()]
+                    val endLandmark = targetLandmarks[connection.end()]
 
-                        canvas.drawLine(
-                            startLandmark.x() * imageWidth,
-                            startLandmark.y() * imageHeight,
-                            endLandmark.x() * imageWidth,
-                            endLandmark.y() * imageHeight,
-                            linePaint
-                        )
-                    }
-
-                    // Draw keypoints
-                    for (landmark in targetLandmarks) {
-                        canvas.drawPoint(
-                            landmark.x() * imageWidth,
-                            landmark.y() * imageHeight,
-                            pointPaint
-                        )
-                    }
-
-                    // Hand label
-                    val wrist = targetLandmarks[0]
-                    val handName = handednessList.getOrNull(result.targetHandIndex)?.firstOrNull()?.displayName() ?: "Unknown"
-
-                    val labelPaint = Paint().apply {
-                        color = Color.WHITE
-                        textSize = 40f
-                        style = Paint.Style.FILL
-                        isAntiAlias = true
-                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        setShadowLayer(4f, 2f, 2f, Color.BLACK)
-                    }
-
-                    canvas.drawText(
-                        "Bow Hand ($handName)",
-                        wrist.x() * imageWidth + 20f,
-                        wrist.y() * imageHeight - 20f,
-                        labelPaint
+                    canvas.drawLine(
+                        startLandmark.x() * imageWidth,
+                        startLandmark.y() * imageHeight,
+                        endLandmark.x() * imageWidth,
+                        endLandmark.y() * imageHeight,
+                        linePaint
                     )
                 }
+
+                for (landmark in targetLandmarks) {
+                    canvas.drawPoint(
+                        landmark.x() * imageWidth,
+                        landmark.y() * imageHeight,
+                        pointPaint
+                    )
+                }
+
+                val wrist = targetLandmarks[0]
+                val handName = handednessList.getOrNull(idx)?.firstOrNull()?.displayName() ?: side
+                val labelPaint = Paint().apply {
+                    color = Color.WHITE
+                    textSize = 40f
+                    style = Paint.Style.FILL
+                    isAntiAlias = true
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    setShadowLayer(4f, 2f, 2f, Color.BLACK)
+                }
+
+                canvas.drawText(
+                    if (isRight) "Bow Hand ($handName)" else "Left Hand ($handName)",
+                    wrist.x() * imageWidth + 20f,
+                    wrist.y() * imageHeight - 20f,
+                    labelPaint
+                )
             }
         }
 

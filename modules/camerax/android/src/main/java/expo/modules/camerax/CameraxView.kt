@@ -80,6 +80,8 @@ class CameraxView(
     private var latestPosePoints: List<PoseLandmarkerResult> = emptyList()
     private var latestHandDetection: String = ""
     private var latestPoseDetection: String = ""
+    // Toggle to hide offhand rendering (set to false to draw only the bow/right hand).
+    private var showOffhand: Boolean = true
 
     init {
         // Root layout
@@ -436,7 +438,9 @@ class CameraxView(
                 hands = latestHandPoints.firstOrNull(),
                 pose = latestPosePoints.firstOrNull(),
                 handDetection = latestHandDetection,
-                poseDetection = latestPoseDetection
+                poseDetection = latestPoseDetection,
+                isFrontCamera = lensType == CameraSelector.LENS_FACING_FRONT,
+                drawOffhand = showOffhand
             )
         }
     }

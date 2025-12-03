@@ -32,6 +32,9 @@ class OverlayView @JvmOverloads constructor(
 
     private var handDetect: String = ""
     private var poseDetect: String = ""
+    private var isFrontCamera: Boolean = false
+    // Set false to hide the offhand (left) rendering; true shows both hands.
+    private var drawOffhand: Boolean = true
 
     private var centerX = 0F
     private var now = 0L
@@ -391,26 +394,38 @@ class OverlayView @JvmOverloads constructor(
             }
         }
 
-        // Draw Hand Landmarks
+        // Draw Hand Landmarks (color left vs right)
         handLandmarkerResult?.let { handResult ->
-            for (landmarks in handResult.landmarks()) {
-                // Draw hand connections
+            val handednessList = handResult.handedness()
+            handResult.landmarks().forEachIndexed { index, landmarks ->
+                val handedName = handednessList.getOrNull(index)?.firstOrNull()?.displayName()
+                val isLeftFromModel = handedName.equals("Left", ignoreCase = true)
+                // Selfie camera mirrors the view; flip colors when front camera is active.
+                val isLeft = if (isFrontCamera) !isLeftFromModel else isLeftFromModel
+                if (!drawOffhand && isLeft) return@forEachIndexed
+
+                val localLinePaint = Paint(linePaint).apply {
+                    color = if (isLeft) Color.BLUE else linePaint.color
+                }
+                val localPointPaint = Paint(pointPaint).apply {
+                    color = if (isLeft) Color.CYAN else pointPaint.color
+                }
+
                 HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
                     canvas.drawLine(
                         landmarks.get(connection!!.start()).x() * imageWidth * handsScaleFactor + xOffset,
                         landmarks.get(connection.start()).y() * imageHeight * handsScaleFactor + yOffset,
                         landmarks.get(connection.end()).x() * imageWidth * handsScaleFactor + xOffset,
                         landmarks.get(connection.end()).y() * imageHeight * handsScaleFactor + yOffset,
-                        linePaint
+                        localLinePaint
                     )
                 }
 
-                // Draw hand points
                 for (normalizedLandmark in landmarks) {
                     canvas.drawPoint(
                         normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
                         normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
-                        pointPaint
+                        localPointPaint
                     )
                 }
             }
@@ -563,12 +578,16 @@ class OverlayView @JvmOverloads constructor(
         pose: PoseLandmarkerResult?,
         handDetection: String,
         poseDetection: String,
+        isFrontCamera: Boolean = false,
+        drawOffhand: Boolean = true,
     ) {
         this.results = results
         this.handLandmarkerResult = hands
         this.poseLandmarkerResult = pose
         this.handDetect = handDetection
         this.poseDetect = poseDetection
+        this.isFrontCamera = isFrontCamera
+        this.drawOffhand = drawOffhand
         invalidate()
     }
 
