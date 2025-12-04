@@ -393,27 +393,34 @@ class OverlayView @JvmOverloads constructor(
 
         // Draw Hand Landmarks
         handLandmarkerResult?.let { handResult ->
-            for (landmarks in handResult.landmarks()) {
+            val filteredHands = selectClosestHand()
+
+            filteredHands?.let { list ->
+                val landmarks = list[0]
+
                 // Draw hand connections
-                HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
+                HandLandmarker.HAND_CONNECTIONS.forEach { c ->
+                    val s = landmarks[c!!.start()]
+                    val e = landmarks[c.end()]
                     canvas.drawLine(
-                        landmarks.get(connection!!.start()).x() * imageWidth * handsScaleFactor + xOffset,
-                        landmarks.get(connection.start()).y() * imageHeight * handsScaleFactor + yOffset,
-                        landmarks.get(connection.end()).x() * imageWidth * handsScaleFactor + xOffset,
-                        landmarks.get(connection.end()).y() * imageHeight * handsScaleFactor + yOffset,
+                        s.x() * imageWidth * handsScaleFactor + xOffset,
+                        s.y() * imageHeight * handsScaleFactor + yOffset,
+                        e.x() * imageWidth * handsScaleFactor + xOffset,
+                        e.y() * imageHeight * handsScaleFactor + yOffset,
                         linePaint
                     )
                 }
 
-                // Draw hand points
-                for (normalizedLandmark in landmarks) {
+                // Draw keypoints
+                for (lm in landmarks) {
                     canvas.drawPoint(
-                        normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
-                        normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
+                        lm.x() * imageWidth * handsScaleFactor + xOffset,
+                        lm.y() * imageHeight * handsScaleFactor + yOffset,
                         pointPaint
                     )
                 }
             }
+
         }
 
         if (displayBowIssue != null) {
@@ -555,6 +562,37 @@ class OverlayView @JvmOverloads constructor(
 
             }
         }
+    }
+
+    private fun selectClosestHand(): List<List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>>? {
+        val hands = handLandmarkerResult?.landmarks() ?: return null
+        val pose = poseLandmarkerResult?.landmarks() ?: return null
+        if (hands.isEmpty() || pose.isEmpty() || pose[0].size <= 16) return null
+
+        val poseHand = pose[0][16]
+        val px = poseHand.x()
+        val py = poseHand.y()
+
+        var selectedIndex = -1
+        var bestDist = Float.MAX_VALUE
+        val threshold = 0.2f
+
+        hands.forEachIndexed { idx, lmList ->
+            if (lmList.isNotEmpty()) {
+                val wrist = lmList[0]
+                val dx = wrist.x() - px
+                val dy = wrist.y() - py
+                val dist = kotlin.math.sqrt(dx*dx + dy*dy)
+
+                if (dist < threshold && dist < bestDist) {
+                    bestDist = dist
+                    selectedIndex = idx
+                }
+            }
+        }
+
+        if (selectedIndex == -1) return null
+        return listOf(hands[selectedIndex])
     }
 
     fun updateResults(

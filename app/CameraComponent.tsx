@@ -44,6 +44,7 @@ interface SummaryData {
   };
   userId?: string;
   timestamp?: string;
+  sessionDuration?: string;
 }
 
 const CameraComponent = ({ startDelay, onClose }) => {
@@ -70,6 +71,8 @@ const CameraComponent = ({ startDelay, onClose }) => {
 
   const SESSIONS_PER_PAGE = 5;
   const TOTAL_SESSIONS = 15;
+  // Total playing time
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -139,6 +142,13 @@ const CameraComponent = ({ startDelay, onClose }) => {
       timestamp
     } = event.nativeEvent;
 
+    let finalDuration = "0s";
+    if (sessionStartTime) {
+      const endTime = new Date();
+      const diffMs = endTime.getTime() - sessionStartTime.getTime();
+      finalDuration = formatDuration(diffMs);
+    }
+
     const newSummaryData = {
       heightBreakdown,
       angleBreakdown,
@@ -147,7 +157,8 @@ const CameraComponent = ({ startDelay, onClose }) => {
       posePresenceBreakdown,
       elbowPostureBreakdown,
       userId: eventUserId,
-      timestamp
+      timestamp,
+      sessionDuration: finalDuration,
     };
 
     setSummaryData(newSummaryData);
@@ -178,6 +189,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setMaxAngle(tempMaxAngle);
     setSettingsVisible(false);
   };
+
 
   const getCurrentPageSessions = () => {
     const startIndex = currentPage * SESSIONS_PER_PAGE;
@@ -234,11 +246,41 @@ const CameraComponent = ({ startDelay, onClose }) => {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.timestamp}>Time: {data.timestamp}</Text>
+          <Text style={styles.timestamp}>
+            <Text style={styles.subTitle}>Total Playing Time: </Text>
+            {summaryData?.sessionDuration || "0s"}
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.timestamp}>Completed On: {formattedTimestamp}</Text>
         </View>
       </>
     );
   };
+
+  let formattedTimestamp = "";
+
+  if (summaryData?.timestamp) {
+    const dt = new Date(summaryData.timestamp.replace(" ", "T"));
+
+    const weekday = dt.toLocaleString([], { weekday: "short" });
+    const date = dt.toLocaleDateString("en-CA");
+    const time = dt.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+
+    formattedTimestamp = `${weekday}, ${date}, ${time}`;
+  }
+
+  function formatDuration(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  }
+
 
   return (
     <View style={styles.container}>
@@ -248,7 +290,55 @@ const CameraComponent = ({ startDelay, onClose }) => {
           <View style={styles.modalContent}>
             <ScrollView>
               <Text style={styles.title}>Session Summary</Text>
+
               {renderSummaryContent(summaryData)}
+
+
+              {summaryData ? (
+                <>
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Bow Height</Text>
+                    <Text>Top: {summaryData.heightBreakdown?.Top?.toFixed(1) || 0}%</Text>
+                    <Text>Middle: {summaryData.heightBreakdown?.Middle?.toFixed(1) || 0}%</Text>
+                    <Text>Bottom: {summaryData.heightBreakdown?.Bottom?.toFixed(1) || 0}%</Text>
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Bow Angle</Text>
+                    <Text>Correct: {summaryData.angleBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+                    <Text>Wrong: {summaryData.angleBreakdown?.Wrong?.toFixed(1) || 0}%</Text>
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Hand Posture</Text>
+                    <Text>Correct: {summaryData.handPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+                    <Text>Supination: {summaryData.handPostureBreakdown?.Supination?.toFixed(1) || 0}%</Text>
+                    <Text>Too much pronation: {summaryData.handPostureBreakdown?.['Too much pronation']?.toFixed(1) || 0}%</Text>
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Elbow Posture</Text>
+                    <Text>Correct: {summaryData.elbowPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+                    <Text>Low elbow: {summaryData.elbowPostureBreakdown?.['Low elbow']?.toFixed(1) || 0}%</Text>
+                    <Text>Elbow too high: {summaryData.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
+                  </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.timestamp}>
+                    <Text style={styles.subTitle}>Total Playing Time: </Text>
+                    {summaryData?.sessionDuration || "0s"}
+                  </Text>
+                </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.timestamp}>Completed On: {formattedTimestamp}</Text>
+                  </View>
+                </>
+              ) : (
+                <Text>No data available</Text>
+              )}
+
+
               <Button title="Close" onPress={closeSummary} />
             </ScrollView>
           </View>
@@ -449,6 +539,9 @@ const CameraComponent = ({ startDelay, onClose }) => {
         style={styles.detectionButton}
           onPress={() => {
             if (showSetupOverlay) setShowSetupOverlay(false);
+            if (!isDetectionEnabled) {
+              setSessionStartTime(new Date());
+            }
             setIsDetectionEnabled(!isDetectionEnabled);
           }}
       >
