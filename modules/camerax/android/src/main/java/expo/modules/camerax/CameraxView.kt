@@ -140,10 +140,8 @@ class CameraxView(
             // Start a new session
             profile.createNewID(userId)
         } else {
-            // Stop and finalize JSON file
-            val detailedSummary = profile.getDetailedSummary(userId)
-            val summary = profile.endSessionAndGetSummary(userId)
-            saveSummaryToFile(summary)
+            // Stop and finalize JSON files
+            val detailedSummary = profile.endSessionAndGetSummary(userId)
 
             // send summary for display
             if (detailedSummary != null) {
@@ -412,21 +410,6 @@ class CameraxView(
             ActivityCompat.requestPermissions(activity, requiredPermissions, 42)
         }
         return granted
-    }
-
-    private fun saveSummaryToFile(summary: String) {
-        if (summary.isBlank() || summary == "{}") return
-        try {
-            val baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            val sessionsDir = File(baseDir, "sessions")
-            if (!sessionsDir.exists()) sessionsDir.mkdirs()
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-            val outputFile = File(sessionsDir, "session_${userId}_$timestamp.json")
-            FileOutputStream(outputFile).use { stream -> stream.write(summary.toByteArray()) }
-            Log.d(TAG, "Session summary saved to ${outputFile.absolutePath}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving summary file", e)
-        }
     }
 
     private fun updateOverlay() {

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 
-import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert } from 'react-native';
 
-import { requireNativeViewManager } from 'expo-modules-core';
+import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from './CameraComponentStyles';
 
 const CameraxView = requireNativeViewManager('Camerax');
+const CameraxModule = requireNativeModule('Camerax')
+
 
 interface SummaryData {
   heightBreakdown?: {
@@ -59,6 +61,16 @@ const CameraComponent = ({ startDelay, onClose }) => {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tempMaxAngle, setTempMaxAngle] = useState(15);
 
+  // History modal state
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historySessions, setHistorySessions] = useState<SummaryData[]>([]);
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0); // current page on "Session Summary History"
+
+  const SESSIONS_PER_PAGE = 5;
+  const TOTAL_SESSIONS = 15;
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsCameraActive(true);
@@ -92,7 +104,30 @@ const CameraComponent = ({ startDelay, onClose }) => {
     loadUserId();
   }, []);
 
-  const handleSessionEnd = (event: any) => {
+  const loadSessionHistory = async () => {
+    setIsLoadingHistory(true);
+    setCurrentPage(0); // reset to first page
+    try {
+      // load history session
+      const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
+      
+      if (sessions && sessions.length > 0) {
+        setHistorySessions(sessions as SummaryData[]);
+        setHistoryVisible(true);
+      } else {
+        setHistorySessions([]);
+        setHistoryVisible(true);
+      }
+    } catch (error) {
+      console.error('Error loading session history:', error);
+      Alert.alert('Error', 'Failed to load session history. Please try again.');
+      setHistorySessions([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleSessionEnd = async (event: any) => {
     const {
       heightBreakdown,
       angleBreakdown,
@@ -124,6 +159,12 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setSummaryData(null);
   };
 
+  const closeHistory = () => {
+    setHistoryVisible(false);
+    setSelectedHistoryIndex(null);
+    setCurrentPage(0);
+  };
+
   const openSettings = () => {
     setTempMaxAngle(maxAngle);
     setSettingsVisible(true);
@@ -138,54 +179,178 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setSettingsVisible(false);
   };
 
+  const getCurrentPageSessions = () => {
+    const startIndex = currentPage * SESSIONS_PER_PAGE;
+    const endIndex = startIndex + SESSIONS_PER_PAGE;
+    return historySessions.slice(startIndex, endIndex);
+  };
+
+  const totalPages = Math.ceil(historySessions.length / SESSIONS_PER_PAGE);
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages - 1) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const goToPrevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const renderSummaryContent = (data: SummaryData | null) => {
+    if (!data) {
+      return <Text>No data available</Text>;
+    }
+
+    return (
+      <>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Bow Height</Text>
+          <Text>Top: {data.heightBreakdown?.Top?.toFixed(1) || 0}%</Text>
+          <Text>Middle: {data.heightBreakdown?.Middle?.toFixed(1) || 0}%</Text>
+          <Text>Bottom: {data.heightBreakdown?.Bottom?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Bow Angle</Text>
+          <Text>Correct: {data.angleBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+          <Text>Wrong: {data.angleBreakdown?.Wrong?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Hand Posture</Text>
+          <Text>Correct: {data.handPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+          <Text>Supination: {data.handPostureBreakdown?.Supination?.toFixed(1) || 0}%</Text>
+          <Text>Too much pronation: {data.handPostureBreakdown?.['Too much pronation']?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Elbow Posture</Text>
+          <Text>Correct: {data.elbowPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+          <Text>Low elbow: {data.elbowPostureBreakdown?.['Low elbow']?.toFixed(1) || 0}%</Text>
+          <Text>Elbow too high: {data.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.timestamp}>Time: {data.timestamp}</Text>
+        </View>
+      </>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      {/* Summary Modal */}
+      {/* Current Session Summary Modal */}
       <Modal visible={summaryVisible} animationType="slide" transparent={true}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <ScrollView>
               <Text style={styles.title}>Session Summary</Text>
-
-              {summaryData ? (
-                <>
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Bow Height</Text>
-                    <Text>Top: {summaryData.heightBreakdown?.Top?.toFixed(1) || 0}%</Text>
-                    <Text>Middle: {summaryData.heightBreakdown?.Middle?.toFixed(1) || 0}%</Text>
-                    <Text>Bottom: {summaryData.heightBreakdown?.Bottom?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Bow Angle</Text>
-                    <Text>Correct: {summaryData.angleBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-                    <Text>Wrong: {summaryData.angleBreakdown?.Wrong?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Hand Posture</Text>
-                    <Text>Correct: {summaryData.handPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-                    <Text>Supination: {summaryData.handPostureBreakdown?.Supination?.toFixed(1) || 0}%</Text>
-                    <Text>Too much pronation: {summaryData.handPostureBreakdown?.['Too much pronation']?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Elbow Posture</Text>
-                    <Text>Correct: {summaryData.elbowPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-                    <Text>Low elbow: {summaryData.elbowPostureBreakdown?.['Low elbow']?.toFixed(1) || 0}%</Text>
-                    <Text>Elbow too high: {summaryData.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.timestamp}>Time: {summaryData.timestamp}</Text>
-                  </View>
-                </>
-              ) : (
-                <Text>No data available</Text>
-              )}
-
+              {renderSummaryContent(summaryData)}
               <Button title="Close" onPress={closeSummary} />
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* History Modal */}
+      <Modal visible={historyVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.title}>Session History</Text>
+            
+            {isLoadingHistory ? (
+              <Text style={styles.loadingText}>Loading history...</Text>
+            ) : historySessions.length === 0 ? (
+              <Text style={styles.noHistoryText}>No previous sessions found</Text>
+            ) : (
+              <ScrollView>
+                {/* Session List */}
+                {selectedHistoryIndex === null ? (
+                  <>
+                    <Text style={styles.historySubtitle}>
+                      Showing {currentPage * SESSIONS_PER_PAGE + 1}-{Math.min((currentPage + 1) * SESSIONS_PER_PAGE, historySessions.length)} of {historySessions.length} Sessions
+                    </Text>
+                    
+                    {getCurrentPageSessions().map((session, index) => {
+                      const actualIndex = currentPage * SESSIONS_PER_PAGE + index;
+                      return (
+                        <TouchableOpacity
+                          key={actualIndex}
+                          style={styles.historyItem}
+                          onPress={() => setSelectedHistoryIndex(actualIndex)}
+                        >
+                          <Text style={styles.historyItemTitle}>
+                            Session {actualIndex + 1}
+                          </Text>
+                          <Text style={styles.historyItemDate}>
+                            {session.timestamp}
+                          </Text>
+                          <Text style={styles.historyItemArrow}>→</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <View style={styles.paginationContainer}>
+                        <TouchableOpacity
+                          onPress={goToPrevPage}
+                          disabled={currentPage === 0}
+                          style={styles.paginationArrowButton}
+                        >
+                          <Text style={[
+                            styles.paginationArrow,
+                            currentPage === 0 && styles.paginationArrowDisabled
+                          ]}>
+                            ‹
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        <Text style={styles.paginationText}>
+                          Page {currentPage + 1} of {totalPages}
+                        </Text>
+                        
+                        <TouchableOpacity
+                          onPress={goToNextPage}
+                          disabled={currentPage === totalPages - 1}
+                          style={styles.paginationArrowButton}
+                        >
+                          <Text style={[
+                            styles.paginationArrow,
+                            currentPage === totalPages - 1 && styles.paginationArrowDisabled
+                          ]}>
+                            ›
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  /* Session Detail View */
+                  <>
+                    <TouchableOpacity
+                      style={styles.backButton}
+                      onPress={() => setSelectedHistoryIndex(null)}
+                    >
+                      <Text style={styles.backButtonText}>← Back to List</Text>
+                    </TouchableOpacity>
+                    
+                    <Text style={styles.detailTitle}>
+                      Session {selectedHistoryIndex + 1}
+                    </Text>
+                    
+                    {renderSummaryContent(historySessions[selectedHistoryIndex])}
+                  </>
+                )}
+              </ScrollView>
+            )}
+            
+            <View style={{ marginTop: 16 }}>
+              <Button title="Close" onPress={closeHistory} />
+            </View>
           </View>
         </View>
       </Modal>
@@ -266,6 +431,18 @@ const CameraComponent = ({ startDelay, onClose }) => {
         activeOpacity={0.7}
       >
         <Text style={styles.settingsButtonText}>⚙️</Text>
+      </TouchableOpacity>
+
+      {/* History Button */}
+      <TouchableOpacity
+        style={styles.historyButton}
+        onPress={loadSessionHistory}
+        activeOpacity={0.7}
+        disabled={isLoadingHistory}
+      >
+        <Text style={styles.historyButtonText}>
+          {isLoadingHistory ? '...' : '📋'}
+        </Text>
       </TouchableOpacity>
       
       <TouchableOpacity

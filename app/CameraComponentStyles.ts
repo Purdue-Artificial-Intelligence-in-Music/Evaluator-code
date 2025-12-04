@@ -56,6 +56,21 @@ export const styles = StyleSheet.create({
   settingsButtonText: {
     fontSize: 22,
   },
+  // History Button
+  historyButton: {
+    position: 'absolute',
+    top: 200,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyButtonText: {
+    fontSize: 22,
+  },
   detectionButton: {
     position: 'absolute',
     bottom: 50,
@@ -254,5 +269,92 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
     letterSpacing: 0.3,
+  },
+
+  // History modal styles
+  loadingText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#007AFF',
+    marginVertical: 20,
+  },
+  noHistoryText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#666',
+    marginVertical: 20,
+  },
+  historySubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#333',
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  historyItemTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  historyItemDate: {
+    fontSize: 14,
+    color: '#666',
+    marginRight: 8,
+  },
+  historyItemArrow: {
+    fontSize: 20,
+    color: '#007AFF',
+  },
+  backButton: {
+    padding: 12,
+    marginBottom: 16,
+  },
+  backButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  detailTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+    color: '#333',
+  },
+
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+    paddingHorizontal: 20,
+  },
+  paginationArrowButton: {
+    padding: 8,
+    minWidth: 40,
+    alignItems: 'center',
+  },
+  paginationArrow: {
+    fontSize: 36,
+    fontWeight: '300',
+    color: '#007AFF',
+    lineHeight: 36,
+  },
+  paginationArrowDisabled: {
+    color: '#cccccc',
+  },
+  paginationText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
   },
 });
