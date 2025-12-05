@@ -2,6 +2,8 @@ package expo.modules.camerax
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
 import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
@@ -35,7 +37,7 @@ class Pose(private val context: Context) {
         // Detector input dims from model card (3x128x128)
         private const val DETECTOR_INPUT_SIZE = 128
         private const val LANDMARK_INPUT_SIZE = 256
-        private const val DET_SCORE_THRESHOLD = 0.4f
+        private const val DET_SCORE_THRESHOLD = 0.6f
         private const val NMS_IOU = 0.3f
         private const val ROI_SCALE = 1.5f
         private const val DEFAULT_POSE_ANCHORS = "anchors_pose.npy"
@@ -64,7 +66,19 @@ class Pose(private val context: Context) {
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
-    private var lastLandmarks: FloatArray? = null
+    private var track: PoseTrack? = null
+    // Reusable buffers to cut allocations
+    private var detectorTensorImage: TensorImage? = null
+    private var coords0Buf: ByteBuffer? = null
+    private var coords1Buf: ByteBuffer? = null
+    private var scores0Buf: ByteBuffer? = null
+    private var scores1Buf: ByteBuffer? = null
+    private var coordsBuf: ByteBuffer? = null
+    private var scoresBuf: ByteBuffer? = null
+    private var lmScoreBuf: ByteBuffer? = null
+    private var lmLmkBuf: ByteBuffer? = null
+    private var cropBitmap: Bitmap? = null
+    private val warpMatrix = Matrix()
 
     init {
         setupDetector()
@@ -161,52 +175,110 @@ class Pose(private val context: Context) {
         val landmarks: List<Pair<Float, Float>>
     )
 
+    private data class PoseTrack(
+        var roi: FloatArray,
+        var lastLandmarks: FloatArray?,
+        var lastUpdate: Long
+    )
+
     /**
      * Full pose path: detect -> ROI -> landmark -> map back.
      */
     fun detectAndLandmark(bitmap: Bitmap): List<PoseLandmarks> {
         Log.d(TAG, "pose detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
-        val detections = detectPoses(bitmap)
-        if (detections.isEmpty()) return emptyList()
         val lmInterp = landmark ?: return emptyList()
         val results = mutableListOf<PoseLandmarks>()
+        val nowMs = System.currentTimeMillis()
 
-        for (det in detections) {
+        // Step 1: try existing track.
+        track?.let { tr ->
+            if (nowMs - tr.lastUpdate < 800) {
+                val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
+                    tr.roi,
+                    LANDMARK_INPUT_SIZE,
+                    LANDMARK_INPUT_SIZE
+                )
+            val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE)
+            val input = buildInputBuffer(crop, lmInterp.getInputTensor(0))
+                val scoreTensor = lmInterp.getOutputTensor(0)
+                val lmkTensor = lmInterp.getOutputTensor(1)
+                val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
+                if (out.first >= DET_SCORE_THRESHOLD && out.second.isNotEmpty()) {
+                    val mapped = FloatArray(out.second.size)
+                    inverse?.mapPoints(mapped, out.second)
+                    tr.lastLandmarks?.let { prev ->
+                        if (prev.size == mapped.size) {
+                            for (i in mapped.indices) {
+                                mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
+                            }
+                        }
+                    }
+                    tr.lastLandmarks = mapped.copyOf()
+                    tr.lastUpdate = nowMs
+                    val pairs = mutableListOf<Pair<Float, Float>>()
+                    var i = 0
+                    while (i < mapped.size) {
+                        pairs.add(Pair(mapped[i], mapped[i + 1]))
+                        i += 2
+                    }
+                    Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (track)")
+                    results.add(PoseLandmarks(out.first, pairs))
+                }
+            }
+        }
+
+        // Step 2: detector to refresh/create track if needed.
+        val detections = detectPoses(bitmap)
+        if (detections.isNotEmpty()) {
+            val det = detections.first()
             val roiCorners = MediapipeLiteRtUtil.computePoseRoiCorners(
                 det,
                 bitmap.width,
                 bitmap.height,
                 boxScale = ROI_SCALE
-            ) ?: continue
-
-            val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
-                roiCorners,
-                LANDMARK_INPUT_SIZE,
-                LANDMARK_INPUT_SIZE
             )
-            if (inverse == null) continue
-
-            val crop = MediapipeLiteRtUtil.warpBitmap(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE)
-            val input = buildInputBuffer(crop, lmInterp.getInputTensor(0))
-
-            val scoreTensor = lmInterp.getOutputTensor(0)
-            val lmkTensor = lmInterp.getOutputTensor(1)
-            val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
-            if (out.second.isEmpty()) continue
-            if (out.first < DET_SCORE_THRESHOLD) continue
-
-            // Map back to original image coords.
-            val mapped = FloatArray(out.second.size)
-            inverse.mapPoints(mapped, out.second)
-            val pairs = mutableListOf<Pair<Float, Float>>()
-            var i = 0
-            while (i < mapped.size) {
-                pairs.add(Pair(mapped[i], mapped[i + 1]))
-                i += 2
+            if (roiCorners != null) {
+                val matched = track?.let { if (poseIou(it.roi, roiCorners) > 0.3f) it else null }
+                val tr = matched ?: PoseTrack(roiCorners, null, nowMs).also { track = it }
+                tr.roi = roiCorners
+                val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
+                    roiCorners,
+                    LANDMARK_INPUT_SIZE,
+                    LANDMARK_INPUT_SIZE
+                )
+                val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE)
+                val input = buildInputBuffer(crop, lmInterp.getInputTensor(0))
+                val scoreTensor = lmInterp.getOutputTensor(0)
+                val lmkTensor = lmInterp.getOutputTensor(1)
+                val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
+                if (out.first >= DET_SCORE_THRESHOLD && out.second.isNotEmpty()) {
+                    val mapped = FloatArray(out.second.size)
+                    inverse?.mapPoints(mapped, out.second)
+                    tr.lastLandmarks?.let { prev ->
+                        if (prev.size == mapped.size) {
+                            for (i in mapped.indices) {
+                                mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
+                            }
+                        }
+                    }
+                    tr.lastLandmarks = mapped.copyOf()
+                    tr.lastUpdate = nowMs
+                    val pairs = mutableListOf<Pair<Float, Float>>()
+                    var i = 0
+                    while (i < mapped.size) {
+                        pairs.add(Pair(mapped[i], mapped[i + 1]))
+                        i += 2
+                    }
+                    Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (detector)")
+                    if (results.isEmpty()) {
+                        results.add(PoseLandmarks(out.first, pairs))
+                    } else {
+                        results[0] = PoseLandmarks(out.first, pairs)
+                    }
+                }
             }
-            Log.d("classifcation", "pose score=${out.first} points=${pairs.size}")
-            results.add(PoseLandmarks(out.first, pairs))
         }
+        track?.let { if (nowMs - it.lastUpdate > 1500) track = null }
         Log.d(TAG, "pose landmarks count=${results.size}")
         return results
     }
@@ -319,7 +391,7 @@ class Pose(private val context: Context) {
                     val imageProcessor = ImageProcessor.Builder()
                         .add(NormalizeOp(0f, 255f))
                         .build()
-                    val tensorImage = TensorImage(DataType.FLOAT32)
+                    val tensorImage = detectorTensorImage ?: TensorImage(DataType.FLOAT32).also { detectorTensorImage = it }
                     tensorImage.load(bitmap)
                     val processed = imageProcessor.process(tensorImage)
                     processed.buffer
@@ -420,10 +492,22 @@ class Pose(private val context: Context) {
             val scores0 = interpreter.getOutputTensor(2)
             val scores1 = interpreter.getOutputTensor(3)
 
-            val c0Buf = ByteBuffer.allocateDirect(coords0.numBytes()).order(ByteOrder.nativeOrder())
-            val c1Buf = ByteBuffer.allocateDirect(coords1.numBytes()).order(ByteOrder.nativeOrder())
-            val s0Buf = ByteBuffer.allocateDirect(scores0.numBytes()).order(ByteOrder.nativeOrder())
-            val s1Buf = ByteBuffer.allocateDirect(scores1.numBytes()).order(ByteOrder.nativeOrder())
+            if (coords0Buf == null || coords0Buf!!.capacity() < coords0.numBytes()) {
+                coords0Buf = ByteBuffer.allocateDirect(coords0.numBytes()).order(ByteOrder.nativeOrder())
+            }
+            if (coords1Buf == null || coords1Buf!!.capacity() < coords1.numBytes()) {
+                coords1Buf = ByteBuffer.allocateDirect(coords1.numBytes()).order(ByteOrder.nativeOrder())
+            }
+            if (scores0Buf == null || scores0Buf!!.capacity() < scores0.numBytes()) {
+                scores0Buf = ByteBuffer.allocateDirect(scores0.numBytes()).order(ByteOrder.nativeOrder())
+            }
+            if (scores1Buf == null || scores1Buf!!.capacity() < scores1.numBytes()) {
+                scores1Buf = ByteBuffer.allocateDirect(scores1.numBytes()).order(ByteOrder.nativeOrder())
+            }
+            val c0Buf = coords0Buf!!.apply { clear() }
+            val c1Buf = coords1Buf!!.apply { clear() }
+            val s0Buf = scores0Buf!!.apply { clear() }
+            val s1Buf = scores1Buf!!.apply { clear() }
             val outputs: MutableMap<Int, Any> = hashMapOf(
                 0 to c0Buf,
                 1 to c1Buf,
@@ -465,8 +549,14 @@ class Pose(private val context: Context) {
 
             Pair(coordsCombined, scoresCombined)
         } else {
-            val coordsBuf = ByteBuffer.allocateDirect(coordsTensor.numBytes()).order(ByteOrder.nativeOrder())
-            val scoresBuf = ByteBuffer.allocateDirect(scoresTensor.numBytes()).order(ByteOrder.nativeOrder())
+            if (coordsBuf == null || coordsBuf!!.capacity() < coordsTensor.numBytes()) {
+                coordsBuf = ByteBuffer.allocateDirect(coordsTensor.numBytes()).order(ByteOrder.nativeOrder())
+            }
+            if (scoresBuf == null || scoresBuf!!.capacity() < scoresTensor.numBytes()) {
+                scoresBuf = ByteBuffer.allocateDirect(scoresTensor.numBytes()).order(ByteOrder.nativeOrder())
+            }
+            val coordsBuf = coordsBuf!!.apply { clear() }
+            val scoresBuf = scoresBuf!!.apply { clear() }
             val outputs: MutableMap<Int, Any> = hashMapOf(0 to coordsBuf, 1 to scoresBuf)
             interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
             val inferenceTime = System.currentTimeMillis() - t0
@@ -496,8 +586,14 @@ class Pose(private val context: Context) {
         scoreTensor: Tensor,
         lmkTensor: Tensor
     ): Pair<Float, FloatArray> {
-        val scoreBuf = ByteBuffer.allocateDirect(scoreTensor.numBytes()).order(ByteOrder.nativeOrder())
-        val lmkBuf = ByteBuffer.allocateDirect(lmkTensor.numBytes()).order(ByteOrder.nativeOrder())
+        if (lmScoreBuf == null || lmScoreBuf!!.capacity() < scoreTensor.numBytes()) {
+            lmScoreBuf = ByteBuffer.allocateDirect(scoreTensor.numBytes()).order(ByteOrder.nativeOrder())
+        }
+        if (lmLmkBuf == null || lmLmkBuf!!.capacity() < lmkTensor.numBytes()) {
+            lmLmkBuf = ByteBuffer.allocateDirect(lmkTensor.numBytes()).order(ByteOrder.nativeOrder())
+        }
+        val scoreBuf = lmScoreBuf!!.apply { clear() }
+        val lmkBuf = lmLmkBuf!!.apply { clear() }
         val outputs: MutableMap<Int, Any> = hashMapOf(0 to scoreBuf, 1 to lmkBuf)
         interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
         val scoreArr = dequantizeBuffer(scoreTensor, scoreBuf)
@@ -622,5 +718,42 @@ class Pose(private val context: Context) {
             }
             else -> throw IllegalStateException("Unsupported type ${tensor.dataType()}")
         }
+    }
+
+    private fun poseIou(roiA: FloatArray, roiB: FloatArray): Float {
+        if (roiA.size < 8 || roiB.size < 8) return 0f
+        val aMinX = min(min(roiA[0], roiA[2]), min(roiA[4], roiA[6]))
+        val aMaxX = max(max(roiA[0], roiA[2]), max(roiA[4], roiA[6]))
+        val aMinY = min(min(roiA[1], roiA[3]), min(roiA[5], roiA[7]))
+        val aMaxY = max(max(roiA[1], roiA[3]), max(roiA[5], roiA[7]))
+        val bMinX = min(min(roiB[0], roiB[2]), min(roiB[4], roiB[6]))
+        val bMaxX = max(max(roiB[0], roiB[2]), max(roiB[4], roiB[6]))
+        val bMinY = min(min(roiB[1], roiB[3]), min(roiB[5], roiB[7]))
+        val bMaxY = max(max(roiB[1], roiB[3]), max(roiB[5], roiB[7]))
+        val interX0 = max(aMinX, bMinX)
+        val interY0 = max(aMinY, bMinY)
+        val interX1 = min(aMaxX, bMaxX)
+        val interY1 = min(aMaxY, bMaxY)
+        val interW = max(0f, interX1 - interX0)
+        val interH = max(0f, interY1 - interY0)
+        val inter = interW * interH
+        val areaA = (aMaxX - aMinX) * (aMaxY - aMinY)
+        val areaB = (bMaxX - bMinX) * (bMaxY - bMinY)
+        val union = areaA + areaB - inter
+        return if (union > 0f) inter / union else 0f
+    }
+
+    // Reuse warp into a preallocated bitmap to reduce allocations.
+    private fun reuseWarp(src: Bitmap, matrix: Matrix, dstW: Int, dstH: Int): Bitmap {
+        val out = if (cropBitmap == null || cropBitmap?.width != dstW || cropBitmap?.height != dstH) {
+            Bitmap.createBitmap(dstW, dstH, Bitmap.Config.ARGB_8888).also { cropBitmap = it }
+        } else {
+            cropBitmap!!
+        }
+        warpMatrix.reset()
+        warpMatrix.set(matrix)
+        val canvas = Canvas(out)
+        canvas.drawBitmap(src, warpMatrix, null)
+        return out
     }
 }

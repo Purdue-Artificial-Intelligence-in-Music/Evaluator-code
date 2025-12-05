@@ -2,6 +2,8 @@ package expo.modules.camerax
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
 import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
@@ -34,11 +36,26 @@ class Hands(private val context: Context) {
         private const val LANDMARK_MODEL = "mediapipe_hand-handlandmarkdetector.tflite"
         private const val DETECTOR_INPUT_SIZE = 256
         private const val LANDMARK_INPUT_SIZE = 256
-        private const val DET_SCORE_THRESHOLD = 0.8f
-        private const val NMS_IOU = 0.3f
-        private const val ROI_DXY = -0.25f
-        private const val ROI_DSCALE = 3.0f
+        // Detection/landmark score gates (detector lower to tolerate blur; landmark higher to filter noise)
+        private const val DET_SCORE_THRESHOLD_DET = 0.4f
+        private const val DET_SCORE_THRESHOLD_LMK = 0.6f
+        // NMS IoU for palm detections (lower suppresses more overlaps; higher allows close hands)
+        private const val NMS_IOU = 0.1f
+        // ROI shaping: shift along wrist->middle vector (negative pulls toward fingertips), expand box
+        private const val ROI_DXY = -0.2f
+        private const val ROI_DSCALE = 2.5f
+        // IoU match threshold when assigning detections to existing tracks
+        private const val MATCH_IOU_THRESHOLD = 0.2f
+        // Landmark smoothing (EMA) within a track
         private const val SMOOTH_ALPHA = 0.5f
+        // ROI smoothing (EMA) when matching detections to existing tracks
+        private const val ROI_SMOOTH_ALPHA = 0f
+        // Tracking/backoff: consider a track "fresh" for this many ms; skip detector if fresh
+        private const val TRACK_FRESH_MS = 0L
+        // Drop tracks after this age (unless refreshed)
+        private const val TRACK_MAX_AGE_MS = 1200L
+        // Run detector every N frames when not forced (set to 1 to run every frame)
+        private const val DETECTOR_PERIOD = 1
         private const val ROT_OFFSET = (Math.PI.toFloat() / 2f)
         private const val DEFAULT_HAND_ANCHORS = "anchors_palm.npy"
         // keypoints for rotation: wrist center idx 0, middle finger base idx 2 (from model.py)
@@ -59,12 +76,23 @@ class Hands(private val context: Context) {
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
-    private var lastLandmarks: FloatArray? = null
     private var lastPoseLandmarks: List<Pair<Float, Float>>? = null
     var usePoseHandedness: Boolean = true
     var singleBodyMode: Boolean = true
     var bowHandIsRight: Boolean = true
     private var handClassifier: Interpreter? = null
+    private val tracks = mutableListOf<HandTrack>()
+    private var nextTrackId = 0
+    private var frameCount = 0
+    // Reusable buffers to cut allocations
+    private var detectorTensorImage: TensorImage? = null
+    private var detectorCoordsBuf: ByteBuffer? = null
+    private var detectorScoresBuf: ByteBuffer? = null
+    private var lmScoreBuf: ByteBuffer? = null
+    private var lmLrBuf: ByteBuffer? = null
+    private var lmLmkBuf: ByteBuffer? = null
+    private var cropBitmaps = arrayOfNulls<Bitmap>(2)
+    private val warpMatrix = Matrix()
 
     init {
         setupDetector()
@@ -99,6 +127,15 @@ class Hands(private val context: Context) {
         val roi: FloatArray? = null
     )
 
+    private data class HandTrack(
+        val id: Int,
+        var roi: FloatArray,
+        var lastLandmarks: FloatArray?,
+        var lastUpdate: Long,
+        var lastScore: Float,
+        var lowStreak: Int = 0
+    )
+
     fun detectAndLandmark(
         bitmap: Bitmap,
         poseHints: List<List<Pair<Float, Float>>>? = null
@@ -107,6 +144,7 @@ class Hands(private val context: Context) {
         if (poseHints != null && poseHints.isNotEmpty()) {
             lastPoseLandmarks = poseHints.firstOrNull()
         }
+        frameCount++
         val det = detector ?: return emptyList()
         val prep = MediapipeLiteRtUtil.resizePadTo(bitmap, DETECTOR_INPUT_SIZE, DETECTOR_INPUT_SIZE)
         val input = buildInputBuffer(prep.bitmap, det.getInputTensor(0))
@@ -115,9 +153,69 @@ class Hands(private val context: Context) {
         val scoresTensor = det.getOutputTensor(1)
         val (coords, scores) = runDetector(det, input, coordsTensor, scoresTensor)
 
+        val lmInterp = landmark ?: return emptyList()
+        val results = mutableListOf<HandResult>()
+        val nowMs = System.currentTimeMillis()
+
+        // Step 1: reuse active tracks (landmark-only pass).
+        val activeTracks = tracks.filter { nowMs - it.lastUpdate < TRACK_MAX_AGE_MS }
+        val usedIds = mutableSetOf<Int>()
+        activeTracks.forEach { track ->
+            val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
+                track.roi,
+                LANDMARK_INPUT_SIZE,
+                LANDMARK_INPUT_SIZE
+            )
+            val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE, 0)
+            val lmInput = buildInputBuffer(crop, lmInterp.getInputTensor(0))
+            val out = runLandmark(lmInterp, lmInput, lmInterp.getOutputTensor(0), lmInterp.getOutputTensor(1), lmInterp.getOutputTensor(2))
+            val score = out.first
+            val lmk = out.third
+            if (score < DET_SCORE_THRESHOLD_LMK || lmk.isEmpty()) {
+                track.lowStreak += 1
+                track.lastScore = score
+                track.lastUpdate = nowMs
+                return@forEach
+            }
+            val mapped = FloatArray(lmk.size)
+            inverse?.mapPoints(mapped, lmk)
+            track.lastLandmarks?.let { prev ->
+                if (prev.size == mapped.size) {
+                    for (i in mapped.indices) {
+                        mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
+                    }
+                }
+            }
+            track.lastLandmarks = mapped.copyOf()
+            track.lastUpdate = nowMs
+            track.lastScore = score
+            track.lowStreak = 0
+            val pairs = mutableListOf<Pair<Float, Float>>()
+            var i = 0
+            while (i < mapped.size) {
+                pairs.add(Pair(mapped[i], mapped[i + 1]))
+                i += 2
+            }
+            val handed = out.second
+            Log.d("classifcation", "hand track=${track.id} side=${if (handed) "right" else "left"} score=$score (track reuse)")
+            if (handed == bowHandIsRight) {
+                runHandClassifier(pairs)
+            }
+            results.add(HandResult(score, handed, pairs, track.roi))
+            usedIds.add(track.id)
+        }
+
+        // Step 2: detector pass to refresh/spawn tracks.
+        val hasFreshTrack = activeTracks.any { nowMs - it.lastUpdate < TRACK_FRESH_MS && it.lastScore >= DET_SCORE_THRESHOLD_LMK }
+        val shouldRunDetector = !hasFreshTrack || (frameCount % DETECTOR_PERIOD == 0)
+        if (!shouldRunDetector) {
+            tracks.removeAll { nowMs - it.lastUpdate > TRACK_MAX_AGE_MS }
+            Log.d(TAG, "hand landmarks count=${results.size}")
+            return results
+        }
         val anchorsLocal = anchors ?: run {
             Log.w(TAG, "Anchors missing; skipping hand detection")
-            return emptyList()
+            return results
         }
         val detections = MediapipeLiteRtUtil.decodeWithAnchors(
             coords = coords,
@@ -125,7 +223,7 @@ class Hands(private val context: Context) {
             anchors = anchorsLocal,
             numAnchors = detectorNumAnchors,
             coordsPerAnchor = detectorCoordsPerAnchor,
-            scoreThreshold = DET_SCORE_THRESHOLD,
+            scoreThreshold = DET_SCORE_THRESHOLD_DET,
             inputW = DETECTOR_INPUT_SIZE,
             inputH = DETECTOR_INPUT_SIZE
         )
@@ -133,8 +231,6 @@ class Hands(private val context: Context) {
         val nms = MediapipeLiteRtUtil.nms(detections, NMS_IOU)
         val limited = nms.sortedByDescending { it.score }.take(2)
         Log.d(TAG, "hand detector nms dets=${nms.size} capped=${limited.size}")
-        val lmInterp = landmark ?: return emptyList()
-        val results = mutableListOf<HandResult>()
 
         for (detObjRaw in limited) {
             // Map detection back to original normalized coords.
@@ -163,19 +259,43 @@ class Hands(private val context: Context) {
             )
             // Build ROI corners from keypoints and box.
             val roi = computeHandRoi(detObj, bitmap.width, bitmap.height) ?: continue
+            val matched = tracks.maxByOrNull { iou(it.roi, roi) }
+            val track = if (matched != null && iou(matched.roi, roi) > MATCH_IOU_THRESHOLD) {
+                matched.roi = smoothRoi(matched.roi, roi)
+                matched
+            } else {
+                if (tracks.size >= 2) continue
+                HandTrack(nextTrackId++, roi, null, nowMs, 0f).also { tracks.add(it) }
+            }
             val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
                 roi,
                 LANDMARK_INPUT_SIZE,
                 LANDMARK_INPUT_SIZE
             )
-            val crop = MediapipeLiteRtUtil.warpBitmap(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE)
+            val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE, 1)
             val lmInput = buildInputBuffer(crop, lmInterp.getInputTensor(0))
             val out = runLandmark(lmInterp, lmInput, lmInterp.getOutputTensor(0), lmInterp.getOutputTensor(1), lmInterp.getOutputTensor(2))
             val score = out.first
             val lmk = out.third
-            if (score < DET_SCORE_THRESHOLD || lmk.isEmpty()) continue
+            if (score < DET_SCORE_THRESHOLD_LMK || lmk.isEmpty()) {
+                track.lowStreak += 1
+                track.lastScore = score
+                track.lastUpdate = nowMs
+                continue
+            }
             val mapped = FloatArray(lmk.size)
             inverse?.mapPoints(mapped, lmk)
+            track.lastLandmarks?.let { prev ->
+                if (prev.size == mapped.size) {
+                    for (i in mapped.indices) {
+                        mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
+                    }
+                }
+            }
+            track.lastLandmarks = mapped.copyOf()
+            track.lastUpdate = nowMs
+            track.lastScore = score
+            track.lowStreak = 0
             val pairs = mutableListOf<Pair<Float, Float>>()
             var i = 0
             while (i < mapped.size) {
@@ -183,12 +303,16 @@ class Hands(private val context: Context) {
                 i += 2
             }
             val handed = out.second
-            Log.d("classifcation", "hand idx=${results.size} side=${if (handed) "right" else "left"} score=$score")
+            Log.d("classifcation", "hand track=${track.id} side=${if (handed) "right" else "left"} score=$score (detector)")
             if (handed == bowHandIsRight) {
                 runHandClassifier(pairs)
             }
-            results.add(HandResult(score, handed, pairs, roi))
+            if (!usedIds.contains(track.id)) {
+                results.add(HandResult(score, handed, pairs, roi))
+                usedIds.add(track.id)
+            }
         }
+        tracks.removeAll { nowMs - it.lastUpdate > TRACK_MAX_AGE_MS || it.lowStreak >= 2 }
         Log.d(TAG, "hand landmarks count=${results.size}")
         return results
     }
@@ -357,7 +481,7 @@ class Hands(private val context: Context) {
                     val imageProcessor = ImageProcessor.Builder()
                         .add(NormalizeOp(0f, 255f))
                         .build()
-                    val tensorImage = TensorImage(DataType.FLOAT32)
+                    val tensorImage = detectorTensorImage ?: TensorImage(DataType.FLOAT32).also { detectorTensorImage = it }
                     tensorImage.load(bitmap)
                     val processed = imageProcessor.process(tensorImage)
                     processed.buffer
@@ -476,6 +600,20 @@ class Hands(private val context: Context) {
         }
     }
 
+    // Reuse warp into preallocated bitmaps to cut down allocations.
+    private fun reuseWarp(src: Bitmap, matrix: Matrix, dstW: Int, dstH: Int, slot: Int): Bitmap {
+        val idx = slot.coerceIn(0, cropBitmaps.size - 1)
+        val existing = cropBitmaps[idx]
+        val out = if (existing == null || existing.width != dstW || existing.height != dstH) {
+            Bitmap.createBitmap(dstW, dstH, Bitmap.Config.ARGB_8888).also { cropBitmaps[idx] = it }
+        } else existing
+        warpMatrix.reset()
+        warpMatrix.set(matrix)
+        val canvas = Canvas(out)
+        canvas.drawBitmap(src, warpMatrix, null)
+        return out
+    }
+
     private fun runDetector(
         interpreter: Interpreter,
         input: Any,
@@ -483,8 +621,15 @@ class Hands(private val context: Context) {
         scoresTensor: Tensor
     ): Pair<FloatArray, FloatArray> {
         val t0 = System.currentTimeMillis()
-        val coordsBuf = ByteBuffer.allocateDirect(coordsTensor.numBytes()).order(ByteOrder.nativeOrder())
-        val scoresBuf = ByteBuffer.allocateDirect(scoresTensor.numBytes()).order(ByteOrder.nativeOrder())
+        if (detectorCoordsBuf == null || detectorCoordsBuf!!.capacity() < coordsTensor.numBytes()) {
+            detectorCoordsBuf = ByteBuffer.allocateDirect(coordsTensor.numBytes()).order(ByteOrder.nativeOrder())
+        }
+        if (detectorScoresBuf == null || detectorScoresBuf!!.capacity() < scoresTensor.numBytes()) {
+            detectorScoresBuf = ByteBuffer.allocateDirect(scoresTensor.numBytes()).order(ByteOrder.nativeOrder())
+        }
+        val coordsBuf = detectorCoordsBuf!!
+        val scoresBuf = detectorScoresBuf!!
+        coordsBuf.clear(); scoresBuf.clear()
         val outputs: MutableMap<Int, Any> = hashMapOf(0 to coordsBuf, 1 to scoresBuf)
         interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
         val inferenceTime = System.currentTimeMillis() - t0
@@ -512,9 +657,18 @@ class Hands(private val context: Context) {
         lrTensor: Tensor,
         lmkTensor: Tensor
     ): Triple<Float, Boolean, FloatArray> {
-        val scoreBuf = ByteBuffer.allocateDirect(scoreTensor.numBytes()).order(ByteOrder.nativeOrder())
-        val lrBuf = ByteBuffer.allocateDirect(lrTensor.numBytes()).order(ByteOrder.nativeOrder())
-        val lmkBuf = ByteBuffer.allocateDirect(lmkTensor.numBytes()).order(ByteOrder.nativeOrder())
+        if (lmScoreBuf == null || lmScoreBuf!!.capacity() < scoreTensor.numBytes()) {
+            lmScoreBuf = ByteBuffer.allocateDirect(scoreTensor.numBytes()).order(ByteOrder.nativeOrder())
+        }
+        if (lmLrBuf == null || lmLrBuf!!.capacity() < lrTensor.numBytes()) {
+            lmLrBuf = ByteBuffer.allocateDirect(lrTensor.numBytes()).order(ByteOrder.nativeOrder())
+        }
+        if (lmLmkBuf == null || lmLmkBuf!!.capacity() < lmkTensor.numBytes()) {
+            lmLmkBuf = ByteBuffer.allocateDirect(lmkTensor.numBytes()).order(ByteOrder.nativeOrder())
+        }
+        val scoreBuf = lmScoreBuf!!.apply { clear() }
+        val lrBuf = lmLrBuf!!.apply { clear() }
+        val lmkBuf = lmLmkBuf!!.apply { clear() }
         val outputs: MutableMap<Int, Any> = hashMapOf(
             0 to scoreBuf,
             1 to lrBuf,
@@ -607,6 +761,38 @@ class Hands(private val context: Context) {
         val dx = a.first - b.first
         val dy = a.second - b.second
         return dx * dx + dy * dy
+    }
+
+    private fun iou(roiA: FloatArray, roiB: FloatArray): Float {
+        if (roiA.size < 8 || roiB.size < 8) return 0f
+        val aMinX = min(min(roiA[0], roiA[2]), min(roiA[4], roiA[6]))
+        val aMaxX = max(max(roiA[0], roiA[2]), max(roiA[4], roiA[6]))
+        val aMinY = min(min(roiA[1], roiA[3]), min(roiA[5], roiA[7]))
+        val aMaxY = max(max(roiA[1], roiA[3]), max(roiA[5], roiA[7]))
+        val bMinX = min(min(roiB[0], roiB[2]), min(roiB[4], roiB[6]))
+        val bMaxX = max(max(roiB[0], roiB[2]), max(roiB[4], roiB[6]))
+        val bMinY = min(min(roiB[1], roiB[3]), min(roiB[5], roiB[7]))
+        val bMaxY = max(max(roiB[1], roiB[3]), max(roiB[5], roiB[7]))
+        val interX0 = max(aMinX, bMinX)
+        val interY0 = max(aMinY, bMinY)
+        val interX1 = min(aMaxX, bMaxX)
+        val interY1 = min(aMaxY, bMaxY)
+        val interW = max(0f, interX1 - interX0)
+        val interH = max(0f, interY1 - interY0)
+        val inter = interW * interH
+        val areaA = (aMaxX - aMinX) * (aMaxY - aMinY)
+        val areaB = (bMaxX - bMinX) * (bMaxY - bMinY)
+        val union = areaA + areaB - inter
+        return if (union > 0f) inter / union else 0f
+    }
+
+    private fun smoothRoi(prev: FloatArray, cur: FloatArray): FloatArray {
+        if (prev.size != cur.size) return cur
+        val out = FloatArray(prev.size)
+        for (i in prev.indices) {
+            out[i] = ROI_SMOOTH_ALPHA * prev[i] + (1f - ROI_SMOOTH_ALPHA) * cur[i]
+        }
+        return out
     }
 
     private fun runHandClassifier(landmarks: List<Pair<Float, Float>>) {
