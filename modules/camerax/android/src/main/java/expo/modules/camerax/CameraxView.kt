@@ -26,6 +26,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
@@ -60,6 +62,9 @@ class CameraxView(
     private var imageAnalyzer: ImageAnalysis? = null
     private val viewFinder: PreviewView = PreviewView(context)
     private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var detectExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var poseExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private var handsExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var cameraProvider: ProcessCameraProvider? = null
 
     private var detector: Detector? = null
@@ -89,6 +94,10 @@ class CameraxView(
     private var handsLiteRt: Hands? = null
     private var litePoseResults: List<Pose.PoseLandmarks> = emptyList()
     private var liteHandResults: List<Hands.HandResult> = emptyList()
+    private val frameCounter = AtomicLong(0)
+    private val poseBusy = AtomicBoolean(false)
+    private val handsBusy = AtomicBoolean(false)
+    private val detectBusy = AtomicBoolean(false)
 
     init {
         // Root layout
@@ -242,6 +251,9 @@ class CameraxView(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         cameraExecutor.shutdown()
+        detectExecutor.shutdown()
+        poseExecutor.shutdown()
+        handsExecutor.shutdown()
         cameraProvider?.unbindAll()
         cameraProvider = null
     }
@@ -353,14 +365,6 @@ class CameraxView(
                 bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
                 imageProxy.planes[0].buffer.rewind()
 
-                // Run MediaPipe live stream only when LiteRT is disabled for both hands and pose.
-                if (!useLiteRtHands && !useLiteRtPose) {
-                    ensureMediaPipeHelper().detectLiveStream(
-                        imageProxy,
-                        lensType != CameraSelector.LENS_FACING_BACK
-                    )
-                }
-
                 // Rotate + mirror if needed
                 val matrix = Matrix().apply {
                     postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
@@ -375,25 +379,57 @@ class CameraxView(
                     matrix, true
                 )
 
-                // Perform YOLO detection
-                performDetection(rotatedBitmap)
+                // Run MediaPipe live stream only when LiteRT is disabled for both hands and pose.
+                if (!useLiteRtHands && !useLiteRtPose) {
+                    ensureMediaPipeHelper().detectLiveStream(
+                        imageProxy,
+                        lensType != CameraSelector.LENS_FACING_BACK
+                    )
+                }
+
+                frameCounter.incrementAndGet()
+                overlayView.setImageDimensions(rotatedBitmap.width, rotatedBitmap.height)
+
+                // Perform YOLO detection asynchronously
+                if (detectBusy.compareAndSet(false, true)) {
+                    val detectBitmap = rotatedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                    detectExecutor.execute {
+                        try {
+                            performDetection(detectBitmap)
+                        } finally {
+                            detectBusy.set(false)
+                        }
+                    }
+                }
 
                 // Optional LiteRT pose path
-                if (useLiteRtPose) {
+                if (useLiteRtPose && poseBusy.compareAndSet(false, true)) {
                     if (poseLiteRt == null) poseLiteRt = Pose(context)
-                    litePoseResults = poseLiteRt?.detectAndLandmark(rotatedBitmap) ?: emptyList()
-                    Log.d(TAG, "LiteRT pose results: ${litePoseResults.size}")
-                }
-                // Optional LiteRT hands path
-                if (useLiteRtHands) {
-                    if (handsLiteRt == null) handsLiteRt = Hands(context)
-                    liteHandResults = handsLiteRt?.detectAndLandmark(rotatedBitmap) ?: emptyList()
-                    Log.d(TAG, "LiteRT hands results: ${liteHandResults.size}")
+                    val poseBitmap = rotatedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                    poseExecutor.execute {
+                        try {
+                            litePoseResults = poseLiteRt?.detectAndLandmark(poseBitmap) ?: emptyList()
+                            Log.d(TAG, "LiteRT pose results: ${litePoseResults.size}")
+                            activity.runOnUiThread { updateOverlay() }
+                        } finally {
+                            poseBusy.set(false)
+                        }
+                    }
                 }
 
-                if (useLiteRtPose || useLiteRtHands) {
-                    overlayView.setImageDimensions(rotatedBitmap.width, rotatedBitmap.height)
-                    updateOverlay()
+                // Optional LiteRT hands path
+                if (useLiteRtHands && handsBusy.compareAndSet(false, true)) {
+                    if (handsLiteRt == null) handsLiteRt = Hands(context)
+                    val handsBitmap = rotatedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                    handsExecutor.execute {
+                        try {
+                            liteHandResults = handsLiteRt?.detectAndLandmark(handsBitmap) ?: emptyList()
+                            Log.d(TAG, "LiteRT hands results: ${liteHandResults.size}")
+                            activity.runOnUiThread { updateOverlay() }
+                        } finally {
+                            handsBusy.set(false)
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {

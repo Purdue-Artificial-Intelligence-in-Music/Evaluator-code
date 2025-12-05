@@ -642,24 +642,6 @@ class OverlayView @JvmOverloads constructor(
                 hand.landmarks.forEach { p ->
                     canvas.drawCircle(p.first * sx, p.second * sy, 6f, point)
                 }
-                hand.roi?.let { r ->
-                    if (r.size >= 8) {
-                        val roiPaint = Paint().apply {
-                            color = Color.MAGENTA
-                            strokeWidth = 4f
-                            style = Paint.Style.STROKE
-                            isAntiAlias = true
-                        }
-                        val pts = floatArrayOf(
-                            r[0] * sx, r[1] * sy,
-                            r[2] * sx, r[3] * sy,
-                            r[6] * sx, r[7] * sy,
-                            r[4] * sx, r[5] * sy,
-                            r[0] * sx, r[1] * sy
-                        )
-                        canvas.drawLines(pts, roiPaint)
-                    }
-                }
             }
         }
     }

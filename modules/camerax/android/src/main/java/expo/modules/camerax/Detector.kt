@@ -38,6 +38,8 @@ class Detector (
     private var interpreter: Interpreter
     private var qnnDelegate: QnnDelegate? = null
     private var tfliteGpu: GpuDelegate? = null
+    private enum class DelegateChoice { HTP, GPU, CPU }
+    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.HTP
 
     private var tensorWidth = 0
     private var tensorHeight = 0
@@ -114,7 +116,7 @@ class Detector (
     }
 
     init {
-        interpreter = createInterpreterWithFallbacks(context)
+        interpreter = createInterpreterWithChoice(context, detectorDelegateChoice)
 
         // Cache tensor shapes (NHWC or NCHW)
         val inputShape = interpreter.getInputTensor(0)?.shape()
@@ -137,44 +139,62 @@ class Detector (
 
         modelReadyLatch.countDown()
     }
-    private fun createInterpreterWithFallbacks(context: Context): Interpreter {
+    private fun createInterpreterWithChoice(context: Context, choice: DelegateChoice): Interpreter {
         val model = FileUtil.loadMappedFile(context, MODEL_ASSET)
         val options = Interpreter.Options()
-
-        // 1) Qualcomm NPU (QNN/HTP)
-//        val skelDir = tryLoadQnnAndPickSkelDir()
-//        if (skelDir != null) {
-//            try {
-//                val qOpts = QnnDelegate.Options().apply {
-//                    setBackendType(BackendType.HTP_BACKEND)
-//                    setSkelLibraryDir(skelDir)
-//                }
-//                qnnDelegate = QnnDelegate(qOpts)
-//                options.addDelegate(qnnDelegate)
-//                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
-//                return Interpreter(model, options)
-//            } catch (t: Throwable) {
-//                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
-//            }
-//        }
-
-        // 2) GPU
-        try {
-            val cl = CompatibilityList()
-            if (cl.isDelegateSupportedOnThisDevice) {
-                tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
-                options.addDelegate(tfliteGpu)
-                Log.i(TAG, "Using TFLite GPU delegate")
-                return Interpreter(model, options)
+        var selected: String? = null
+        when (choice) {
+            DelegateChoice.HTP -> {
+                val skelDir = tryLoadQnnAndPickSkelDir()
+                if (skelDir != null) {
+                    try {
+                        val qOpts = QnnDelegate.Options().apply {
+                            setBackendType(BackendType.HTP_BACKEND)
+                            setSkelLibraryDir(skelDir)
+                        }
+                        qnnDelegate = QnnDelegate(qOpts)
+                        options.addDelegate(qnnDelegate)
+                        selected = "HTP"
+                    } catch (t: Throwable) {
+                        Log.w("CheckDel", "bow detector: QNN delegate unavailable: ${t.message}")
+                    }
+                }
+                if (selected == null) {
+                    try {
+                        val cl = CompatibilityList()
+                        if (cl.isDelegateSupportedOnThisDevice) {
+                            tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
+                            options.addDelegate(tfliteGpu)
+                            selected = "GPU"
+                        }
+                    } catch (t: Throwable) {
+                        Log.w("CheckDel", "bow detector: GPU delegate unavailable: ${t.message}")
+                    }
+                }
             }
-        } catch (t: Throwable) {
-            Log.w(TAG, "GPU delegate unavailable: ${t.message}")
+            DelegateChoice.GPU -> {
+                try {
+                    val cl = CompatibilityList()
+                    if (cl.isDelegateSupportedOnThisDevice) {
+                        tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
+                        options.addDelegate(tfliteGpu)
+                        selected = "GPU"
+                    }
+                } catch (t: Throwable) {
+                    Log.w("CheckDel", "bow detector: GPU delegate unavailable: ${t.message}")
+                }
+            }
+            DelegateChoice.CPU -> {
+                // fall through
+            }
         }
 
-        // 3) CPU/XNNPACK
-        Log.i(TAG, "Falling back to CPU/XNNPACK")
-        try { options.setUseXNNPACK(true) } catch (_: Throwable) {}
-        options.setNumThreads(4)
+        if (selected == null) {
+            try { options.setUseXNNPACK(true) } catch (_: Throwable) {}
+            options.setNumThreads(4)
+            selected = "CPU"
+        }
+        Log.i("CheckDel", "bow detector delegate=$selected")
         return Interpreter(model, options)
     }
 
@@ -228,10 +248,10 @@ class Detector (
         )
 
         // Inference
-        val t0 = SystemClock.uptimeMillis()
+        val inferenceStartTime = System.currentTimeMillis()
         interpreter.run(imageBuffer, output.buffer)
-        val inferMs = SystemClock.uptimeMillis() - t0
-        Log.d(TAG, "inference ${inferMs}ms")
+        val inferenceTime = System.currentTimeMillis() - inferenceStartTime
+        Log.d("Inference Metrics", "Bow YOLO Inference: ${inferenceTime}ms")
 
         // Handle output layout: [1, 7, N] vs [1, N, 7] (e.g., 8400)
         val outShape = interpreter.getOutputTensor(0).shape()

@@ -18,6 +18,7 @@ import com.qualcomm.qti.QnnDelegate.Options.BackendType
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -33,9 +34,9 @@ class Hands(private val context: Context) {
         private const val LANDMARK_MODEL = "mediapipe_hand-handlandmarkdetector.tflite"
         private const val DETECTOR_INPUT_SIZE = 256
         private const val LANDMARK_INPUT_SIZE = 256
-        private const val DET_SCORE_THRESHOLD = 0.6f
+        private const val DET_SCORE_THRESHOLD = 0.5f
         private const val NMS_IOU = 0.3f
-        private const val ROI_DXY = 0.5f
+        private const val ROI_DXY = 0f
         private const val ROI_DSCALE = 2.5f
     private const val ROT_OFFSET = (Math.PI.toFloat() / 2f)
         private const val DEFAULT_HAND_ANCHORS = "anchors_palm.npy"
@@ -44,12 +45,16 @@ class Hands(private val context: Context) {
         private const val KP_ROT_END = 2
         // 21 landmarks expected
         private const val NUM_LANDMARKS = 21
+
+        private enum class DelegateChoice { HTP, GPU, CPU }
     }
 
     private var detector: Interpreter? = null
     private var landmark: Interpreter? = null
     private var qnnDelegate: QnnDelegate? = null
     private var gpuDelegate: GpuDelegate? = null
+    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.HTP
+    private var landmarkDelegateChoice: DelegateChoice = DelegateChoice.HTP
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
@@ -228,41 +233,8 @@ class Hands(private val context: Context) {
     }
 
     private fun setupDetector() {
-        val opts = Interpreter.Options()
+        val opts = buildInterpreterOptions(detectorDelegateChoice, "hand detector")
         val model = FileUtil.loadMappedFile(context, DETECTOR_MODEL)
-
-        val skelDir = tryLoadQnnAndPickSkelDir()
-        if (skelDir != null) {
-            try {
-                val qOpts = QnnDelegate.Options().apply {
-                    setBackendType(BackendType.HTP_BACKEND)
-                    setSkelLibraryDir(skelDir)
-                }
-                qnnDelegate = QnnDelegate(qOpts)
-                opts.addDelegate(qnnDelegate)
-                Log.i(TAG, "Using QNN delegate for hand detector")
-            } catch (t: Throwable) {
-                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
-            }
-        }
-        if (qnnDelegate == null) {
-            try {
-                val cl = CompatibilityList()
-                if (cl.isDelegateSupportedOnThisDevice) {
-                    gpuDelegate = GpuDelegate(cl.bestOptionsForThisDevice)
-                    opts.addDelegate(gpuDelegate)
-                    Log.i(TAG, "Using GPU delegate for hand detector")
-                }
-            } catch (t: Throwable) {
-                Log.w(TAG, "GPU delegate unavailable: ${t.message}")
-            }
-        }
-        if (qnnDelegate == null && gpuDelegate == null) {
-            try { opts.setUseXNNPACK(true) } catch (_: Throwable) {}
-            opts.setNumThreads(4)
-            Log.i(TAG, "Using CPU/XNNPACK for hand detector")
-        }
-
         detector = Interpreter(model, opts)
         val out0 = detector?.getOutputTensor(0)
         detectorCoordsPerAnchor = out0?.shape()?.lastOrNull() ?: 0
@@ -270,15 +242,66 @@ class Hands(private val context: Context) {
     }
 
     private fun setupLandmark() {
-        val opts = Interpreter.Options()
-        qnnDelegate?.let { opts.addDelegate(it) }
-        if (qnnDelegate == null) gpuDelegate?.let { opts.addDelegate(it) }
-        if (qnnDelegate == null && gpuDelegate == null) {
-            try { opts.setUseXNNPACK(true) } catch (_: Throwable) {}
-            opts.setNumThreads(4)
-        }
+        val opts = buildInterpreterOptions(landmarkDelegateChoice, "hand landmark")
         val model = FileUtil.loadMappedFile(context, LANDMARK_MODEL)
         landmark = Interpreter(model, opts)
+    }
+
+    private fun buildInterpreterOptions(choice: DelegateChoice, name: String): Interpreter.Options {
+        val opts = Interpreter.Options()
+        var selected: String? = null
+        when (choice) {
+            DelegateChoice.HTP -> {
+                val skelDir = tryLoadQnnAndPickSkelDir()
+                if (skelDir != null) {
+                    try {
+                        val qOpts = QnnDelegate.Options().apply {
+                            setBackendType(BackendType.HTP_BACKEND)
+                            setSkelLibraryDir(skelDir)
+                        }
+                        qnnDelegate = QnnDelegate(qOpts)
+                        opts.addDelegate(qnnDelegate)
+                        selected = "HTP"
+                    } catch (t: Throwable) {
+                        Log.w("CheckDel", "$name: QNN delegate unavailable: ${t.message}")
+                    }
+                }
+                if (selected == null) {
+                    try {
+                        val cl = CompatibilityList()
+                        if (cl.isDelegateSupportedOnThisDevice) {
+                            gpuDelegate = GpuDelegate(cl.bestOptionsForThisDevice)
+                            opts.addDelegate(gpuDelegate)
+                            selected = "GPU"
+                        }
+                    } catch (t: Throwable) {
+                        Log.w("CheckDel", "$name: GPU delegate unavailable: ${t.message}")
+                    }
+                }
+            }
+            DelegateChoice.GPU -> {
+                try {
+                    val cl = CompatibilityList()
+                    if (cl.isDelegateSupportedOnThisDevice) {
+                        gpuDelegate = GpuDelegate(cl.bestOptionsForThisDevice)
+                        opts.addDelegate(gpuDelegate)
+                        selected = "GPU"
+                    }
+                } catch (t: Throwable) {
+                    Log.w("CheckDel", "$name: GPU delegate unavailable: ${t.message}")
+                }
+            }
+            DelegateChoice.CPU -> {
+                // fall through
+            }
+        }
+        if (selected == null) {
+            try { opts.setUseXNNPACK(true) } catch (_: Throwable) {}
+            opts.setNumThreads(4)
+            selected = "CPU"
+        }
+        Log.i("CheckDel", String.format(Locale.US, "%s delegate=%s", name, selected))
+        return opts
     }
 
     private fun tryLoadQnnAndPickSkelDir(): String? {
@@ -460,7 +483,7 @@ class Hands(private val context: Context) {
             val aMax = activatedScores.maxOrNull() ?: 0f
             Log.d(TAG, "hand detector scores raw min=$rMin max=$rMax activated min=$aMin max=$aMax")
         }
-        Log.d(TAG, "Inference Metrics: Hand detector inference=${inferenceTime}ms")
+        Log.d("Inference Metrics", "Hand detector inference=${inferenceTime}ms")
         return Pair(coords, activatedScores)
     }
 
