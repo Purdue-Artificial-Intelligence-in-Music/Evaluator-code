@@ -18,6 +18,7 @@ import com.qualcomm.qti.QnnDelegate.Options.BackendType
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
@@ -115,7 +116,9 @@ class Pose(private val context: Context) {
             inputH = DETECTOR_INPUT_SIZE
         )
 
+        Log.d(TAG, "pose detector raw dets=${detections.size}")
         val nms = MediapipeLiteRtUtil.nms(detections, NMS_IOU)
+        Log.d(TAG, "pose detector nms dets=${nms.size}")
         return nms.map { detObj ->
             // Map back to original image coordinates.
             val x0 = (detObj.x0 * prep.targetWidth - prep.padX) / prep.scale
@@ -154,6 +157,7 @@ class Pose(private val context: Context) {
      * Full pose path: detect -> ROI -> landmark -> map back.
      */
     fun detectAndLandmark(bitmap: Bitmap): List<PoseLandmarks> {
+        Log.d(TAG, "pose detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
         val detections = detectPoses(bitmap)
         if (detections.isEmpty()) return emptyList()
         val lmInterp = landmark ?: return emptyList()
@@ -181,6 +185,7 @@ class Pose(private val context: Context) {
             val lmkTensor = lmInterp.getOutputTensor(1)
             val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
             if (out.second.isEmpty()) continue
+            if (out.first < DET_SCORE_THRESHOLD) continue
 
             // Map back to original image coords.
             val mapped = FloatArray(out.second.size)
@@ -193,6 +198,7 @@ class Pose(private val context: Context) {
             }
             results.add(PoseLandmarks(out.first, pairs))
         }
+        Log.d(TAG, "pose landmarks count=${results.size}")
         return results
     }
 
@@ -241,9 +247,6 @@ class Pose(private val context: Context) {
 
         detector = Interpreter(model, opts)
         detectorInputType = detector?.getInputTensor(0)?.dataType() ?: DataType.FLOAT32
-        val out0 = detector?.getOutputTensor(0)
-        detectorCoordsPerAnchor = out0?.shape()?.lastOrNull() ?: 0
-        detectorNumAnchors = out0?.shape()?.getOrNull(out0.shape().size - 2) ?: 0
     }
 
     private fun setupLandmark() {
@@ -391,13 +394,81 @@ class Pose(private val context: Context) {
         coordsTensor: Tensor,
         scoresTensor: Tensor
     ): Pair<FloatArray, FloatArray> {
-        val coordsOut = allocateOutput(coordsTensor)
-        val scoresOut = allocateOutput(scoresTensor)
-        val outputs: MutableMap<Int, Any> = hashMapOf(0 to coordsOut.second, 1 to scoresOut.second)
-        interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
-        val coords = dequantizeOutput(coordsTensor, coordsOut.first, coordsOut.second)
-        val scores = dequantizeOutput(scoresTensor, scoresOut.first, scoresOut.second)
-        return Pair(coords, scores)
+        val t0 = System.currentTimeMillis()
+        return if (interpreter.outputTensorCount >= 4) {
+            val coords0 = interpreter.getOutputTensor(0)
+            val coords1 = interpreter.getOutputTensor(1)
+            val scores0 = interpreter.getOutputTensor(2)
+            val scores1 = interpreter.getOutputTensor(3)
+
+            val c0Buf = ByteBuffer.allocateDirect(coords0.numBytes()).order(ByteOrder.nativeOrder())
+            val c1Buf = ByteBuffer.allocateDirect(coords1.numBytes()).order(ByteOrder.nativeOrder())
+            val s0Buf = ByteBuffer.allocateDirect(scores0.numBytes()).order(ByteOrder.nativeOrder())
+            val s1Buf = ByteBuffer.allocateDirect(scores1.numBytes()).order(ByteOrder.nativeOrder())
+            val outputs: MutableMap<Int, Any> = hashMapOf(
+                0 to c0Buf,
+                1 to c1Buf,
+                2 to s0Buf,
+                3 to s1Buf
+            )
+            interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
+            val inferenceTime = System.currentTimeMillis() - t0
+
+            val c0 = dequantizeBuffer(coords0, c0Buf)
+            val c1 = dequantizeBuffer(coords1, c1Buf)
+            val s0Raw = dequantizeBuffer(scores0, s0Buf)
+            val s1Raw = dequantizeBuffer(scores1, s1Buf)
+
+            val a0 = coords0.shape().getOrNull(coords0.shape().size - 2) ?: 0
+            val a1 = coords1.shape().getOrNull(coords1.shape().size - 2) ?: 0
+            detectorCoordsPerAnchor = coords0.shape().lastOrNull() ?: detectorCoordsPerAnchor
+            detectorNumAnchors = a0 + a1
+
+            val coordsCombined = FloatArray((a0 + a1) * detectorCoordsPerAnchor)
+            if (a0 > 0) System.arraycopy(c0, 0, coordsCombined, 0, min(c0.size, coordsCombined.size))
+            if (a1 > 0) System.arraycopy(c1, 0, coordsCombined, a0 * detectorCoordsPerAnchor, min(c1.size, coordsCombined.size - a0 * detectorCoordsPerAnchor))
+
+            val scoresCombinedRaw = FloatArray(a0 + a1)
+            if (a0 > 0) System.arraycopy(s0Raw, 0, scoresCombinedRaw, 0, min(s0Raw.size, scoresCombinedRaw.size))
+            if (a1 > 0) System.arraycopy(s1Raw, 0, scoresCombinedRaw, a0, min(s1Raw.size, scoresCombinedRaw.size - a0))
+            val scoresCombined = FloatArray(scoresCombinedRaw.size) { idx ->
+                val v = scoresCombinedRaw[idx].coerceIn(-100f, 100f)
+                1f / (1f + exp(-v))
+            }
+            if (scoresCombinedRaw.isNotEmpty()) {
+                val rMin = scoresCombinedRaw.minOrNull() ?: 0f
+                val rMax = scoresCombinedRaw.maxOrNull() ?: 0f
+                val aMin = scoresCombined.minOrNull() ?: 0f
+                val aMax = scoresCombined.maxOrNull() ?: 0f
+                Log.d(TAG, "pose detector scores raw min=$rMin max=$rMax activated min=$aMin max=$aMax")
+            }
+            Log.d(TAG, "Inference Metrics: Pose detector inference=${inferenceTime}ms")
+
+            Pair(coordsCombined, scoresCombined)
+        } else {
+            val coordsBuf = ByteBuffer.allocateDirect(coordsTensor.numBytes()).order(ByteOrder.nativeOrder())
+            val scoresBuf = ByteBuffer.allocateDirect(scoresTensor.numBytes()).order(ByteOrder.nativeOrder())
+            val outputs: MutableMap<Int, Any> = hashMapOf(0 to coordsBuf, 1 to scoresBuf)
+            interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
+            val inferenceTime = System.currentTimeMillis() - t0
+            val coords = dequantizeBuffer(coordsTensor, coordsBuf)
+            val rawScores = dequantizeBuffer(scoresTensor, scoresBuf)
+            val scores = FloatArray(rawScores.size) { idx ->
+                val v = rawScores[idx].coerceIn(-100f, 100f)
+                1f / (1f + exp(-v))
+            }
+            detectorCoordsPerAnchor = coordsTensor.shape().lastOrNull() ?: detectorCoordsPerAnchor
+            detectorNumAnchors = coordsTensor.shape().getOrNull(coordsTensor.shape().size - 2) ?: detectorNumAnchors
+            if (rawScores.isNotEmpty()) {
+                val rMin = rawScores.minOrNull() ?: 0f
+                val rMax = rawScores.maxOrNull() ?: 0f
+                val aMin = scores.minOrNull() ?: 0f
+                val aMax = scores.maxOrNull() ?: 0f
+                Log.d(TAG, "pose detector scores raw min=$rMin max=$rMax activated min=$aMin max=$aMax")
+            }
+            Log.d(TAG, "Inference Metrics: Pose detector inference=${inferenceTime}ms")
+            Pair(coords, scores)
+        }
     }
 
     private fun runLandmark(
@@ -406,12 +477,12 @@ class Pose(private val context: Context) {
         scoreTensor: Tensor,
         lmkTensor: Tensor
     ): Pair<Float, FloatArray> {
-            val scoreOut = allocateOutput(scoreTensor)
-            val lmkOut = allocateOutput(lmkTensor)
-            val outputs: MutableMap<Int, Any> = hashMapOf(0 to scoreOut.second, 1 to lmkOut.second)
-            interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
-            val scoreArr = dequantizeOutput(scoreTensor, scoreOut.first, scoreOut.second)
-            val lmkArr = dequantizeOutput(lmkTensor, lmkOut.first, lmkOut.second)
+        val scoreBuf = ByteBuffer.allocateDirect(scoreTensor.numBytes()).order(ByteOrder.nativeOrder())
+        val lmkBuf = ByteBuffer.allocateDirect(lmkTensor.numBytes()).order(ByteOrder.nativeOrder())
+        val outputs: MutableMap<Int, Any> = hashMapOf(0 to scoreBuf, 1 to lmkBuf)
+        interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
+        val scoreArr = dequantizeBuffer(scoreTensor, scoreBuf)
+        val lmkArr = dequantizeBuffer(lmkTensor, lmkBuf)
 
         // Landmarks are flattened; shape is [1, num, dims]. Assume dims >=2.
         val numDims = lmkTensor.shape().lastOrNull() ?: 0
@@ -494,6 +565,43 @@ class Pose(private val context: Context) {
                 }
             }
             else -> throw IllegalStateException("Unsupported type $dataType")
+        }
+    }
+
+    private fun dequantizeBuffer(tensor: Tensor, buffer: ByteBuffer): FloatArray {
+        buffer.rewind()
+        val numElems = tensor.numElements()
+        return when (tensor.dataType()) {
+            DataType.FLOAT32 -> {
+                val out = FloatArray(numElems)
+                buffer.asFloatBuffer().get(out)
+                out
+            }
+            DataType.UINT8 -> {
+                val scale = tensor.quantizationParams().scale
+                val zero = tensor.quantizationParams().zeroPoint
+                val out = FloatArray(numElems)
+                var i = 0
+                while (i < numElems) {
+                    val v = buffer.get().toInt() and 0xFF
+                    out[i] = scale * (v - zero)
+                    i++
+                }
+                out
+            }
+            DataType.INT8 -> {
+                val scale = tensor.quantizationParams().scale
+                val zero = tensor.quantizationParams().zeroPoint
+                val out = FloatArray(numElems)
+                var i = 0
+                while (i < numElems) {
+                    val v = buffer.get().toInt()
+                    out[i] = scale * (v - zero)
+                    i++
+                }
+                out
+            }
+            else -> throw IllegalStateException("Unsupported type ${tensor.dataType()}")
         }
     }
 }

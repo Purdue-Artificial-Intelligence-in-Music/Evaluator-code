@@ -18,6 +18,7 @@ import com.qualcomm.qti.QnnDelegate.Options.BackendType
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
@@ -32,11 +33,11 @@ class Hands(private val context: Context) {
         private const val LANDMARK_MODEL = "mediapipe_hand-handlandmarkdetector.tflite"
         private const val DETECTOR_INPUT_SIZE = 256
         private const val LANDMARK_INPUT_SIZE = 256
-        private const val DET_SCORE_THRESHOLD = 0.95f
+        private const val DET_SCORE_THRESHOLD = 0.6f
         private const val NMS_IOU = 0.3f
         private const val ROI_DXY = 0.5f
         private const val ROI_DSCALE = 2.5f
-        private const val ROT_OFFSET = (Math.PI.toFloat() / 2f)
+    private const val ROT_OFFSET = (Math.PI.toFloat() / 2f)
         private const val DEFAULT_HAND_ANCHORS = "anchors_palm.npy"
         // keypoints for rotation: wrist center idx 0, middle finger base idx 2 (from model.py)
         private const val KP_ROT_START = 0
@@ -64,6 +65,12 @@ class Hands(private val context: Context) {
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to load hand anchors: ${t.message}")
         }
+        detector?.let {
+            Log.i(TAG, "Hand detector input shape=${it.getInputTensor(0).shape().contentToString()} type=${it.getInputTensor(0).dataType()}")
+        }
+        landmark?.let {
+            Log.i(TAG, "Hand landmark input shape=${it.getInputTensor(0).shape().contentToString()} type=${it.getInputTensor(0).dataType()}")
+        }
     }
 
     fun close() {
@@ -76,10 +83,12 @@ class Hands(private val context: Context) {
     data class HandResult(
         val score: Float,
         val handedness: Boolean, // true = right, false = left
-        val landmarks: List<Pair<Float, Float>>
+        val landmarks: List<Pair<Float, Float>>,
+        val roi: FloatArray? = null
     )
 
     fun detectAndLandmark(bitmap: Bitmap): List<HandResult> {
+        Log.d(TAG, "hand detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
         val det = detector ?: return emptyList()
         val prep = MediapipeLiteRtUtil.resizePadTo(bitmap, DETECTOR_INPUT_SIZE, DETECTOR_INPUT_SIZE)
         val input = buildInputBuffer(prep.bitmap, det.getInputTensor(0))
@@ -88,7 +97,10 @@ class Hands(private val context: Context) {
         val scoresTensor = det.getOutputTensor(1)
         val (coords, scores) = runDetector(det, input, coordsTensor, scoresTensor)
 
-        val anchorsLocal = anchors ?: return emptyList()
+        val anchorsLocal = anchors ?: run {
+            Log.w(TAG, "Anchors missing; skipping hand detection")
+            return emptyList()
+        }
         val detections = MediapipeLiteRtUtil.decodeWithAnchors(
             coords = coords,
             scores = scores,
@@ -99,7 +111,9 @@ class Hands(private val context: Context) {
             inputW = DETECTOR_INPUT_SIZE,
             inputH = DETECTOR_INPUT_SIZE
         )
+        Log.d(TAG, "hand detector raw dets=${detections.size}")
         val nms = MediapipeLiteRtUtil.nms(detections, NMS_IOU)
+        Log.d(TAG, "hand detector nms dets=${nms.size}")
         val lmInterp = landmark ?: return emptyList()
         val results = mutableListOf<HandResult>()
 
@@ -141,7 +155,7 @@ class Hands(private val context: Context) {
             val score = out.first
             val handed = out.second
             val lmk = out.third
-            if (lmk.isEmpty()) continue
+            if (score < DET_SCORE_THRESHOLD || lmk.isEmpty()) continue
             val mapped = FloatArray(lmk.size)
             inverse?.mapPoints(mapped, lmk)
             val pairs = mutableListOf<Pair<Float, Float>>()
@@ -150,8 +164,9 @@ class Hands(private val context: Context) {
                 pairs.add(Pair(mapped[i], mapped[i + 1]))
                 i += 2
             }
-            results.add(HandResult(score, handed, pairs))
+            results.add(HandResult(score, handed, pairs, roi))
         }
+        Log.d(TAG, "hand landmarks count=${results.size}")
         return results
     }
 
@@ -159,24 +174,43 @@ class Hands(private val context: Context) {
         val kps = det.keypoints ?: return null
         val kpCount = kps.size / 2
         if (kpCount <= KP_ROT_END) return null
-        val sx = kps[KP_ROT_START * 2] * imgW
-        val sy = kps[KP_ROT_START * 2 + 1] * imgH
-        val ex = kps[KP_ROT_END * 2] * imgW
-        val ey = kps[KP_ROT_END * 2 + 1] * imgH
+
+        val sx = kps[KP_ROT_START * 2]
+        val sy = kps[KP_ROT_START * 2 + 1]
+        val ex = kps[KP_ROT_END * 2]
+        val ey = kps[KP_ROT_END * 2 + 1]
+        // MediaPipe uses wrist -> middle-finger-base vector for orientation.
+        // Match MediaPipe vector direction (start - end) so the rotation/offset aligns with the reference Python app.
         val dx = sx - ex
         val dy = sy - ey
-        val dist = kotlin.math.sqrt(dx * dx + dy * dy)
-        if (dist == 0f) return null
+        // MediaPipe (y-down): rotation = atan2(dy, dx) - 0.5*pi.
         val angle = kotlin.math.atan2(dy, dx) - ROT_OFFSET
-        val w = dist * ROI_DSCALE
-        val h = w
-        val xc = det.x0 * imgW + (det.x1 - det.x0) * imgW / 2f + ROI_DXY * kotlin.math.cos(angle) * w
-        val yc = det.y0 * imgH + (det.y1 - det.y0) * imgH / 2f + ROI_DXY * kotlin.math.sin(angle) * h
+        val angleDeg = Math.toDegrees(angle.toDouble())
+        Log.d(TAG, "ROI rot wrist->mid dx=$dx dy=$dy angleDeg=$angleDeg sx=$sx sy=$sy ex=$ex ey=$ey")
+
+        // Box center/size from detector box.
+        val x0 = det.x0
+        val y0 = det.y0
+        val x1 = det.x1
+        val y1 = det.y1
+        val xc = (x0 + x1) / 2f
+        val yc = (y0 + y1) / 2f
+        val wPix = (x1 - x0) * ROI_DSCALE * imgW
+        val hPix = (y1 - y0) * ROI_DSCALE * imgH
+
+        // Apply directional offset along rotation vector.
+        val dxPix = dx * imgW
+        val dyPix = dy * imgH
+        val vecLen = kotlin.math.hypot(dxPix, dyPix)
+        val offset = if (vecLen > 1e-6f) ROI_DXY * wPix else 0f
+        val xcPix = xc * imgW + offset * (if (vecLen > 1e-6f) dxPix / vecLen else 0f)
+        val ycPix = yc * imgH + offset * (if (vecLen > 1e-6f) dyPix / vecLen else 0f)
 
         val cosA = kotlin.math.cos(angle)
         val sinA = kotlin.math.sin(angle)
-        val hw = w / 2f
-        val hh = h / 2f
+        val hw = wPix / 2f
+        val hh = hPix / 2f
+        // Order TL, BL, TR, BR to match MediaPipe rotated rect and affine mapping.
         val pts = floatArrayOf(
             -hw, -hh,
             -hw, hh,
@@ -186,9 +220,10 @@ class Hands(private val context: Context) {
         for (i in 0 until 4) {
             val x = pts[i * 2]
             val y = pts[i * 2 + 1]
-            pts[i * 2] = x * cosA - y * sinA + xc
-            pts[i * 2 + 1] = x * sinA + y * cosA + yc
+            pts[i * 2] = x * cosA - y * sinA + xcPix
+            pts[i * 2 + 1] = x * sinA + y * cosA + ycPix
         }
+        Log.d(TAG, "ROI pts=${pts.contentToString()} center=($xcPix,$ycPix) wh=($wPix,$hPix) img=($imgW,$imgH)")
         return pts
     }
 
@@ -406,13 +441,27 @@ class Hands(private val context: Context) {
         coordsTensor: Tensor,
         scoresTensor: Tensor
     ): Pair<FloatArray, FloatArray> {
-        val coordsOut = allocateOutput(coordsTensor)
-        val scoresOut = allocateOutput(scoresTensor)
-        val outputs: MutableMap<Int, Any> = hashMapOf(0 to coordsOut.second, 1 to scoresOut.second)
+        val t0 = System.currentTimeMillis()
+        val coordsBuf = ByteBuffer.allocateDirect(coordsTensor.numBytes()).order(ByteOrder.nativeOrder())
+        val scoresBuf = ByteBuffer.allocateDirect(scoresTensor.numBytes()).order(ByteOrder.nativeOrder())
+        val outputs: MutableMap<Int, Any> = hashMapOf(0 to coordsBuf, 1 to scoresBuf)
         interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
-        val coords = dequantizeOutput(coordsTensor, coordsOut.first, coordsOut.second)
-        val scores = dequantizeOutput(scoresTensor, scoresOut.first, scoresOut.second)
-        return Pair(coords, scores)
+        val inferenceTime = System.currentTimeMillis() - t0
+        val coords = dequantizeBuffer(coordsTensor, coordsBuf)
+        val rawScores = dequantizeBuffer(scoresTensor, scoresBuf)
+        val activatedScores = FloatArray(rawScores.size) { idx ->
+            val v = rawScores[idx].coerceIn(-100f, 100f)
+            1f / (1f + exp(-v))
+        }
+        if (rawScores.isNotEmpty()) {
+            val rMin = rawScores.minOrNull() ?: 0f
+            val rMax = rawScores.maxOrNull() ?: 0f
+            val aMin = activatedScores.minOrNull() ?: 0f
+            val aMax = activatedScores.maxOrNull() ?: 0f
+            Log.d(TAG, "hand detector scores raw min=$rMin max=$rMax activated min=$aMin max=$aMax")
+        }
+        Log.d(TAG, "Inference Metrics: Hand detector inference=${inferenceTime}ms")
+        return Pair(coords, activatedScores)
     }
 
     private fun runLandmark(
@@ -422,18 +471,18 @@ class Hands(private val context: Context) {
         lrTensor: Tensor,
         lmkTensor: Tensor
     ): Triple<Float, Boolean, FloatArray> {
-        val scoreOut = allocateOutput(scoreTensor)
-        val lrOut = allocateOutput(lrTensor)
-        val lmkOut = allocateOutput(lmkTensor)
+        val scoreBuf = ByteBuffer.allocateDirect(scoreTensor.numBytes()).order(ByteOrder.nativeOrder())
+        val lrBuf = ByteBuffer.allocateDirect(lrTensor.numBytes()).order(ByteOrder.nativeOrder())
+        val lmkBuf = ByteBuffer.allocateDirect(lmkTensor.numBytes()).order(ByteOrder.nativeOrder())
         val outputs: MutableMap<Int, Any> = hashMapOf(
-            0 to scoreOut.second,
-            1 to lrOut.second,
-            2 to lmkOut.second
+            0 to scoreBuf,
+            1 to lrBuf,
+            2 to lmkBuf
         )
         interpreter.runForMultipleInputsOutputs(arrayOf(input), outputs)
-        val scoreArr = dequantizeOutput(scoreTensor, scoreOut.first, scoreOut.second)
-        val lrArr = dequantizeOutput(lrTensor, lrOut.first, lrOut.second)
-        val lmkArr = dequantizeOutput(lmkTensor, lmkOut.first, lmkOut.second)
+        val scoreArr = dequantizeBuffer(scoreTensor, scoreBuf)
+        val lrArr = dequantizeBuffer(lrTensor, lrBuf)
+        val lmkArr = dequantizeBuffer(lmkTensor, lmkBuf)
 
         val numDims = lmkTensor.shape().lastOrNull() ?: 0
         val numPts = lmkTensor.shape().getOrNull(lmkTensor.shape().size - 2) ?: 0
@@ -445,5 +494,42 @@ class Hands(private val context: Context) {
         val score = scoreArr.firstOrNull() ?: 0f
         val handed = (lrArr.firstOrNull() ?: 0f) >= 0.5f
         return Triple(score, handed, coords)
+    }
+
+    private fun dequantizeBuffer(tensor: Tensor, buffer: ByteBuffer): FloatArray {
+        buffer.rewind()
+        val numElems = tensor.numElements()
+        return when (tensor.dataType()) {
+            DataType.FLOAT32 -> {
+                val out = FloatArray(numElems)
+                buffer.asFloatBuffer().get(out)
+                out
+            }
+            DataType.UINT8 -> {
+                val scale = tensor.quantizationParams().scale
+                val zero = tensor.quantizationParams().zeroPoint
+                val out = FloatArray(numElems)
+                var i = 0
+                while (i < numElems) {
+                    val v = buffer.get().toInt() and 0xFF
+                    out[i] = scale * (v - zero)
+                    i++
+                }
+                out
+            }
+            DataType.INT8 -> {
+                val scale = tensor.quantizationParams().scale
+                val zero = tensor.quantizationParams().zeroPoint
+                val out = FloatArray(numElems)
+                var i = 0
+                while (i < numElems) {
+                    val v = buffer.get().toInt()
+                    out[i] = scale * (v - zero)
+                    i++
+                }
+                out
+            }
+            else -> throw IllegalStateException("Unsupported type ${tensor.dataType()}")
+        }
     }
 }

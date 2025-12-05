@@ -63,7 +63,7 @@ class CameraxView(
     private var cameraProvider: ProcessCameraProvider? = null
 
     private var detector: Detector? = null
-    private lateinit var handLandmarkerHelper: HandLandmarkerHelper
+    private var handLandmarkerHelper: HandLandmarkerHelper? = null
 
     private val profile = Profile()
     private var userId: String = "default_user"
@@ -119,16 +119,6 @@ class CameraxView(
 
         // Initialize detection tools
         detector = Detector(context, this)
-        handLandmarkerHelper = HandLandmarkerHelper(
-            context = context,
-            runningMode = RunningMode.LIVE_STREAM,
-            minHandDetectionConfidence = HandLandmarkerHelper.DEFAULT_HAND_DETECTION_CONFIDENCE,
-            minHandTrackingConfidence = HandLandmarkerHelper.DEFAULT_HAND_TRACKING_CONFIDENCE,
-            minHandPresenceConfidence = HandLandmarkerHelper.DEFAULT_HAND_PRESENCE_CONFIDENCE,
-            maxNumHands = HandLandmarkerHelper.DEFAULT_NUM_HANDS,
-            currentDelegate = HandLandmarkerHelper.DELEGATE_CPU,
-            combinedLandmarkerHelperListener = this
-        )
 
         // Default to LiteRT/QNN pipelines for hands and pose.
         setUseLiteRtHands(true)
@@ -139,14 +129,20 @@ class CameraxView(
         useLiteRtPose = enabled
         if (enabled && poseLiteRt == null) {
             poseLiteRt = Pose(context)
+        } else if (!enabled) {
+            ensureMediaPipeHelper()
         }
+        maybeTearDownTasksHelper()
     }
 
     fun setUseLiteRtHands(enabled: Boolean) {
         useLiteRtHands = enabled
         if (enabled && handsLiteRt == null) {
             handsLiteRt = Hands(context)
+        } else if (!enabled) {
+            ensureMediaPipeHelper()
         }
+        maybeTearDownTasksHelper()
     }
 
     // ===== React Native Props =====
@@ -357,9 +353,9 @@ class CameraxView(
                 bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
                 imageProxy.planes[0].buffer.rewind()
 
-                // Run MediaPipe live stream hand detection unless LiteRT hands is enabled.
-                if (!useLiteRtHands) {
-                    handLandmarkerHelper.detectLiveStream(
+                // Run MediaPipe live stream only when LiteRT is disabled for both hands and pose.
+                if (!useLiteRtHands && !useLiteRtPose) {
+                    ensureMediaPipeHelper().detectLiveStream(
                         imageProxy,
                         lensType != CameraSelector.LENS_FACING_BACK
                     )
@@ -386,11 +382,13 @@ class CameraxView(
                 if (useLiteRtPose) {
                     if (poseLiteRt == null) poseLiteRt = Pose(context)
                     litePoseResults = poseLiteRt?.detectAndLandmark(rotatedBitmap) ?: emptyList()
+                    Log.d(TAG, "LiteRT pose results: ${litePoseResults.size}")
                 }
                 // Optional LiteRT hands path
                 if (useLiteRtHands) {
                     if (handsLiteRt == null) handsLiteRt = Hands(context)
                     liteHandResults = handsLiteRt?.detectAndLandmark(rotatedBitmap) ?: emptyList()
+                    Log.d(TAG, "LiteRT hands results: ${liteHandResults.size}")
                 }
 
                 if (useLiteRtPose || useLiteRtHands) {
@@ -487,6 +485,30 @@ class CameraxView(
                 poseLite = if (useLiteRtPose) litePoseResults else null,
                 handsLite = if (useLiteRtHands) liteHandResults else null
             )
+        }
+    }
+
+    private fun ensureMediaPipeHelper(): HandLandmarkerHelper {
+        val existing = handLandmarkerHelper
+        if (existing != null) return existing
+        val helper = HandLandmarkerHelper(
+            context = context,
+            runningMode = RunningMode.LIVE_STREAM,
+            minHandDetectionConfidence = HandLandmarkerHelper.DEFAULT_HAND_DETECTION_CONFIDENCE,
+            minHandTrackingConfidence = HandLandmarkerHelper.DEFAULT_HAND_TRACKING_CONFIDENCE,
+            minHandPresenceConfidence = HandLandmarkerHelper.DEFAULT_HAND_PRESENCE_CONFIDENCE,
+            maxNumHands = HandLandmarkerHelper.DEFAULT_NUM_HANDS,
+            currentDelegate = HandLandmarkerHelper.DELEGATE_CPU,
+            combinedLandmarkerHelperListener = this
+        )
+        handLandmarkerHelper = helper
+        return helper
+    }
+
+    private fun maybeTearDownTasksHelper() {
+        if (useLiteRtHands && useLiteRtPose) {
+            try { handLandmarkerHelper?.clearLandmarkers() } catch (_: Throwable) {}
+            handLandmarkerHelper = null
         }
     }
 

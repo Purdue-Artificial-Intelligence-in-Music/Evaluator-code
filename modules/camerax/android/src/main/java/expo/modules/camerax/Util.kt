@@ -239,12 +239,12 @@ object MediapipeLiteRtUtil {
         val hw = w / 2f
         val hh = h / 2f
 
-        // Order: TL, BL, TR, BR
+        // Order: TL, BL, TR, BR (MediaPipe-style rotated rect)
         val pts = floatArrayOf(
-            -hw, -hh,
-            -hw, hh,
-            hw, -hh,
-            hw, hh
+            -hw, -hh,   // TL
+            -hw, hh,    // BL
+            hw, -hh,    // TR
+            hw, hh      // BR
         )
         for (i in 0 until 4) {
             val x = pts[i * 2]
@@ -264,17 +264,18 @@ object MediapipeLiteRtUtil {
         dstW: Int,
         dstH: Int
     ): Pair<android.graphics.Matrix, android.graphics.Matrix?> {
+        // Expect source order TL, BL, TR, BR and map to destination in the same order.
         val src = floatArrayOf(
-            roiCorners[0], roiCorners[1],
-            roiCorners[2], roiCorners[3],
-            roiCorners[4], roiCorners[5],
-            roiCorners[6], roiCorners[7]
+            roiCorners[0], roiCorners[1], // TL
+            roiCorners[2], roiCorners[3], // BL
+            roiCorners[4], roiCorners[5], // TR
+            roiCorners[6], roiCorners[7]  // BR
         )
         val dst = floatArrayOf(
-            0f, 0f,
-            0f, dstH.toFloat(),
-            dstW.toFloat(), 0f,
-            dstW.toFloat(), dstH.toFloat()
+            0f, 0f,                    // TL
+            0f, dstH.toFloat(),        // BL
+            dstW.toFloat(), 0f,        // TR
+            dstW.toFloat(), dstH.toFloat() // BR
         )
         val forward = android.graphics.Matrix()
         forward.setPolyToPoly(src, 0, dst, 0, 4)

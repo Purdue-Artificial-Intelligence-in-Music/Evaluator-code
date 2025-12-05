@@ -178,7 +178,14 @@ class OverlayView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (results == null && handLandmarkerResult == null && handDetect.isEmpty() && poseDetect.isEmpty()) {
+        if (results == null &&
+            handLandmarkerResult == null &&
+            poseLandmarkerResult == null &&
+            handLiteResult == null &&
+            poseLiteResult == null &&
+            handDetect.isEmpty() &&
+            poseDetect.isEmpty()
+        ) {
             // detection stopped, do not draw anything
             return
         }
@@ -575,6 +582,8 @@ class OverlayView @JvmOverloads constructor(
 
         // Draw LiteRT pose (if provided).
         poseLiteResult?.let { poses ->
+            val sx = if (imageWidth > 0) width.toFloat() / imageWidth else 1f
+            val sy = if (imageHeight > 0) height.toFloat() / imageHeight else 1f
             val line = Paint().apply {
                 color = Color.WHITE
                 strokeWidth = LANDMARK_STROKE_WIDTH
@@ -592,28 +601,31 @@ class OverlayView @JvmOverloads constructor(
                 Pose.POSE_CONNECTIONS.forEach { (a, b) ->
                     if (a < pts.size && b < pts.size) {
                         val pa = pts[a]; val pb = pts[b]
-                        canvas.drawLine(pa.first, pa.second, pb.first, pb.second, line)
+                        canvas.drawLine(pa.first * sx, pa.second * sy, pb.first * sx, pb.second * sy, line)
                     }
                 }
                 pts.forEach { p ->
-                    canvas.drawCircle(p.first, p.second, 6f, point)
+                    canvas.drawCircle(p.first * sx, p.second * sy, 6f, point)
                 }
             }
         }
 
         // Draw LiteRT hands (if provided).
         handLiteResult?.let { hands ->
-            val rightColor = Color.BLUE
-            val leftColor = Color.CYAN
+            val sx = if (imageWidth > 0) width.toFloat() / imageWidth else 1f
+            val sy = if (imageHeight > 0) height.toFloat() / imageHeight else 1f
+            val rightColor = Color.RED
+            val leftColor = Color.BLUE
             hands.forEach { hand ->
+                val isRight = if (isFrontCamera) !hand.handedness else hand.handedness
                 val line = Paint().apply {
-                    color = if (hand.handedness) rightColor else leftColor
+                    color = if (isRight) rightColor else leftColor
                     strokeWidth = LANDMARK_STROKE_WIDTH
                     style = Paint.Style.STROKE
                     isAntiAlias = true
                 }
                 val point = Paint().apply {
-                    color = if (hand.handedness) rightColor else leftColor
+                    color = if (isRight) rightColor else leftColor
                     strokeWidth = LANDMARK_STROKE_WIDTH
                     style = Paint.Style.FILL
                     isAntiAlias = true
@@ -624,11 +636,29 @@ class OverlayView @JvmOverloads constructor(
                     val end = connection.end()
                     if (start < hand.landmarks.size && end < hand.landmarks.size) {
                         val pa = hand.landmarks[start]; val pb = hand.landmarks[end]
-                        canvas.drawLine(pa.first, pa.second, pb.first, pb.second, line)
+                        canvas.drawLine(pa.first * sx, pa.second * sy, pb.first * sx, pb.second * sy, line)
                     }
                 }
                 hand.landmarks.forEach { p ->
-                    canvas.drawCircle(p.first, p.second, 6f, point)
+                    canvas.drawCircle(p.first * sx, p.second * sy, 6f, point)
+                }
+                hand.roi?.let { r ->
+                    if (r.size >= 8) {
+                        val roiPaint = Paint().apply {
+                            color = Color.MAGENTA
+                            strokeWidth = 4f
+                            style = Paint.Style.STROKE
+                            isAntiAlias = true
+                        }
+                        val pts = floatArrayOf(
+                            r[0] * sx, r[1] * sy,
+                            r[2] * sx, r[3] * sy,
+                            r[6] * sx, r[7] * sy,
+                            r[4] * sx, r[5] * sy,
+                            r[0] * sx, r[1] * sy
+                        )
+                        canvas.drawLines(pts, roiPaint)
+                    }
                 }
             }
         }
