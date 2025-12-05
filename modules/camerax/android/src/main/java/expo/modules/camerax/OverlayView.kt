@@ -340,7 +340,7 @@ class OverlayView @JvmOverloads constructor(
 
             // Draw classification message if there's an issue
             now = System.currentTimeMillis()
-            if (results?.classification != null && results?.classification != 0) {
+            if (results?.classification != null/* && results?.classification != 0*/) {
                 bowMessage = classificationLabels[results?.classification] ?: ""
             }
 
@@ -365,7 +365,7 @@ class OverlayView @JvmOverloads constructor(
             }
 
             // Draw angle message if there's an issue
-            if (results?.angle != null && results?.angle == 1) {
+            if (results?.angle != null/* && results?.angle == 1*/) {
                 angleMessage = angleLabels[results?.angle] ?: ""
             }
 
