@@ -34,11 +34,12 @@ class Hands(private val context: Context) {
         private const val LANDMARK_MODEL = "mediapipe_hand-handlandmarkdetector.tflite"
         private const val DETECTOR_INPUT_SIZE = 256
         private const val LANDMARK_INPUT_SIZE = 256
-        private const val DET_SCORE_THRESHOLD = 0.5f
+        private const val DET_SCORE_THRESHOLD = 0.8f
         private const val NMS_IOU = 0.3f
-        private const val ROI_DXY = 0f
-        private const val ROI_DSCALE = 2.5f
-    private const val ROT_OFFSET = (Math.PI.toFloat() / 2f)
+        private const val ROI_DXY = -0.25f
+        private const val ROI_DSCALE = 3.0f
+        private const val SMOOTH_ALPHA = 0.5f
+        private const val ROT_OFFSET = (Math.PI.toFloat() / 2f)
         private const val DEFAULT_HAND_ANCHORS = "anchors_palm.npy"
         // keypoints for rotation: wrist center idx 0, middle finger base idx 2 (from model.py)
         private const val KP_ROT_START = 0
@@ -58,6 +59,12 @@ class Hands(private val context: Context) {
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
+    private var lastLandmarks: FloatArray? = null
+    private var lastPoseLandmarks: List<Pair<Float, Float>>? = null
+    var usePoseHandedness: Boolean = true
+    var singleBodyMode: Boolean = true
+    var bowHandIsRight: Boolean = true
+    private var handClassifier: Interpreter? = null
 
     init {
         setupDetector()
@@ -92,8 +99,14 @@ class Hands(private val context: Context) {
         val roi: FloatArray? = null
     )
 
-    fun detectAndLandmark(bitmap: Bitmap): List<HandResult> {
+    fun detectAndLandmark(
+        bitmap: Bitmap,
+        poseHints: List<List<Pair<Float, Float>>>? = null
+    ): List<HandResult> {
         Log.d(TAG, "hand detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
+        if (poseHints != null && poseHints.isNotEmpty()) {
+            lastPoseLandmarks = poseHints.firstOrNull()
+        }
         val det = detector ?: return emptyList()
         val prep = MediapipeLiteRtUtil.resizePadTo(bitmap, DETECTOR_INPUT_SIZE, DETECTOR_INPUT_SIZE)
         val input = buildInputBuffer(prep.bitmap, det.getInputTensor(0))
@@ -118,11 +131,12 @@ class Hands(private val context: Context) {
         )
         Log.d(TAG, "hand detector raw dets=${detections.size}")
         val nms = MediapipeLiteRtUtil.nms(detections, NMS_IOU)
-        Log.d(TAG, "hand detector nms dets=${nms.size}")
+        val limited = nms.sortedByDescending { it.score }.take(2)
+        Log.d(TAG, "hand detector nms dets=${nms.size} capped=${limited.size}")
         val lmInterp = landmark ?: return emptyList()
         val results = mutableListOf<HandResult>()
 
-        for (detObjRaw in nms) {
+        for (detObjRaw in limited) {
             // Map detection back to original normalized coords.
             val x0 = (detObjRaw.x0 * prep.targetWidth - prep.padX) / prep.scale
             val y0 = (detObjRaw.y0 * prep.targetHeight - prep.padY) / prep.scale
@@ -158,7 +172,6 @@ class Hands(private val context: Context) {
             val lmInput = buildInputBuffer(crop, lmInterp.getInputTensor(0))
             val out = runLandmark(lmInterp, lmInput, lmInterp.getOutputTensor(0), lmInterp.getOutputTensor(1), lmInterp.getOutputTensor(2))
             val score = out.first
-            val handed = out.second
             val lmk = out.third
             if (score < DET_SCORE_THRESHOLD || lmk.isEmpty()) continue
             val mapped = FloatArray(lmk.size)
@@ -168,6 +181,11 @@ class Hands(private val context: Context) {
             while (i < mapped.size) {
                 pairs.add(Pair(mapped[i], mapped[i + 1]))
                 i += 2
+            }
+            val handed = out.second
+            Log.d("classifcation", "hand idx=${results.size} side=${if (handed) "right" else "left"} score=$score")
+            if (handed == bowHandIsRight) {
+                runHandClassifier(pairs)
             }
             results.add(HandResult(score, handed, pairs, roi))
         }
@@ -553,6 +571,75 @@ class Hands(private val context: Context) {
                 out
             }
             else -> throw IllegalStateException("Unsupported type ${tensor.dataType()}")
+        }
+    }
+
+    // Use pose wrist/index hints to assign side; fallback to model if pose unavailable.
+    private fun assignHandByPose(handLandmarks: List<Pair<Float, Float>>, fallback: Boolean): Boolean {
+        val pose = lastPoseLandmarks
+        if (!usePoseHandedness || pose == null || pose.isEmpty()) return fallback
+        val leftIdx = listOf(15, 19)
+        val rightIdx = listOf(16, 20)
+        val left = meanPair(pose, leftIdx)
+        val right = meanPair(pose, rightIdx)
+        if (left == null && right == null) return fallback
+        val wrist = handLandmarks.getOrNull(0) ?: return fallback
+        val distL = left?.let { d2(wrist, it) }
+        val distR = right?.let { d2(wrist, it) }
+        return when {
+            distL != null && distR != null -> distR <= distL
+            distR != null -> true
+            distL != null -> false
+            else -> fallback
+        }
+    }
+
+    private fun meanPair(pts: List<Pair<Float, Float>>, idxs: List<Int>): Pair<Float, Float>? {
+        val valid = idxs.mapNotNull { pts.getOrNull(it) }
+        if (valid.isEmpty()) return null
+        val sx = valid.sumOf { it.first.toDouble() }.toFloat()
+        val sy = valid.sumOf { it.second.toDouble() }.toFloat()
+        val n = valid.size.toFloat()
+        return Pair(sx / n, sy / n)
+    }
+
+    private fun d2(a: Pair<Float, Float>, b: Pair<Float, Float>): Float {
+        val dx = a.first - b.first
+        val dy = a.second - b.second
+        return dx * dx + dy * dy
+    }
+
+    private fun runHandClassifier(landmarks: List<Pair<Float, Float>>) {
+        try {
+            if (handClassifier == null) {
+                val model = FileUtil.loadMappedFile(context, "keypoint_classifier_FINAL.tflite")
+                handClassifier = Interpreter(model)
+            }
+            if (landmarks.size < 21) return
+            val xs = landmarks.map { it.first }
+            val ys = landmarks.map { it.second }
+            val minX = xs.minOrNull() ?: return
+            val maxX = xs.maxOrNull() ?: return
+            val minY = ys.minOrNull() ?: return
+            val maxY = ys.maxOrNull() ?: return
+            val scaleX = if (maxX > minX) maxX - minX else 1f
+            val scaleY = if (maxY > minY) maxY - minY else 1f
+            val input = FloatArray(42)
+            var i = 0
+            landmarks.forEach { (x, y) ->
+                input[i++] = (x - minX) / scaleX
+                input[i++] = (y - minY) / scaleY
+            }
+            val output = Array(1) { FloatArray(4) }
+            val t0 = android.os.SystemClock.uptimeMillis()
+            handClassifier?.run(arrayOf(input), output)
+            val t1 = android.os.SystemClock.uptimeMillis()
+            val scores = output[0]
+            val idx = scores.indices.maxByOrNull { scores[it] } ?: -1
+            val conf = if (idx >= 0) scores[idx] else 0f
+            Log.d("classifcation", "bow hand class=$idx conf=$conf time=${t1 - t0}ms")
+        } catch (t: Throwable) {
+            Log.w("classifcation", "hand classifier failed: ${t.message}")
         }
     }
 }

@@ -35,10 +35,11 @@ class Pose(private val context: Context) {
         // Detector input dims from model card (3x128x128)
         private const val DETECTOR_INPUT_SIZE = 128
         private const val LANDMARK_INPUT_SIZE = 256
-        private const val DET_SCORE_THRESHOLD = 0.6f
+        private const val DET_SCORE_THRESHOLD = 0.4f
         private const val NMS_IOU = 0.3f
         private const val ROI_SCALE = 1.5f
         private const val DEFAULT_POSE_ANCHORS = "anchors_pose.npy"
+        private const val SMOOTH_ALPHA = 0.5f
 
         private enum class DelegateChoice { HTP, GPU, CPU }
 
@@ -63,6 +64,7 @@ class Pose(private val context: Context) {
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
+    private var lastLandmarks: FloatArray? = null
 
     init {
         setupDetector()
@@ -123,8 +125,9 @@ class Pose(private val context: Context) {
 
         Log.d(TAG, "pose detector raw dets=${detections.size}")
         val nms = MediapipeLiteRtUtil.nms(detections, NMS_IOU)
-        Log.d(TAG, "pose detector nms dets=${nms.size}")
-        return nms.map { detObj ->
+        val limited = nms.sortedByDescending { it.score }.take(1)
+        Log.d(TAG, "pose detector nms dets=${nms.size} capped=${limited.size}")
+        return limited.map { detObj ->
             // Map back to original image coordinates.
             val x0 = (detObj.x0 * prep.targetWidth - prep.padX) / prep.scale
             val y0 = (detObj.y0 * prep.targetHeight - prep.padY) / prep.scale
@@ -201,6 +204,7 @@ class Pose(private val context: Context) {
                 pairs.add(Pair(mapped[i], mapped[i + 1]))
                 i += 2
             }
+            Log.d("classifcation", "pose score=${out.first} points=${pairs.size}")
             results.add(PoseLandmarks(out.first, pairs))
         }
         Log.d(TAG, "pose landmarks count=${results.size}")

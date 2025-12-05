@@ -421,9 +421,10 @@ class CameraxView(
                 if (useLiteRtHands && handsBusy.compareAndSet(false, true)) {
                     if (handsLiteRt == null) handsLiteRt = Hands(context)
                     val handsBitmap = rotatedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                    val poseHints = litePoseResults?.map { it.landmarks }
                     handsExecutor.execute {
                         try {
-                            liteHandResults = handsLiteRt?.detectAndLandmark(handsBitmap) ?: emptyList()
+                            liteHandResults = handsLiteRt?.detectAndLandmark(handsBitmap, poseHints) ?: emptyList()
                             Log.d(TAG, "LiteRT hands results: ${liteHandResults.size}")
                             activity.runOnUiThread { updateOverlay() }
                         } finally {
