@@ -227,6 +227,16 @@ class HandLandmarkerHelper(
         }
     }
 
+    fun detectBitmap(bitmap: Bitmap, frontCamera: Boolean) {
+        synchronized(tfliteLock) {
+            latestFrameTime = SystemClock.uptimeMillis()
+            isFrontCameraActive = frontCamera
+            latestImage = BitmapImageBuilder(bitmap).build()
+            handLandmarker?.detectAsync(latestImage!!, latestFrameTime)
+            poseLandmarker?.detectAsync(latestImage!!, latestFrameTime)
+        }
+    }
+
     // VIDEO MODE: detect + draw only the selected hand
     fun detectAndDrawVideoFrame(frame: Bitmap?, timestampMs: Long): Pair<CombinedResultBundle?, Bitmap?> {
         if (runningMode != RunningMode.VIDEO) {

@@ -329,10 +329,15 @@ class CameraxView(
                 imageProxy.planes[0].buffer.rewind()
 
                 // Run MediaPipe live stream hand detection
+                /*
                 handLandmarkerHelper.detectLiveStream(
                     imageProxy,
                     lensType != CameraSelector.LENS_FACING_BACK
                 )
+
+                 */
+
+
 
                 // Rotate + mirror if needed
                 val matrix = Matrix().apply {
@@ -350,6 +355,7 @@ class CameraxView(
 
                 // Perform YOLO detection
                 performDetection(rotatedBitmap)
+                handLandmarkerHelper.detectBitmap(rotatedBitmap, lensType == CameraSelector.LENS_FACING_FRONT)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Analyzer failure", e)
