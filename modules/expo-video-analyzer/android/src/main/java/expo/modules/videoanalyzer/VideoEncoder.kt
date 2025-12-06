@@ -88,7 +88,7 @@ class VideoEncoder(
 
                     if (bufferInfo.size > 0 && muxerStarted) {
                         // set timestamps
-                        bufferInfo.presentationTimeUs = computePresentationTime(frameIndex - 1)
+                        bufferInfo.presentationTimeUs = computePresentationTime(frameIndex)
                         
                         encodedData.position(bufferInfo.offset)
                         encodedData.limit(bufferInfo.offset + bufferInfo.size)

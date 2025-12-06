@@ -93,6 +93,16 @@ class Hands(private val context: Context) {
     private var lmLmkBuf: ByteBuffer? = null
     private var cropBitmaps = arrayOfNulls<Bitmap>(2)
     private val warpMatrix = Matrix()
+    private var detectorPadBitmap: Bitmap? = null
+    private var detectorPadCanvas: Canvas? = null
+    private val detectorPadMatrix = Matrix()
+    private var tensorImageUint8: TensorImage? = null
+    private var tensorImageInt8: TensorImage? = null
+    private var pixelBuffer: IntArray? = null
+    private var nchwFloatBuffer: ByteBuffer? = null
+    private var nchwUint8Buffer: ByteBuffer? = null
+    private var nchwInt8Buffer: ByteBuffer? = null
+    private var imageProcessorFloat: ImageProcessor? = null
 
     init {
         setupDetector()
@@ -146,7 +156,7 @@ class Hands(private val context: Context) {
         }
         frameCount++
         val det = detector ?: return emptyList()
-        val prep = MediapipeLiteRtUtil.resizePadTo(bitmap, DETECTOR_INPUT_SIZE, DETECTOR_INPUT_SIZE)
+        val prep = resizePadReuse(bitmap, DETECTOR_INPUT_SIZE, DETECTOR_INPUT_SIZE)
         val input = buildInputBuffer(prep.bitmap, det.getInputTensor(0))
 
         val coordsTensor = det.getOutputTensor(0)
@@ -475,52 +485,72 @@ class Hands(private val context: Context) {
         val shape = inputTensor.shape()
         val isNhwc = shape.size == 4 && shape[3] == 3
         val isNchw = shape.size == 4 && shape[1] == 3
+        val numBytes = inputTensor.numBytes()
+
         return when (inputTensor.dataType()) {
             DataType.FLOAT32 -> {
                 if (isNhwc) {
-                    val imageProcessor = ImageProcessor.Builder()
+                    val imageProcessor = imageProcessorFloat ?: ImageProcessor.Builder()
                         .add(NormalizeOp(0f, 255f))
-                        .build()
+                        .build().also { imageProcessorFloat = it }
                     val tensorImage = detectorTensorImage ?: TensorImage(DataType.FLOAT32).also { detectorTensorImage = it }
                     tensorImage.load(bitmap)
                     val processed = imageProcessor.process(tensorImage)
                     processed.buffer
                 } else {
-                    val buffer = ByteBuffer.allocateDirect(4 * inputTensor.numElements()).order(ByteOrder.nativeOrder())
-                    val pixels = IntArray(bitmap.width * bitmap.height)
+                    val buffer = nchwFloatBuffer?.takeIf { it.capacity() >= numBytes } ?: ByteBuffer
+                        .allocateDirect(numBytes)
+                        .order(ByteOrder.nativeOrder())
+                        .also { nchwFloatBuffer = it }
+                    buffer.clear()
+                    val pixels = pixelBuffer?.takeIf { it.size >= bitmap.width * bitmap.height }
+                        ?: IntArray(bitmap.width * bitmap.height).also { pixelBuffer = it }
                     bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
                     for (c in 0 until 3) {
-                        for (p in pixels) {
+                        var idx = 0
+                        while (idx < pixels.size) {
+                            val p = pixels[idx]
                             val v = when (c) {
                                 0 -> (p shr 16) and 0xFF
                                 1 -> (p shr 8) and 0xFF
                                 else -> p and 0xFF
                             }
                             buffer.putFloat(v / 255f)
+                            idx++
                         }
                     }
+                    buffer.rewind()
                     buffer
                 }
             }
             DataType.UINT8 -> {
                 if (isNhwc) {
-                    val tensorImage = TensorImage(DataType.UINT8)
+                    val tensorImage = tensorImageUint8 ?: TensorImage(DataType.UINT8).also { tensorImageUint8 = it }
                     tensorImage.load(bitmap)
                     tensorImage.buffer
                 } else {
-                    val buffer = ByteBuffer.allocateDirect(inputTensor.numElements()).order(ByteOrder.nativeOrder())
-                    val pixels = IntArray(bitmap.width * bitmap.height)
+                    val buffer = nchwUint8Buffer?.takeIf { it.capacity() >= numBytes } ?: ByteBuffer
+                        .allocateDirect(numBytes)
+                        .order(ByteOrder.nativeOrder())
+                        .also { nchwUint8Buffer = it }
+                    buffer.clear()
+                    val pixels = pixelBuffer?.takeIf { it.size >= bitmap.width * bitmap.height }
+                        ?: IntArray(bitmap.width * bitmap.height).also { pixelBuffer = it }
                     bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
                     for (c in 0 until 3) {
-                        for (p in pixels) {
+                        var idx = 0
+                        while (idx < pixels.size) {
+                            val p = pixels[idx]
                             val v = when (c) {
                                 0 -> (p shr 16) and 0xFF
                                 1 -> (p shr 8) and 0xFF
                                 else -> p and 0xFF
                             }
                             buffer.put(v.toByte())
+                            idx++
                         }
                     }
+                    buffer.rewind()
                     buffer
                 }
             }
@@ -528,8 +558,13 @@ class Hands(private val context: Context) {
                 val quant = inputTensor.quantizationParams()
                 val scale = quant.scale
                 val zeroPoint = quant.zeroPoint
-                val buffer = ByteBuffer.allocateDirect(inputTensor.numElements()).order(ByteOrder.nativeOrder())
-                val pixels = IntArray(bitmap.width * bitmap.height)
+                val buffer = nchwInt8Buffer?.takeIf { it.capacity() >= numBytes } ?: ByteBuffer
+                    .allocateDirect(numBytes)
+                    .order(ByteOrder.nativeOrder())
+                    .also { nchwInt8Buffer = it }
+                buffer.clear()
+                val pixels = pixelBuffer?.takeIf { it.size >= bitmap.width * bitmap.height }
+                    ?: IntArray(bitmap.width * bitmap.height).also { pixelBuffer = it }
                 bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
                 val pushQuant: (Int) -> Unit = { p ->
                     val real = p / 255f
@@ -537,23 +572,30 @@ class Hands(private val context: Context) {
                     buffer.put(q.toByte())
                 }
                 if (isNhwc) {
-                    for (p in pixels) {
+                    var idx = 0
+                    while (idx < pixels.size) {
+                        val p = pixels[idx]
                         pushQuant((p shr 16) and 0xFF)
                         pushQuant((p shr 8) and 0xFF)
                         pushQuant(p and 0xFF)
+                        idx++
                     }
                 } else {
                     for (c in 0 until 3) {
-                        for (p in pixels) {
+                        var idx = 0
+                        while (idx < pixels.size) {
+                            val p = pixels[idx]
                             val v = when (c) {
                                 0 -> (p shr 16) and 0xFF
                                 1 -> (p shr 8) and 0xFF
                                 else -> p and 0xFF
                             }
                             pushQuant(v)
+                            idx++
                         }
                     }
                 }
+                buffer.rewind()
                 buffer
             }
             else -> throw IllegalStateException("Unsupported input type ${inputTensor.dataType()}")
@@ -568,6 +610,45 @@ class Hands(private val context: Context) {
             DataType.UINT8, DataType.INT8 -> Pair(dt, ByteArray(numBytes))
             else -> throw IllegalStateException("Unsupported output type $dt")
         }
+    }
+
+    // Letterbox resize using a reusable padded bitmap/canvas to avoid per-frame allocations.
+    private fun resizePadReuse(
+        src: Bitmap,
+        dstWidth: Int,
+        dstHeight: Int
+    ): MediapipeLiteRtUtil.ResizeResult {
+        val srcW = src.width
+        val srcH = src.height
+        val scale = min(dstWidth.toFloat() / srcW, dstHeight.toFloat() / srcH)
+        val scaledW = (srcW * scale).toInt()
+        val scaledH = (srcH * scale).toInt()
+        val padX = (dstWidth - scaledW) / 2
+        val padY = (dstHeight - scaledH) / 2
+
+        val padded = detectorPadBitmap
+            ?.takeIf { it.width == dstWidth && it.height == dstHeight }
+            ?: Bitmap.createBitmap(dstWidth, dstHeight, Bitmap.Config.ARGB_8888).also {
+                detectorPadBitmap = it
+                detectorPadCanvas = Canvas(it)
+            }
+        val canvas = detectorPadCanvas ?: Canvas(padded).also { detectorPadCanvas = it }
+        detectorPadMatrix.reset()
+        detectorPadMatrix.setScale(scale, scale)
+        detectorPadMatrix.postTranslate(padX.toFloat(), padY.toFloat())
+        canvas.drawColor(0x00000000)
+        canvas.drawBitmap(src, detectorPadMatrix, null)
+
+        return MediapipeLiteRtUtil.ResizeResult(
+            bitmap = padded,
+            scale = scale,
+            padX = padX,
+            padY = padY,
+            targetWidth = dstWidth,
+            targetHeight = dstHeight,
+            originalWidth = srcW,
+            originalHeight = srcH
+        )
     }
 
     private fun dequantizeOutput(

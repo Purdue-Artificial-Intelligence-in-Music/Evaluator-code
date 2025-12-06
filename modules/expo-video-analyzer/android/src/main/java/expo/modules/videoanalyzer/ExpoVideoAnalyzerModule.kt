@@ -22,6 +22,14 @@ import android.graphics.Bitmap.CompressFormat
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import android.os.Environment
+import android.media.MediaExtractor
+import android.media.MediaCodec
+import android.media.Image
+import android.media.MediaFormat
+import android.graphics.ImageFormat
+import android.graphics.YuvImage
+import android.graphics.Rect
+import java.io.ByteArrayOutputStream
 
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import expo.modules.camerax.HandLandmarkerHelper
@@ -46,7 +54,9 @@ class ExpoVideoAnalyzerModule : Module() {
 
     override fun definition() = ModuleDefinition {
         Name("ExpoVideoAnalyzer")
-        
+
+        Events("onVideoProgress")
+
         AsyncFunction("initialize") { promise: Promise ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -181,7 +191,7 @@ class ExpoVideoAnalyzerModule : Module() {
                     var processedFrameCount = 0
                     isCancelled = false // reset cancel flag at start
 
-                    outputpath = processVideoStream(videoUri, 15) { annotatedFrame, timeUs ->
+                    outputpath = processVideoStreamWithExtractor(videoUri) { annotatedFrame, timeUs ->
                         if (isCancelled) {
                             Log.d("ProcessVideo", "Processing cancelled at frame $processedFrameCount")
                             annotatedFrame.recycle()
@@ -622,46 +632,43 @@ class ExpoVideoAnalyzerModule : Module() {
 
     // Helper function. It loops through the video, extracts frames into bitmap format, calls
     // detect() and drawPointsOnBitmap() from detector to get annotated frames.
-    private fun processVideoStream(
+    private fun processVideoStreamWithExtractor(
         videoURI: String,
-        targetFPS: Int = 15,
         onFrameProcessed: (Bitmap, Long) -> Unit
     ): String? {
-        val retriever = MediaMetadataRetriever()
+        val extractor = MediaExtractor()
         var landmarkerHelper: HandLandmarkerHelper? = null
+        var codec: MediaCodec? = null
+        var outputPath: String? = null
 
         try {
-            retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
-            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-
-            val videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() ?: 1920
-            val videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 1080
-
-            val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toInt() ?: 0
-
-            // Adjust width and height by rotating
-            val (outputWidth, outputHeight) = if (rotation == 90 || rotation == 270) {
-                Pair(videoHeight, videoWidth)
-            } else {
-                Pair(videoWidth, videoHeight)
+            extractor.setDataSource(appContext.reactContext!!, Uri.parse(videoURI), null)
+            val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
+                extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true
+            } ?: run {
+                Log.e("VideoProcess", "No video track found")
+                return null
             }
 
-            Log.d("Encode", "Original video: ${videoWidth}x${videoHeight}, rotation: $rotation")
-            Log.d("Encode", "Output video: ${outputWidth}x${outputHeight}")
+            extractor.selectTrack(trackIndex)
+            val format = extractor.getTrackFormat(trackIndex)
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
+            val videoWidth = format.getInteger(MediaFormat.KEY_WIDTH)
+            val videoHeight = format.getInteger(MediaFormat.KEY_HEIGHT)
+            val frameRate = if (format.containsKey(MediaFormat.KEY_FRAME_RATE)) {
+                format.getInteger(MediaFormat.KEY_FRAME_RATE)
+            } else 30
+            val safeFps = frameRate.coerceIn(1, 60)
+            val durationUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
+            val estimatedFrames = if (durationUs > 0) {
+                (durationUs / (1_000_000L / safeFps)).coerceAtLeast(1)
+            } else 0L
 
-            val timeDelta = 1_000_000L / targetFPS // microsecond，30fps = 33,333 microseconds
-
-            //val publicMoviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            //val outputPath = File(publicMoviesDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
             val cacheDir = appContext.reactContext!!.cacheDir
-            val outputPath = File(cacheDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+            outputPath = File(cacheDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
 
-            Log.d("Encode", "Encoded video path: $outputPath")
+            Log.d("Encode", "Output video: ${videoWidth}x${videoHeight} @ $safeFps fps")
 
-            val totalFrames = (duration * 1000L / timeDelta).toInt()
-            Log.d("Encode", "Target frame interval: ${timeDelta}μs, Total frames: $totalFrames")
-
-            // Initialize HandLandmarkerHelper
             landmarkerHelper = HandLandmarkerHelper(
                 context = appContext.reactContext!!,
                 runningMode = RunningMode.VIDEO,
@@ -669,90 +676,107 @@ class ExpoVideoAnalyzerModule : Module() {
                 maxNumHands = 2
             )
 
-            // Use the original video's resolution and the same FPS
-            val encoder = VideoEncoder(File(outputPath), outputWidth, outputHeight, fps = targetFPS)
+            codec = MediaCodec.createDecoderByType(mime)
+            codec.configure(format, null, null, 0)
+            codec.start()
 
-            var timeUs = 0L
+            val encoder = VideoEncoder(File(outputPath), videoWidth, videoHeight, fps = safeFps)
+
+            val bufferInfo = MediaCodec.BufferInfo()
+            var sawInputEOS = false
+            var sawOutputEOS = false
             var frameIndex = 0
+            var lastProgressSent = -1
 
-            while (timeUs < duration * 1000) {
-                if (isCancelled) {
-                    Log.d("ProcessVideo", "User cancelled video processing during frame loop.")
-                    break
+            while (!sawOutputEOS && !isCancelled) {
+                if (!sawInputEOS) {
+                    val inputIndex = codec.dequeueInputBuffer(10_000)
+                    if (inputIndex >= 0) {
+                        val inputBuffer = codec.getInputBuffer(inputIndex)
+                        val sampleSize = extractor.readSampleData(inputBuffer!!, 0)
+                        if (sampleSize < 0) {
+                            codec.queueInputBuffer(
+                                inputIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                            )
+                            sawInputEOS = true
+                        } else {
+                            val presentationTimeUs = extractor.sampleTime
+                            codec.queueInputBuffer(inputIndex, 0, sampleSize, presentationTimeUs, 0)
+                            extractor.advance()
+                        }
+                    }
                 }
 
-                var frame: Bitmap? = null
-                var processedFrame: Bitmap? = null
-                var annotatedFrame: Bitmap? = null
-
-                try {
-                    // Extract specific frame
-                    frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
-
-                    frame?.let { originalFrame ->
-                        processedFrame = originalFrame.copy(Bitmap.Config.ARGB_8888, true)
-                        originalFrame.recycle()
-                        frame = null // Avoid repeated recycling
+                val outputIndex = codec.dequeueOutputBuffer(bufferInfo, 10_000)
+                when {
+                    outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        // ignore
                     }
+                    outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                        // no-op
+                    }
+                    outputIndex >= 0 -> {
+                        val outputImage: Image? = codec.getOutputImage(outputIndex)
+                        if (outputImage != null && bufferInfo.size > 0) {
+                            val bitmap = yuv420ToBitmap(outputImage)
+                            outputImage.close()
 
-                        processedFrame?.let { pFrame ->
-                            // Annotate frame using Detector
-                            annotatedFrame = detector!!.process_frame(pFrame)
+                            bitmap?.let { pFrame ->
+                                var annotatedFrame: Bitmap? = null
+                                try {
+                                    annotatedFrame = detector!!.process_frame(pFrame)
+                                    val (landmarkerResult, mpAnnotatedFrame) = landmarkerHelper?.detectAndDrawVideoFrame(
+                                        annotatedFrame,
+                                        bufferInfo.presentationTimeUs / 1000
+                                    ) ?: Pair(null, null)
+                                    if (mpAnnotatedFrame != null) {
+                                        annotatedFrame = mpAnnotatedFrame
+                                        if (landmarkerResult != null) {
+                                            Log.d("Encode", "Frame $frameIndex - Hand: ${landmarkerResult.handDetection}, Pose: ${landmarkerResult.poseDetection}")
+                                        }
+                                    }
 
-                            val (landmarkerResult, mpAnnotatedFrame) = landmarkerHelper?.detectAndDrawVideoFrame(
-                                annotatedFrame,  // pass bitmap that has bow drawings
-                                timeUs / 1000
-                            ) ?: Pair(null, null)
-
-                            if (mpAnnotatedFrame != null) {
-                                annotatedFrame = mpAnnotatedFrame
-                                if (landmarkerResult != null) {
-                                    Log.d("Encode", "Frame $frameIndex - Hand: ${landmarkerResult.handDetection}, Pose: ${landmarkerResult.poseDetection}")
-                                } else {
-                                    Log.d("Encode", "landmarkerResult is null")
-                                }
-                            } else {
-                                Log.d("Encode", "Frame $frameIndex mpAnnotatedFrame is null")
-                            }
-
-                            annotatedFrame?.let { aFrame ->
-                                if (frameIndex == 0) {
-                                    Log.d("Encode", "bitmap size = ${aFrame.height}x${aFrame.width}")
-                                }
-
-                                // TODO: Logs. Remove later
-                                val currentSeconds = timeUs / 1_000_000.0
-                                Log.d("Encode", "Encode frame $frameIndex at ${String.format("%.3f", currentSeconds)}s (${timeUs}μs)")
-
-                                encoder.encodeFrame(aFrame)
-                                Log.d("Encode", "Frame $frameIndex encoded")
-
-                                onFrameProcessed(aFrame, timeUs)
-                                frameIndex++
-
-                                // Ensure timely memory cleanup
-                                if (pFrame != aFrame) {
+                                    annotatedFrame?.let { aFrame ->
+                                        encoder.encodeFrame(aFrame)
+                                        onFrameProcessed(aFrame, bufferInfo.presentationTimeUs)
+                                        frameIndex++
+                                        if (estimatedFrames > 0) {
+                                            val progressPercent = ((frameIndex.toLong() * 100L) / estimatedFrames).toInt().coerceIn(0, 100)
+                                            if (progressPercent != lastProgressSent) {
+                                                lastProgressSent = progressPercent
+                                                CoroutineScope(Dispatchers.Main).launch {
+                                                    sendEvent(
+                                                        "onVideoProgress",
+                                                        mapOf(
+                                                            "progress" to progressPercent / 100f,
+                                                            "frame" to frameIndex,
+                                                            "estimatedFrames" to estimatedFrames
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        if (aFrame != annotatedFrame) {
+                                            aFrame.recycle()
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("FrameProcess", "Error at frame $frameIndex: ${e.message}")
+                                } finally {
+                                    if (annotatedFrame != null && annotatedFrame != pFrame) {
+                                        annotatedFrame.recycle()
+                                    }
                                     pFrame.recycle()
                                 }
                             }
-                    }
-                } catch (e: Exception) {
-                    Log.e("FrameProcess", "Error at frame $frameIndex, time $timeUs: ${e.message}")
-                    // Ensure memory is reclaimed even if error occurs
-                    frame?.recycle()
-                    processedFrame?.let { pf ->
-                        if (pf != frame) {
-                            pf.recycle()
                         }
-                    }
-                    annotatedFrame?.let { af ->
-                        if (af != processedFrame) {
-                            af.recycle()
+
+                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                            sawOutputEOS = true
                         }
+                        codec.releaseOutputBuffer(outputIndex, false)
                     }
                 }
-
-                timeUs += timeDelta
             }
 
             if (isCancelled) {
@@ -763,23 +787,70 @@ class ExpoVideoAnalyzerModule : Module() {
             }
 
             encoder.finish()
-            Log.d("Encode", "Video encoding completed. Total frames processed: $frameIndex")
-
-            // Check output file was generated
-            val fileExists = File(outputPath).exists() && File(outputPath).length() > 0
-            if (fileExists) {
-                return outputPath
-            } else {
-                return null
+            if (estimatedFrames > 0) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    sendEvent(
+                        "onVideoProgress",
+                        mapOf(
+                            "progress" to 1.0f,
+                            "frame" to frameIndex,
+                            "estimatedFrames" to estimatedFrames
+                        )
+                    )
+                }
             }
-
+            Log.d("Encode", "Video encoding completed. Total frames processed: $frameIndex")
+            val fileExists = File(outputPath).exists() && File(outputPath).length() > 0
+            return if (fileExists) outputPath else null
         } catch (e: Exception) {
             Log.e("VideoProcess", "Failed to process video: ${e.message}")
             return null
         } finally {
-            retriever.release()
+            try { extractor.release() } catch (_: Throwable) {}
+            try { codec?.stop(); codec?.release() } catch (_: Throwable) {}
             landmarkerHelper?.clearLandmarkers()
         }
+    }
+
+    private fun yuv420ToBitmap(image: Image): Bitmap? {
+        if (image.format != ImageFormat.YUV_420_888) return null
+        val width = image.width
+        val height = image.height
+        val yBuffer = image.planes[0].buffer
+        val uBuffer = image.planes[1].buffer
+        val vBuffer = image.planes[2].buffer
+
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + uSize + vSize)
+        yBuffer.get(nv21, 0, ySize)
+
+        // VU ordering
+        val chromaStart = ySize
+        val vRowStride = image.planes[2].rowStride
+        val uRowStride = image.planes[1].rowStride
+        val vPixelStride = image.planes[2].pixelStride
+        val uPixelStride = image.planes[1].pixelStride
+
+        var offset = chromaStart
+        for (row in 0 until height / 2) {
+            var vIdx = row * vRowStride
+            var uIdx = row * uRowStride
+            for (col in 0 until width / 2) {
+                nv21[offset++] = vBuffer.get(vIdx)
+                nv21[offset++] = uBuffer.get(uIdx)
+                vIdx += vPixelStride
+                uIdx += uPixelStride
+            }
+        }
+
+        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(android.graphics.Rect(0, 0, width, height), 100, out)
+        val jpegBytes = out.toByteArray()
+        return BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)?.copy(Bitmap.Config.ARGB_8888, true)
     }
 
     // Helper function. Compines frames into video using FFmpeg
