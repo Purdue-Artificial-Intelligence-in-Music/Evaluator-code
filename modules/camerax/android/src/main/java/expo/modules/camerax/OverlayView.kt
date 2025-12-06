@@ -575,7 +575,7 @@ class OverlayView @JvmOverloads constructor(
 
         var selectedIndex = -1
         var bestDist = Float.MAX_VALUE
-        val threshold = 0.2f
+        val threshold = 0.1f
 
         hands.forEachIndexed { idx, lmList ->
             if (lmList.isNotEmpty()) {
