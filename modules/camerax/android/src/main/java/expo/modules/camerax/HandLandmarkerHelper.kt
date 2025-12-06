@@ -407,7 +407,7 @@ class HandLandmarkerHelper(
                     val poseY = pose16.y()
 
                     var bestDist = Float.MAX_VALUE
-                    val threshold = 0.2f
+                    val threshold = 0.1f
 
                     latestHandResult!!.landmarks().forEachIndexed { index, handLandmarks ->
                         if (handLandmarks.isNotEmpty()) {
