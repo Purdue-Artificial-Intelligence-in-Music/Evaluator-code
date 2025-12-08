@@ -10,6 +10,25 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class Profile {
+
+        companion object {
+            private var ts: String = ""
+            private var id: String = ""
+
+            fun setSession(userId: String, timestamp: String) {
+                id = userId
+                ts = timestamp
+            }
+
+            fun getTimeStamp(): String {
+                return ts
+            }
+
+            fun getUserId(): String {
+                return id
+            }
+        }
+
     data class SessionSummary(
         val heightBreakdown: Map<String, Double>,
         val angleBreakdown: Map<String, Double>,
@@ -24,6 +43,9 @@ class Profile {
     private val outputFiles: MutableMap<String, File> = mutableMapOf()
     private val sessionTimestamps: MutableMap<String, String> = mutableMapOf() // store timestamp when session began
 
+    private var ts: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+    private var id: String = ""
+
     fun createNewID(userId: String) {
         if (userId !in sessionDict) {
             sessionDict[userId] = mutableListOf()
@@ -34,6 +56,10 @@ class Profile {
             )
             if (!baseDir.exists()) baseDir.mkdirs()
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+
+            //populate globals to grab in other classes
+            setSession(userId, timestamp)
+
             sessionTimestamps[userId] = timestamp // 保存timestamp
 
             // 创建详细数据文件（不包含最终summary）
@@ -153,6 +179,14 @@ class Profile {
         return map.entries.joinToString(prefix = "{", postfix = "}", separator = ",") { (key, value) ->
             "\"$key\":$value"
         }
+    }
+
+    fun getTimeStamp(): String {
+        return ts
+    }
+
+    fun getUserId(): String {
+        return id
     }
 
     fun analyzeSession(session: List<Any>): SessionSummary {

@@ -38,6 +38,11 @@ class CameraxModule : Module() {
         AsyncFunction("getRecentSessions") { userId: String, count: Int ->
             getRecentSessionsImpl(userId, count)
         }
+
+        AsyncFunction("getSessionImages") { userId: String, timestamp: String ->
+            getSessionImagesImpl(userId, timestamp)
+        }
+
     }
 
     private fun getRecentSessionsImpl(userId: String, count: Int): List<Map<String, Any>> {
@@ -94,6 +99,39 @@ class CameraxModule : Module() {
             return emptyList()
         }
     }
+
+    private fun getSessionImagesImpl(userId: String, timestamp: String): List<String> {
+        val images = mutableListOf<String>()
+        try {
+            // Build the session directory path
+            val sessionDir = File(
+                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS),
+                "sessions/$userId/$timestamp"
+            )
+
+            if (!sessionDir.exists() || !sessionDir.isDirectory) {
+                Log.w("SessionImages", "Session directory does not exist: ${sessionDir.absolutePath}")
+                return images
+            }
+
+            // List all image files (assuming PNG or JPG)
+            val imageFiles = sessionDir.listFiles { file ->
+                val name = file.name.lowercase()
+                name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg")
+            } ?: emptyArray()
+
+            imageFiles.sortedBy { it.name }.forEach { file ->
+                images.add(file.absolutePath) // or file.toURI().toString() for a URI
+                Log.d("SessionImages", "Found image: ${file.absolutePath}")
+            }
+
+        } catch (e: Exception) {
+            Log.e("SessionImages", "Error fetching images for $userId/$timestamp: ${e.message}", e)
+        }
+
+        return images
+    }
+
 
     private fun parseSummaryFile(jsonContent: String, fileName: String): Map<String, Any>? {
         try {

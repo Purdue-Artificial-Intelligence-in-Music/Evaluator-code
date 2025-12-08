@@ -13,6 +13,8 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import kotlin.math.min
 import kotlin.math.max
 import android.util.Log
+import java.io.File
+import java.io.FileOutputStream
 
 
 import kotlin.text.toFloat
@@ -54,7 +56,12 @@ class OverlayView @JvmOverloads constructor(
     private var bowMessage = ""
     private var angleMessage = ""
 
-    // Timers for each issue type (3-second persistence requirement)
+    // to save frames, start by saving to bitmap
+    private var overlayBitmap: Bitmap? = null
+    private var tempCanvas: Canvas? = null
+
+    private var file_list: MutableList<String> = mutableListOf()
+
     private var lastBowIssue: String? = null
     private var bowIssueStartTime: Long = 0L
     private var bowIssueLastShownTime: Long = 0L
@@ -177,6 +184,11 @@ class OverlayView @JvmOverloads constructor(
             // detection stopped, do not draw anything
             return
         }
+
+        //overlayBitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
+        tempCanvas = Canvas(overlayBitmap!!)
+        file_list.clear()
+
         var currentY = 120f
         val lineSpacing = 60f
         val padding = 16f
@@ -329,9 +341,21 @@ class OverlayView @JvmOverloads constructor(
                 3 to "Lift the bow"    // Bow too low
             )
 
+            val fileLabelsBow = mapOf(
+                0 to "correct_bow",  // Correct
+                1 to "bow_outside_zone",    // Bow outside zone
+                2 to "bow_too_high",    // Bow too high
+                3 to "bow_too_low"    // Bow too low
+            )
+
             val angleLabels = mapOf(
                 0 to "",  // Correct - don't display
                 1 to "Adjust your bow angle"    // Incorrect bow angle
+            )
+
+            val fileLabelsAngle = mapOf(
+                0 to "correct_angle",  // Correct
+                1 to "incorrect_angle"    // Incorrect bow angle
             )
 
             // Fixed positions from top - below hand/pose classifications
@@ -342,6 +366,9 @@ class OverlayView @JvmOverloads constructor(
             now = System.currentTimeMillis()
             if (results?.classification != null/* && results?.classification != 0*/) {
                 bowMessage = classificationLabels[results?.classification] ?: ""
+                file_list.add(fileLabelsBow[results?.classification] ?: "")
+            } else if (results?.classification == 0) {
+                file_list.add(fileLabelsBow[results?.classification] ?: "")
             }
 
             if (bowMessage.isNotEmpty()) {
@@ -367,6 +394,9 @@ class OverlayView @JvmOverloads constructor(
             // Draw angle message if there's an issue
             if (results?.angle != null/* && results?.angle == 1*/) {
                 angleMessage = angleLabels[results?.angle] ?: ""
+                file_list.add(fileLabelsAngle[results?.angle] ?: "")
+            } else if (results?.angle == 0) {
+                file_list.add(fileLabelsAngle[results?.angle] ?: "")
             }
 
             if (angleMessage.isNotEmpty()) {
@@ -475,7 +505,13 @@ class OverlayView @JvmOverloads constructor(
                 2 -> "Supinate your wrist more"    // Too much pronation
                 else -> ""
             }
+            val wristFileLabel = when (handClass) {
+                1 -> "supination"    // Supination
+                2 -> "too_much_pronation"    // Too much pronation
+                else -> "good_pronation"
+            }
             if (currentHandIssue.isNotEmpty()) {
+                file_list.add(wristFileLabel)
                 if (currentHandIssue == lastHandIssue) {
                     if (now - handIssueStartTime >= issueHoldDuration) {
                         displayHandIssue = currentHandIssue
@@ -514,6 +550,8 @@ class OverlayView @JvmOverloads constructor(
 
                 currentY += (fm.bottom - fm.top) + lineSpacing
             }
+        } else {
+            file_list.add("good_pronation")
         }
 
         // Draw pose message if there's an issue
@@ -523,7 +561,13 @@ class OverlayView @JvmOverloads constructor(
                 2 -> "Lower your elbow a bit"    // Elbow too high
                 else -> ""
             }
+            val pose_file_name = when (poseClass) {
+                1 -> "low_elbow"    // Low elbow
+                2 -> "high_elbow"    // Elbow too high
+                else -> "good_elbow"
+            }
             if (currentPoseIssue.isNotEmpty()) {
+                file_list.add(pose_file_name)
                 if (currentPoseIssue == lastPoseIssue) {
                     if (now - poseIssueStartTime >= issueHoldDuration) {
                         displayPoseIssue = currentPoseIssue
@@ -559,8 +603,13 @@ class OverlayView @JvmOverloads constructor(
                 canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
 
                 canvas.drawText(displayPoseIssue!!, centerX, currentY, textPaint)
-
             }
+        } else {
+            file_list.add("good_elbow")
+        }
+
+        file_list.forEach { fName ->
+            saveImageForSession(fName)
         }
     }
 
@@ -632,5 +681,50 @@ class OverlayView @JvmOverloads constructor(
         poseDetect = ""
         postInvalidate() // remove drawings
     }
+
+
+    fun saveImageForSession(filename: String) {
+        val userId = Profile.getUserId()
+        val timestamp = Profile.getTimeStamp()
+
+        val baseDir = File(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS),
+            "sessions/$userId/$timestamp"
+        )
+
+        // Create the directory if it doesn't exist
+        if (!baseDir.exists()) {
+            val created = baseDir.mkdirs()
+            if (!created) {
+                Log.e("FileSave", "Failed to create directory: ${baseDir.absolutePath}")
+            }
+        }
+
+        // Now create a file inside that directory
+        val outFile = File(baseDir, filename)
+
+        if (outFile.exists()) {
+            Log.d("SaveOverlay", "File already exists, skipping save: ${outFile.absolutePath}")
+            return
+        }
+
+        // Write to the file
+        try {
+            FileOutputStream(outFile).use { fos ->
+                overlayBitmap?.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            }
+            Log.d("SaveOverlay", "Saved overlay to: ${outFile.absolutePath}")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+
+
+    fun setBitmapFrame(frame: Bitmap) {
+        overlayBitmap = frame.copy(Bitmap.Config.ARGB_8888, true)
+    }
+
+
 
 }
