@@ -260,42 +260,6 @@ class OverlayView @JvmOverloads constructor(
                     (stringBox[0].x.toFloat() / 640f) * scaleX,
                     (stringBox[0].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                /*tempCanvas?.let { c ->
-                    c.drawLine(
-                        (stringBox[0].x.toFloat() / 640f) * scaleX,
-                        (stringBox[0].y.toFloat() / 640f) * scaleY,
-                        (stringBox[1].x.toFloat() / 640f) * scaleX,
-                        (stringBox[1].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }
-                tempCanvas?.let { c ->
-                    c.drawLine(
-                        (stringBox[1].x.toFloat() / 640f) * scaleX,
-                        (stringBox[1].y.toFloat() / 640f) * scaleY,
-                        (stringBox[2].x.toFloat() / 640f) * scaleX,
-                        (stringBox[2].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }
-                tempCanvas?.let { c ->
-                    c.drawLine(
-                        (stringBox[2].x.toFloat() / 640f) * scaleX,
-                        (stringBox[2].y.toFloat() / 640f) * scaleY,
-                        (stringBox[3].x.toFloat() / 640f) * scaleX,
-                        (stringBox[3].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }
-                tempCanvas?.let { c ->
-                    c.drawLine(
-                        (stringBox[3].x.toFloat() / 640f) * scaleX,
-                        (stringBox[3].y.toFloat() / 640f) * scaleY,
-                        (stringBox[0].x.toFloat() / 640f) * scaleX,
-                        (stringBox[0].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }*/
             }
 
             if (bowBox != null) {
@@ -323,42 +287,6 @@ class OverlayView @JvmOverloads constructor(
                     (bowBox[0].x.toFloat() / 640f) * scaleX,
                     (bowBox[0].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                /*tempCanvas?.let { c ->
-                    c.drawLine(
-                        (bowBox[0].x.toFloat() / 640f) * scaleX,
-                        (bowBox[0].y.toFloat() / 640f) * scaleY,
-                        (bowBox[1].x.toFloat() / 640f) * scaleX,
-                        (bowBox[1].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }*/
-                /*tempCanvas?.let { c ->
-                    c.drawLine(
-                        (bowBox[1].x.toFloat() / 640f) * scaleX,
-                        (bowBox[1].y.toFloat() / 640f) * scaleY,
-                        (bowBox[2].x.toFloat() / 640f) * scaleX,
-                        (bowBox[2].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }*/
-                /*tempCanvas?.let { c ->
-                    c.drawLine(
-                        (bowBox[2].x.toFloat() / 640f) * scaleX,
-                        (bowBox[2].y.toFloat() / 640f) * scaleY,
-                        (bowBox[3].x.toFloat() / 640f) * scaleX,
-                        (bowBox[3].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }*/
-                /*tempCanvas?.let { c ->
-                    c.drawLine(
-                        (bowBox[3].x.toFloat() / 640f) * scaleX,
-                        (bowBox[3].y.toFloat() / 640f) * scaleY,
-                        (bowBox[0].x.toFloat() / 640f) * scaleX,
-                        (bowBox[0].y.toFloat() / 640f) * scaleY,
-                        boxPaint
-                    )
-                }*/
             }
 //            if (stringBox != null) {
 //                canvas.drawLine(stringBox[0].x.toFloat() * scaleX,
@@ -436,7 +364,7 @@ class OverlayView @JvmOverloads constructor(
 
             // Draw classification message if there's an issue
             now = System.currentTimeMillis()
-            if (results?.classification != null && results?.classification != 0) {
+            if (results?.classification != null/* && results?.classification != 0*/) {
                 bowMessage = classificationLabels[results?.classification] ?: ""
                 file_list.add(fileLabelsBow[results?.classification] ?: "")
             } else if (results?.classification == 0) {
@@ -464,7 +392,7 @@ class OverlayView @JvmOverloads constructor(
             }
 
             // Draw angle message if there's an issue
-            if (results?.angle != null && results?.angle == 1) {
+            if (results?.angle != null/* && results?.angle == 1*/) {
                 angleMessage = angleLabels[results?.angle] ?: ""
                 file_list.add(fileLabelsAngle[results?.angle] ?: "")
             } else if (results?.angle == 0) {
@@ -495,47 +423,34 @@ class OverlayView @JvmOverloads constructor(
 
         // Draw Hand Landmarks
         handLandmarkerResult?.let { handResult ->
-            for (landmarks in handResult.landmarks()) {
+            val filteredHands = selectClosestHand()
+
+            filteredHands?.let { list ->
+                val landmarks = list[0]
+
                 // Draw hand connections
-                HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
+                HandLandmarker.HAND_CONNECTIONS.forEach { c ->
+                    val s = landmarks[c!!.start()]
+                    val e = landmarks[c.end()]
                     canvas.drawLine(
-                        landmarks.get(connection!!.start()).x() * imageWidth * handsScaleFactor + xOffset,
-                        landmarks.get(connection.start()).y() * imageHeight * handsScaleFactor + yOffset,
-                        landmarks.get(connection.end()).x() * imageWidth * handsScaleFactor + xOffset,
-                        landmarks.get(connection.end()).y() * imageHeight * handsScaleFactor + yOffset,
+                        s.x() * imageWidth * handsScaleFactor + xOffset,
+                        s.y() * imageHeight * handsScaleFactor + yOffset,
+                        e.x() * imageWidth * handsScaleFactor + xOffset,
+                        e.y() * imageHeight * handsScaleFactor + yOffset,
                         linePaint
                     )
-                    /*tempCanvas?.let { c ->
-                        c.drawLine(
-                            landmarks.get(connection!!.start())
-                                .x() * imageWidth * handsScaleFactor + xOffset,
-                            landmarks.get(connection.start())
-                                .y() * imageHeight * handsScaleFactor + yOffset,
-                            landmarks.get(connection.end())
-                                .x() * imageWidth * handsScaleFactor + xOffset,
-                            landmarks.get(connection.end())
-                                .y() * imageHeight * handsScaleFactor + yOffset,
-                            linePaint
-                        )
-                    }*/
                 }
 
-                // Draw hand points
-                for (normalizedLandmark in landmarks) {
+                // Draw keypoints
+                for (lm in landmarks) {
                     canvas.drawPoint(
-                        normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
-                        normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
+                        lm.x() * imageWidth * handsScaleFactor + xOffset,
+                        lm.y() * imageHeight * handsScaleFactor + yOffset,
                         pointPaint
                     )
-                    /*tempCanvas?.let { c ->
-                        c.drawPoint(
-                            normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
-                            normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
-                            pointPaint
-                        )
-                    }*/
                 }
             }
+
         }
 
         if (displayBowIssue != null) {
@@ -618,6 +533,7 @@ class OverlayView @JvmOverloads constructor(
             }
 
             if (displayHandIssue != null) {
+
                 val textWidth = textPaint.measureText(displayHandIssue)
                 val fm = textPaint.fontMetrics
                 val textHeight = fm.bottom - fm.top
@@ -697,6 +613,37 @@ class OverlayView @JvmOverloads constructor(
         }
     }
 
+    private fun selectClosestHand(): List<List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>>? {
+        val hands = handLandmarkerResult?.landmarks() ?: return null
+        val pose = poseLandmarkerResult?.landmarks() ?: return null
+        if (hands.isEmpty() || pose.isEmpty() || pose[0].size <= 16) return null
+
+        val poseHand = pose[0][16]
+        val px = poseHand.x()
+        val py = poseHand.y()
+
+        var selectedIndex = -1
+        var bestDist = Float.MAX_VALUE
+        val threshold = 0.1f
+
+        hands.forEachIndexed { idx, lmList ->
+            if (lmList.isNotEmpty()) {
+                val wrist = lmList[0]
+                val dx = wrist.x() - px
+                val dy = wrist.y() - py
+                val dist = kotlin.math.sqrt(dx*dx + dy*dy)
+
+                if (dist < threshold && dist < bestDist) {
+                    bestDist = dist
+                    selectedIndex = idx
+                }
+            }
+        }
+
+        if (selectedIndex == -1) return null
+        return listOf(hands[selectedIndex])
+    }
+
     fun updateResults(
         results: Detector.returnBow?,
         hands: HandLandmarkerResult?,
@@ -713,6 +660,8 @@ class OverlayView @JvmOverloads constructor(
     }
 
     fun setImageDimensions(imgWidth: Int, imgHeight: Int) {
+
+
         imageWidth = imgWidth
         imageHeight = imgHeight
 

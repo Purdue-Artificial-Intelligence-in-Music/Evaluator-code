@@ -41,6 +41,7 @@ class Profile {
     private val sessionDict: MutableMap<String, MutableList<Any>> = mutableMapOf()
     private val scheduler = Executors.newScheduledThreadPool(1)
     private val outputFiles: MutableMap<String, File> = mutableMapOf()
+    private val sessionTimestamps: MutableMap<String, String> = mutableMapOf() // store timestamp when session began
 
     private var ts: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
     private var id: String = ""
@@ -59,6 +60,9 @@ class Profile {
             //populate globals to grab in other classes
             setSession(userId, timestamp)
 
+            sessionTimestamps[userId] = timestamp // 保存timestamp
+
+            // 创建详细数据文件（不包含最终summary）
             val file = File(baseDir, "session_${userId}_$timestamp.json")
 
             // Write initial user ID at top of JSON
@@ -85,23 +89,60 @@ class Profile {
         sessionDict[userId]?.add(data)
     }
 
-    fun endSessionAndGetSummary(userId: String): String {
+    fun endSessionAndGetSummary(userId: String): SessionSummary? {
         val file = outputFiles[userId]
-        val session = sessionDict[userId] ?: return "{}"
-        val summary = analyzeSession(session)
-        val jsonSummary = formatSummaryAsJson(summary, userId)
+        val session = sessionDict[userId] ?: return null
 
-        // Append final breakdown and close JSON
+        if (session.isEmpty()) {
+            sessionDict.remove(userId)
+            outputFiles.remove(userId)
+            sessionTimestamps.remove(userId)
+            return null
+        }
+
+        // finalize JSON file with details
         if (file != null) {
             FileWriter(file, true).use { writer ->
-                writer.write(jsonSummary)
+                val fileContent = file.readText()
+                if (fileContent.endsWith(",")) {
+                    file.writeText(fileContent.dropLast(1))
+                }
                 writer.write("]}")
             }
         }
 
+        // create JSON file with summary
+        val summary = analyzeSession(session)
+        saveSummaryFile(userId, summary)
+
         sessionDict.remove(userId)
         outputFiles.remove(userId)
-        return jsonSummary
+        sessionTimestamps.remove(userId)
+
+        return summary
+    }
+
+    private fun saveSummaryFile(userId: String, summary: SessionSummary) {
+        try {
+            val baseDir = File(
+                android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOCUMENTS
+                ), "sessions"
+            )
+            if (!baseDir.exists()) baseDir.mkdirs()
+
+            val timestamp = sessionTimestamps[userId] ?: SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            val summaryFile = File(baseDir, "session_${userId}_${timestamp}_summary.json")
+
+            val jsonSummary = formatSummaryAsJson(summary, userId)
+            FileWriter(summaryFile, false).use { writer ->
+                writer.write(jsonSummary)
+            }
+
+            android.util.Log.d("Profile", "Summary saved to: ${summaryFile.absolutePath}")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun appendNewBreakdown(userId: String) {

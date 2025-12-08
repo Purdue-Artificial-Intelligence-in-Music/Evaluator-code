@@ -58,6 +58,16 @@ class Detector (
     //private var ogWidth: Int = 1
     //private var ogHeight: Int = 1
 
+    // flexibility of angle relative to 90 degrees
+    // use 15 as default, and receive input (range 0-90) from the frontend
+    private var maxAngle: Int = 15
+
+    // add setter for MaxAngle
+    fun setMaxAngle(angle: Int) {
+        maxAngle = angle.coerceIn(0, 90)
+        Log.d("MaxAngle", "Max angle set to: $maxAngle")
+    }
+
 
     private fun Double.f1() = String.format("%.1f", this)
     private fun Double.f3() = String.format("%.3f", this)
@@ -132,21 +142,21 @@ class Detector (
         val options = Interpreter.Options()
 
         // 1) Qualcomm NPU (QNN/HTP)
-        /*val skelDir = tryLoadQnnAndPickSkelDir()
-        if (skelDir != null) {
-            try {
-                val qOpts = QnnDelegate.Options().apply {
-                    setBackendType(BackendType.HTP_BACKEND)
-                    setSkelLibraryDir(skelDir)
-                }
-                qnnDelegate = QnnDelegate(qOpts)
-                options.addDelegate(qnnDelegate)
-                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
-                return Interpreter(model, options)
-            } catch (t: Throwable) {
-                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
-            }
-        }*/
+//        val skelDir = tryLoadQnnAndPickSkelDir()
+//        if (skelDir != null) {
+//            try {
+//                val qOpts = QnnDelegate.Options().apply {
+//                    setBackendType(BackendType.HTP_BACKEND)
+//                    setSkelLibraryDir(skelDir)
+//                }
+//                qnnDelegate = QnnDelegate(qOpts)
+//                options.addDelegate(qnnDelegate)
+//                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
+//                return Interpreter(model, options)
+//            } catch (t: Throwable) {
+//                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
+//            }
+//        }
 
         // 2) GPU
         try {
@@ -201,8 +211,13 @@ class Detector (
         }
 
         // Resize → normalize → cast
-        val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
-        val tensorImage = TensorImage(INPUT_IMAGE_TYPE).also { it.load(resized) }
+        //val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
+        val resizedNew = Bitmap.createScaledBitmap(frame, 360, 640, false)
+        val padded = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(padded)
+        canvas.drawBitmap(resizedNew, 0f, 0f, null)
+
+        val tensorImage = TensorImage(INPUT_IMAGE_TYPE).also { it.load(padded) }
         val processed = imageProcessor.process(tensorImage)
         val imageBuffer = processed.buffer
 
@@ -251,6 +266,7 @@ class Detector (
 
         var bowConf = 0f
         var stringConf = 0f
+
         val ogWidth = frame.width.toFloat()
         val ogHeight = frame.height.toFloat()
         //val ogWidth = 1
@@ -498,11 +514,28 @@ class Detector (
 
 
     private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float, frameWidth: Float, frameHeight: Float): List<Point> {
-        val halfW = w / 2
-        val halfH = h / 2
+//        val normalizedAngle = angleRad % Math.PI
+//        val swap = normalizedAngle >= Math.PI /2
+//        var newW = 0f
+//        var newH = 0f
+//        if (swap) {
+//            newW = h
+//            newH = w
+//        } else {
+//            newW = w
+//            newH = h
+//        }
+//        val newAngle = (angleRad % (Math.PI/2)).toFloat()
+
+
+        val halfW = (w) / 2
+        val halfH = (h) / 2
         println("ANGLE $angleRad")
-        val cosA = cos(angleRad - Math.PI.toFloat() / 2)
-        val sinA = sin(angleRad - Math.PI.toFloat() / 2)
+        val cosA = cos(angleRad)
+        val sinA = sin(angleRad)
+
+        //val xMult =
+        //val topRightX = cx * frameWidth +
         val corners = listOf(
             Pair(-halfW, -halfH),
             Pair(halfW, -halfH),
@@ -510,11 +543,17 @@ class Detector (
             Pair(-halfW, halfH)
         )
         return corners.map { (x, y) ->
+
             val xRot = x * cosA - y * sinA + cx
             val yRot = x * sinA + y * cosA + cy
+
             //Point(xRot.toDouble() * frameWidth, yRot.toDouble() * frameHeight)
-            Point(xRot.toDouble(), yRot.toDouble())
+            Point((xRot).toDouble() * 640f/360f, (yRot).toDouble())
         }
+
+
+
+        //val topRightX = cx * frameWidth + halfH * sinA + halfW * cosA
     }
 
     private fun newBestBox(array: FloatArray, N: Int): List<OrientedBoundingBox> {
@@ -529,8 +568,8 @@ class Detector (
             if (cnf > CONFIDENCE_THRESHOLD) {
                 val x = array[0 * N + r]
                 val y = array[1 * N + r]
-                val h = array[2 * N + r]
-                val w = array[3 * N + r]
+                val w = array[2 * N + r]
+                val h = array[3 * N + r]
                 val angle = array[6 * N + r]
 
                 out.add(
@@ -874,9 +913,6 @@ class Detector (
     classifies bow angle relative to two vertical lines of string box
      */
     private fun bowAngle(bowLine: MutableList<Double>, verticalLines: MutableList<MutableList<Double>>): Int {
-        // flexibility of angle relative to 90 degrees
-        val max_angle = 15
-
         // grab bow line and vertical lines
         val m_bow: Double = bowLine[0]
         val m1 = verticalLines[0][0]
@@ -888,8 +924,7 @@ class Detector (
 
         val min_angle: Double = abs(90 - min(angle_one, angle_two))
         //println("ANGLE: $min_angle")
-
-        return if (min_angle > max_angle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
+        return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
     }
 
     data class returnBow(

@@ -53,6 +53,7 @@ export type CameraxViewProps = {
   cameraActive?: boolean;
   detectionEnabled?: boolean;
   lensType?: string;
+  maxBowAngle?: number;
   onDetectionResult?: (event: { nativeEvent: any }) => void;
   onNoDetection?: (event: { nativeEvent: any }) => void;
   onSessionEnd?: (event: { nativeEvent: SessionSummaryPayload }) => void;

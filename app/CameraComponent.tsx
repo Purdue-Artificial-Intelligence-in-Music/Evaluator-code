@@ -1,65 +1,105 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  TouchableOpacity,
-  Modal,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  Dimensions,
-  Platform,
-} from 'react-native';
-import { requireNativeViewManager } from 'expo-modules-core';
+
+import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert } from 'react-native';
+
+import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import { styles } from './CameraComponentStyles';
 
 const CameraxView = requireNativeViewManager('Camerax');
+const CameraxModule = requireNativeModule('Camerax')
+
 
 interface SummaryData {
-  heightBreakdown?: { Top?: number; Middle?: number; Bottom?: number; Unknown?: number };
-  angleBreakdown?: { Correct?: number; Wrong?: number; Unknown?: number };
-  handPresenceBreakdown?: { Detected?: number; None?: number };
-  handPostureBreakdown?: { Correct?: number; Supination?: number; 'Too much pronation'?: number; Unknown?: number };
-  posePresenceBreakdown?: { Detected?: number; None?: number };
-  elbowPostureBreakdown?: { Correct?: number; 'Low elbow'?: number; 'Elbow too high'?: number; Unknown?: number };
+  heightBreakdown?: {
+    Top?: number;
+    Middle?: number;
+    Bottom?: number;
+    Unknown?: number;
+  };
+  angleBreakdown?: {
+    Correct?: number;
+    Wrong?: number;
+    Unknown?: number;
+  };
+  handPresenceBreakdown?: {
+    Detected?: number;
+    None?: number;
+  };
+  handPostureBreakdown?: {
+    Correct?: number;
+    Supination?: number;
+    'Too much pronation'?: number;
+    Unknown?: number;
+  };
+  posePresenceBreakdown?: {
+    Detected?: number;
+    None?: number;
+  };
+  elbowPostureBreakdown?: {
+    Correct?: number;
+    'Low elbow'?: number;
+    'Elbow too high'?: number;
+    Unknown?: number;
+  };
   userId?: string;
   timestamp?: string;
+  sessionDuration?: string;
 }
 
-const { width: W, height: H } = Dimensions.get('window');
-const BODY_W = W - 32;
-const BODY_H = Math.min(H * 0.78, (W - 32) * 1.9);
-const BODY_TOP = H * 0.08;
-
-const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose: () => void }) => {
+const CameraComponent = ({ startDelay, onClose }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
-  const [lensType, setLensType] = useState('back');
+  const [lensType, setLensType] = useState('back'); // use front or back camera
   const [userId, setUserId] = useState('default_user');
   const [showSetupOverlay, setShowSetupOverlay] = useState(true);
 
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [maxAngle, setMaxAngle] = useState(15);
+  
+  // Settings modal state
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [tempMaxAngle, setTempMaxAngle] = useState(15);
 
-  const [detailVisible, setDetailVisible] = useState(false);
-  const [detailKey, setDetailKey] = useState<string | null>(null);
+  // History modal state
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historySessions, setHistorySessions] = useState<SummaryData[]>([]);
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0); // current page on "Session Summary History"
+
+  const SESSIONS_PER_PAGE = 5;
+  const TOTAL_SESSIONS = 15;
+  // Total playing time
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsCameraActive(true);
     }, startDelay || 100);
-    return () => clearTimeout(timer);
-  }, [startDelay]);
 
-  const toggleCamera = () => setLensType(prev => (prev === 'back' ? 'front' : 'back'));
-  const handleReady = () => setShowSetupOverlay(false);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const toggleCamera = () => {
+    setLensType(prev => prev === 'back' ? 'front' : 'back');
+  };
+
+  const handleReady = () => {
+    setShowSetupOverlay(false);
+  };
 
   useEffect(() => {
     const loadUserId = async () => {
       try {
         const email = await AsyncStorage.getItem('userEmail');
-        if (email) setUserId(email);
+        if (email) {
+          setUserId(email);
+          console.log('User ID loaded for camera:', email);
+        } else {
+          console.warn('No user email found, using default');
+        }
       } catch (error) {
         console.error('Error loading user ID:', error);
       }
@@ -67,7 +107,30 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
     loadUserId();
   }, []);
 
-  const handleSessionEnd = (event: any) => {
+  const loadSessionHistory = async () => {
+    setIsLoadingHistory(true);
+    setCurrentPage(0); // reset to first page
+    try {
+      // load history session
+      const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
+      
+      if (sessions && sessions.length > 0) {
+        setHistorySessions(sessions as SummaryData[]);
+        setHistoryVisible(true);
+      } else {
+        setHistorySessions([]);
+        setHistoryVisible(true);
+      }
+    } catch (error) {
+      console.error('Error loading session history:', error);
+      Alert.alert('Error', 'Failed to load session history. Please try again.');
+      setHistorySessions([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  const handleSessionEnd = async (event: any) => {
     const {
       heightBreakdown,
       angleBreakdown,
@@ -76,10 +139,17 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
       posePresenceBreakdown,
       elbowPostureBreakdown,
       userId: eventUserId,
-      timestamp,
+      timestamp
     } = event.nativeEvent;
 
-    setSummaryData({
+    let finalDuration = "0s";
+    if (sessionStartTime) {
+      const endTime = new Date();
+      const diffMs = endTime.getTime() - sessionStartTime.getTime();
+      finalDuration = formatDuration(diffMs);
+    }
+
+    const newSummaryData = {
       heightBreakdown,
       angleBreakdown,
       handPresenceBreakdown,
@@ -88,234 +158,337 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
       elbowPostureBreakdown,
       userId: eventUserId,
       timestamp,
-    });
+      sessionDuration: finalDuration,
+    };
+
+    setSummaryData(newSummaryData);
     setSummaryVisible(true);
   };
 
-  const closeSummary = async () => {
+  const closeSummary = () => {
     setSummaryVisible(false);
     setSummaryData(null);
+  };
 
-    try {
-      const dir = `${FileSystem.cacheDirectory}summary_images`;
-      const info = await FileSystem.getInfoAsync(dir);
+  const closeHistory = () => {
+    setHistoryVisible(false);
+    setSelectedHistoryIndex(null);
+    setCurrentPage(0);
+  };
 
-      if (info.exists) {
-        await FileSystem.deleteAsync(dir, { idempotent: true });
-      }
+  const openSettings = () => {
+    setTempMaxAngle(maxAngle);
+    setSettingsVisible(true);
+  };
 
-      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    } catch (e) {
-      console.error("Error clearing cache:", e);
+  const closeSettings = () => {
+    setSettingsVisible(false);
+  };
+
+  const saveSettings = () => {
+    setMaxAngle(tempMaxAngle);
+    setSettingsVisible(false);
+  };
+
+
+  const getCurrentPageSessions = () => {
+    const startIndex = currentPage * SESSIONS_PER_PAGE;
+    const endIndex = startIndex + SESSIONS_PER_PAGE;
+    return historySessions.slice(startIndex, endIndex);
+  };
+
+  const totalPages = Math.ceil(historySessions.length / SESSIONS_PER_PAGE);
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages - 1) {
+      setCurrentPage(currentPage + 1);
     }
   };
 
-  const openDetail = (key: string) => {
-    setDetailKey(key);
-    setDetailVisible(true);
-  };
-  const closeDetail = () => {
-    setDetailVisible(false);
-    setDetailKey(null);
+  const goToPrevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
   };
 
-  const imageMap: Record<string, string> = {
-    'Correct elbow': 'good_elbow.png',
-    'Elbow too high': 'high_elbow.png',
-    'Low elbow': 'low_elbow.png',
-    'Supination': 'supination.png',
-    'Too much pronation': 'too_much_pronation.png',
-    'Correct hand posture': 'good_pronation.png',
-    'Correct angle': 'correct_angle.png',
-    'Incorrect angle': 'incorrect_angle.png',
-    'Middle': 'correct_bow.png',
-    'Top': 'bow_too_high.png',
-    'Bottom': 'bow_too_low.png',
-  };
-
-  const getImageFromCache = async (filename: string) => {
-    if (!filename) return null;
-    const path = `${FileSystem.cacheDirectory}summary_images/${filename}`;
-    const info = await FileSystem.getInfoAsync(path);
-    return info.exists ? `file://${path}` : null;
-  };
-
-  const AsyncImage = ({ filename }: { filename: string }) => {
-    const [uri, setUri] = useState<string | null>(null);
-
-    useEffect(() => {
-      let mounted = true;
-      const load = async () => {
-        if (!filename) return;
-        const path = await getImageFromCache(filename);
-        if (mounted) setUri(path);
-      };
-      load();
-      return () => {
-        mounted = false;
-      };
-    }, [filename]);
-
-    if (!filename) return <Text>No image available</Text>;
-    if (!uri) return <Text>No image available</Text>;
-    return <Image source={{ uri }} style={{ width: '100%', height: 150, resizeMode: 'contain' }} />;
-  };
-
-  const renderDetailContent = () => {
-    if (!detailKey || !summaryData) return <Text>No data</Text>;
-
-    let items: { label: string; value?: number }[] = [];
-
-    switch (detailKey) {
-      case 'height':
-        items = [
-          { label: 'Top', value: summaryData.heightBreakdown?.Top },
-          { label: 'Middle', value: summaryData.heightBreakdown?.Middle },
-          { label: 'Bottom', value: summaryData.heightBreakdown?.Bottom },
-        ];
-        break;
-      case 'angle':
-        items = [
-          { label: 'Correct angle', value: summaryData.angleBreakdown?.Correct },
-          { label: 'Incorrect angle', value: summaryData.angleBreakdown?.Wrong },
-        ];
-        break;
-      case 'handPosture':
-        items = [
-          { label: 'Correct hand posture', value: summaryData.handPostureBreakdown?.Correct },
-          { label: 'Supination', value: summaryData.handPostureBreakdown?.Supination },
-          { label: 'Too much pronation', value: summaryData.handPostureBreakdown?.['Too much pronation'] },
-        ];
-        break;
-      case 'elbow':
-        items = [
-          { label: 'Correct elbow', value: summaryData.elbowPostureBreakdown?.Correct },
-          { label: 'Low elbow', value: summaryData.elbowPostureBreakdown?.['Low elbow'] },
-          { label: 'Elbow too high', value: summaryData.elbowPostureBreakdown?.['Elbow too high'] },
-        ];
-        break;
-      default:
-        return <Text>No data</Text>;
+  const renderSummaryContent = (data: SummaryData | null) => {
+    if (!data) {
+      return <Text>No data available</Text>;
     }
 
     return (
       <>
-        <Text style={styles.sectionTitle}>{detailKey}</Text>
-        {items.map(item => (
-          <View key={item.label} style={{ marginBottom: 16 }}>
-            <Text style={{ fontWeight: 'bold', marginBottom: 6 }}>
-              {item.label}: {item.value?.toFixed(1) || 0}%
-            </Text>
-            <AsyncImage filename={imageMap[item.label] || ''} />
-          </View>
-        ))}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Bow Height</Text>
+          <Text>Top: {data.heightBreakdown?.Top?.toFixed(1) || 0}%</Text>
+          <Text>Middle: {data.heightBreakdown?.Middle?.toFixed(1) || 0}%</Text>
+          <Text>Bottom: {data.heightBreakdown?.Bottom?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Bow Angle</Text>
+          <Text>Correct: {data.angleBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+          <Text>Wrong: {data.angleBreakdown?.Wrong?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Hand Posture</Text>
+          <Text>Correct: {data.handPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+          <Text>Supination: {data.handPostureBreakdown?.Supination?.toFixed(1) || 0}%</Text>
+          <Text>Too much pronation: {data.handPostureBreakdown?.['Too much pronation']?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Elbow Posture</Text>
+          <Text>Correct: {data.elbowPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+          <Text>Low elbow: {data.elbowPostureBreakdown?.['Low elbow']?.toFixed(1) || 0}%</Text>
+          <Text>Elbow too high: {data.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.timestamp}>
+            <Text style={styles.subTitle}>Total Playing Time: </Text>
+            {summaryData?.sessionDuration || "0s"}
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.timestamp}>Completed On: {formattedTimestamp}</Text>
+        </View>
       </>
     );
   };
 
-  const renderBreakdownRow = (label: string, value?: number) => (
-    <Text key={label} style={{ fontWeight: 'bold', marginBottom: 4 }}>
-      {label}: {value?.toFixed(1) || 0}%
-    </Text>
-  );
+  let formattedTimestamp = "";
+
+  if (summaryData?.timestamp) {
+    const dt = new Date(summaryData.timestamp.replace(" ", "T"));
+
+    const weekday = dt.toLocaleString([], { weekday: "short" });
+    const date = dt.toLocaleDateString("en-CA");
+    const time = dt.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+
+    formattedTimestamp = `${weekday}, ${date}, ${time}`;
+  }
+
+  function formatDuration(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+  }
+
 
   return (
     <View style={styles.container}>
-      {/* SUMMARY MODAL */}
+      {/* Current Session Summary Modal */}
       <Modal visible={summaryVisible} animationType="slide" transparent={true}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <ScrollView>
               <Text style={styles.title}>Session Summary</Text>
+
+              {renderSummaryContent(summaryData)}
+
+
               {summaryData ? (
                 <>
-                  {['height', 'angle', 'handPosture', 'elbow'].map(section => {
-                    let items: { label: string; value?: number }[] = [];
-                    switch (section) {
-                      case 'height':
-                        items = [
-                          { label: 'Top', value: summaryData.heightBreakdown?.Top },
-                          { label: 'Middle', value: summaryData.heightBreakdown?.Middle },
-                          { label: 'Bottom', value: summaryData.heightBreakdown?.Bottom },
-                        ];
-                        break;
-                      case 'angle':
-                        items = [
-                          { label: 'Correct angle', value: summaryData.angleBreakdown?.Correct },
-                          { label: 'Incorrect angle', value: summaryData.angleBreakdown?.Wrong },
-                        ];
-                        break;
-                      case 'handPosture':
-                        items = [
-                          { label: 'Correct', value: summaryData.handPostureBreakdown?.Correct },
-                          { label: 'Supination', value: summaryData.handPostureBreakdown?.Supination },
-                          { label: 'Too much pronation', value: summaryData.handPostureBreakdown?.['Too much pronation'] },
-                        ];
-                        break;
-                      case 'elbow':
-                        items = [
-                          { label: 'Correct', value: summaryData.elbowPostureBreakdown?.Correct },
-                          { label: 'Low elbow', value: summaryData.elbowPostureBreakdown?.['Low elbow'] },
-                          { label: 'Elbow too high', value: summaryData.elbowPostureBreakdown?.['Elbow too high'] },
-                        ];
-                        break;
-                    }
-
-                    return (
-                      <View key={section} style={styles.section}>
-                        <Text style={styles.sectionTitle}>
-                          {section === 'height'
-                            ? 'Bow Height'
-                            : section === 'angle'
-                            ? 'Bow Angle'
-                            : section === 'handPosture'
-                            ? 'Hand Posture'
-                            : 'Elbow Posture'}
-                        </Text>
-
-                        {items.map(item => renderBreakdownRow(item.label, item.value))}
-
-                        <View style={{ marginTop: 10 }}>
-                          <TouchableOpacity
-                            style={styles.viewMoreBtn}
-                            onPress={() => openDetail(section)}
-                          >
-                            <Text style={styles.viewMoreText}>View More →</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  })}
                   <View style={styles.section}>
-                    <Text style={styles.timestamp}>Time: {summaryData.timestamp}</Text>
+                    <Text style={styles.sectionTitle}>Bow Height</Text>
+                    <Text>Top: {summaryData.heightBreakdown?.Top?.toFixed(1) || 0}%</Text>
+                    <Text>Middle: {summaryData.heightBreakdown?.Middle?.toFixed(1) || 0}%</Text>
+                    <Text>Bottom: {summaryData.heightBreakdown?.Bottom?.toFixed(1) || 0}%</Text>
                   </View>
-                  <TouchableOpacity style={[styles.viewMoreBtn, { marginTop: 6 }]} onPress={closeSummary}>
-                    <Text style={styles.viewMoreText}>Close</Text>
-                  </TouchableOpacity>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Bow Angle</Text>
+                    <Text>Correct: {summaryData.angleBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+                    <Text>Wrong: {summaryData.angleBreakdown?.Wrong?.toFixed(1) || 0}%</Text>
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Hand Posture</Text>
+                    <Text>Correct: {summaryData.handPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+                    <Text>Supination: {summaryData.handPostureBreakdown?.Supination?.toFixed(1) || 0}%</Text>
+                    <Text>Too much pronation: {summaryData.handPostureBreakdown?.['Too much pronation']?.toFixed(1) || 0}%</Text>
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Elbow Posture</Text>
+                    <Text>Correct: {summaryData.elbowPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
+                    <Text>Low elbow: {summaryData.elbowPostureBreakdown?.['Low elbow']?.toFixed(1) || 0}%</Text>
+                    <Text>Elbow too high: {summaryData.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
+                  </View>
+
+                <View style={styles.section}>
+                  <Text style={styles.timestamp}>
+                    <Text style={styles.subTitle}>Total Playing Time: </Text>
+                    {summaryData?.sessionDuration || "0s"}
+                  </Text>
+                </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.timestamp}>Completed On: {formattedTimestamp}</Text>
+                  </View>
                 </>
               ) : (
                 <Text>No data available</Text>
               )}
+
+
+              <Button title="Close" onPress={closeSummary} />
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* DETAIL MODAL */}
-      <Modal visible={detailVisible} animationType="slide" transparent={true}>
+      {/* History Modal */}
+      <Modal visible={historyVisible} animationType="slide" transparent={true}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <ScrollView>
-              <TouchableOpacity style={[styles.viewMoreBtn, { marginBottom: 8 }]} onPress={closeDetail}>
-                <Text style={styles.viewMoreText}>← Back</Text>
-              </TouchableOpacity>
-              {renderDetailContent()}
-            </ScrollView>
+            <Text style={styles.title}>Session History</Text>
+            
+            {isLoadingHistory ? (
+              <Text style={styles.loadingText}>Loading history...</Text>
+            ) : historySessions.length === 0 ? (
+              <Text style={styles.noHistoryText}>No previous sessions found</Text>
+            ) : (
+              <ScrollView>
+                {/* Session List */}
+                {selectedHistoryIndex === null ? (
+                  <>
+                    <Text style={styles.historySubtitle}>
+                      Showing {currentPage * SESSIONS_PER_PAGE + 1}-{Math.min((currentPage + 1) * SESSIONS_PER_PAGE, historySessions.length)} of {historySessions.length} Sessions
+                    </Text>
+                    
+                    {getCurrentPageSessions().map((session, index) => {
+                      const actualIndex = currentPage * SESSIONS_PER_PAGE + index;
+                      return (
+                        <TouchableOpacity
+                          key={actualIndex}
+                          style={styles.historyItem}
+                          onPress={() => setSelectedHistoryIndex(actualIndex)}
+                        >
+                          <Text style={styles.historyItemTitle}>
+                            Session {actualIndex + 1}
+                          </Text>
+                          <Text style={styles.historyItemDate}>
+                            {session.timestamp}
+                          </Text>
+                          <Text style={styles.historyItemArrow}>→</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <View style={styles.paginationContainer}>
+                        <TouchableOpacity
+                          onPress={goToPrevPage}
+                          disabled={currentPage === 0}
+                          style={styles.paginationArrowButton}
+                        >
+                          <Text style={[
+                            styles.paginationArrow,
+                            currentPage === 0 && styles.paginationArrowDisabled
+                          ]}>
+                            ‹
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        <Text style={styles.paginationText}>
+                          Page {currentPage + 1} of {totalPages}
+                        </Text>
+                        
+                        <TouchableOpacity
+                          onPress={goToNextPage}
+                          disabled={currentPage === totalPages - 1}
+                          style={styles.paginationArrowButton}
+                        >
+                          <Text style={[
+                            styles.paginationArrow,
+                            currentPage === totalPages - 1 && styles.paginationArrowDisabled
+                          ]}>
+                            ›
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  /* Session Detail View */
+                  <>
+                    <TouchableOpacity
+                      style={styles.backButton}
+                      onPress={() => setSelectedHistoryIndex(null)}
+                    >
+                      <Text style={styles.backButtonText}>← Back to List</Text>
+                    </TouchableOpacity>
+                    
+                    <Text style={styles.detailTitle}>
+                      Session {selectedHistoryIndex + 1}
+                    </Text>
+                    
+                    {renderSummaryContent(historySessions[selectedHistoryIndex])}
+                  </>
+                )}
+              </ScrollView>
+            )}
+            
+            <View style={{ marginTop: 16 }}>
+              <Button title="Close" onPress={closeHistory} />
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* CAMERA VIEW */}
+      {/* Settings Modal */}
+      <Modal visible={settingsVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.settingsModalContent}>
+            <Text style={styles.title}>Settings</Text>
+            
+            <View style={styles.settingsSection}>
+              <Text style={styles.settingsLabel}>Maximum Bow Angle Tolerance (0-90°)</Text>
+              <TextInput
+                style={styles.settingsInput}
+                keyboardType="numeric"
+                placeholder="Enter angle (0-90)"
+                value={tempMaxAngle.toString()}
+                onChangeText={(text) => {
+                  const num = parseInt(text) || 0;
+                  if (num >= 0 && num <= 90) {
+                    setTempMaxAngle(num);
+                  }
+                }}
+              />
+              <Text style={styles.settingsHint}>
+                Current value: {tempMaxAngle}° (Default: 15°)
+              </Text>
+            </View>
+
+            <View style={styles.settingsFooter}>
+              <TouchableOpacity 
+                style={styles.cancelButton} 
+                onPress={closeSettings}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.saveButton} 
+                onPress={saveSettings}
+              >
+                <Text style={styles.saveButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <CameraxView
         style={styles.camera}
         userId={userId}
@@ -323,49 +496,92 @@ const CameraComponent = ({ startDelay, onClose }: { startDelay?: number; onClose
         detectionEnabled={isDetectionEnabled}
         lensType={lensType}
         onSessionEnd={handleSessionEnd}
+        maxBowAngle={maxAngle}
       />
+      
+      <TouchableOpacity
+        style={styles.closeButton}
+        onPress={onClose}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.closeButtonText}>✕</Text>
+      </TouchableOpacity>
 
-      {/* Setup overlay */}
+      <TouchableOpacity
+        style={styles.flipButton}
+        onPress={toggleCamera}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.flipButtonText}>🔄</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.settingsButton}
+        onPress={openSettings}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.settingsButtonText}>⚙️</Text>
+      </TouchableOpacity>
+
+      {/* History Button */}
+      <TouchableOpacity
+        style={styles.historyButton}
+        onPress={loadSessionHistory}
+        activeOpacity={0.7}
+        disabled={isLoadingHistory}
+      >
+        <Text style={styles.historyButtonText}>
+          {isLoadingHistory ? '...' : '📋'}
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity
+        style={styles.detectionButton}
+          onPress={() => {
+            if (showSetupOverlay) setShowSetupOverlay(false);
+            if (!isDetectionEnabled) {
+              setSessionStartTime(new Date());
+            }
+            setIsDetectionEnabled(!isDetectionEnabled);
+          }}
+      >
+        <Text style={styles.buttonText}>
+          {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
+        </Text>
+      </TouchableOpacity>
+
       {showSetupOverlay && (
         <>
+          {/* dark overlay */}
           <View pointerEvents="none" style={styles.vignette} />
+
+          {/* cello silhouette */}
           <View pointerEvents="none" style={styles.silhouetteWrap}>
             <View style={styles.celloBody} />
             <View style={styles.bridgeGuide} />
             <View style={styles.endpinGuide} />
           </View>
+
+          {/* setup instructions */}
           <View style={styles.instructionsCard}>
             <Text style={styles.cardTitle}>Set up your camera & cello</Text>
             <View style={{ height: 6 }} />
-            <Bullet>Hold phone upright (portrait), ~2–3 ft (60–90 cm) away</Bullet>
+            <Bullet>Hold phone upright (portrait), ~1-2 ft (30-60 cm) away</Bullet>
             <Bullet>Center yourself and the cello inside the outline</Bullet>
             <Bullet>Keep the bridge near the dotted line</Bullet>
             <Bullet>Ensure the endpin is visible and background is clear</Bullet>
+
             <TouchableOpacity style={styles.readyBtn} onPress={handleReady} activeOpacity={0.9}>
               <Text style={styles.readyText}>Ready</Text>
             </TouchableOpacity>
           </View>
         </>
       )}
-
-      {/* UI Buttons */}
-      <TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.7}>
-        <Text style={styles.closeButtonText}>✕</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.flipButton} onPress={toggleCamera} activeOpacity={0.7}>
-        <Text style={styles.flipButtonText}>🔄</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.detectionButton}
-        onPress={() => setIsDetectionEnabled(prev => !prev)}
-      >
-        <Text style={styles.buttonText}>{isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}</Text>
-      </TouchableOpacity>
     </View>
   );
 };
 
-function Bullet({ children }: { children: React.ReactNode }) {
+function Bullet({ children }) {
   return (
     <View style={styles.bulletRow}>
       <View style={styles.bulletDot} />
@@ -373,39 +589,5 @@ function Bullet({ children }: { children: React.ReactNode }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  camera: { flex: 1 },
-  closeButton: { position: 'absolute', top: 50, right: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
-  closeButtonText: { color: 'white', fontSize: 20, fontWeight: 'bold' },
-  flipButton: { position: 'absolute', top: 100, right: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
-  flipButtonText: { fontSize: 22 },
-  detectionButton: { position: 'absolute', bottom: 50, left: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.7)', padding: 15, borderRadius: 8, alignItems: 'center' },
-  buttonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-
-  modalContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalContent: { width: '90%', maxHeight: '80%', backgroundColor: 'white', borderRadius: 10, padding: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  timestamp: { fontSize: 12, color: '#666', textAlign: 'center' },
-
-  viewMoreBtn: { backgroundColor: 'white', padding: 10, borderRadius: 8, alignItems: 'center' },
-  viewMoreText: { color: 'black', fontWeight: '700' },
-
-  vignette: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.18)' },
-  silhouetteWrap: { position: 'absolute', top: BODY_TOP, left: 16, right: 16, alignItems: 'center' },
-  celloBody: { width: BODY_W, height: BODY_H, borderRadius: BODY_W * 0.28, borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', backgroundColor: 'rgba(255,255,255,0.05)' },
-  bridgeGuide: { position: 'absolute', top: BODY_H * 0.46, left: BODY_W * 0.15, width: BODY_W * 0.7, borderTopWidth: 2, borderColor: 'white', borderStyle: 'dashed', opacity: 0.85 },
-  endpinGuide: { position: 'absolute', top: BODY_H * 0.9, left: BODY_W * 0.5 - 1, height: BODY_H * 0.12, borderLeftWidth: 2, borderColor: 'white', borderStyle: 'dashed', opacity: 0.85 },
-  instructionsCard: { position: 'absolute', bottom: Platform.select({ ios: 20, android: 16 }), left: 16, right: 16, padding: 14, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.55)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  cardTitle: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-  bulletRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 6 },
-  bulletDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'white', marginTop: 6, marginRight: 6 },
-  bulletText: { color: 'white', flex: 1, fontSize: 14 },
-  readyBtn: { marginTop: 14, padding: 12, borderRadius: 8, backgroundColor: '#FFF', alignItems: 'center' },
-  readyText: { color: 'black', fontWeight: 'bold', fontSize: 16 },
-});
 
 export default CameraComponent;
