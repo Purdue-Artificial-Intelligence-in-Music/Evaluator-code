@@ -260,7 +260,7 @@ class OverlayView @JvmOverloads constructor(
                     (stringBox[0].x.toFloat() / 640f) * scaleX,
                     (stringBox[0].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                tempCanvas?.let { c ->
+                /*tempCanvas?.let { c ->
                     c.drawLine(
                         (stringBox[0].x.toFloat() / 640f) * scaleX,
                         (stringBox[0].y.toFloat() / 640f) * scaleY,
@@ -295,7 +295,7 @@ class OverlayView @JvmOverloads constructor(
                         (stringBox[0].y.toFloat() / 640f) * scaleY,
                         boxPaint
                     )
-                }
+                }*/
             }
 
             if (bowBox != null) {
@@ -323,7 +323,7 @@ class OverlayView @JvmOverloads constructor(
                     (bowBox[0].x.toFloat() / 640f) * scaleX,
                     (bowBox[0].y.toFloat() / 640f) * scaleY,
                     boxPaint)
-                tempCanvas?.let { c ->
+                /*tempCanvas?.let { c ->
                     c.drawLine(
                         (bowBox[0].x.toFloat() / 640f) * scaleX,
                         (bowBox[0].y.toFloat() / 640f) * scaleY,
@@ -331,8 +331,8 @@ class OverlayView @JvmOverloads constructor(
                         (bowBox[1].y.toFloat() / 640f) * scaleY,
                         boxPaint
                     )
-                }
-                tempCanvas?.let { c ->
+                }*/
+                /*tempCanvas?.let { c ->
                     c.drawLine(
                         (bowBox[1].x.toFloat() / 640f) * scaleX,
                         (bowBox[1].y.toFloat() / 640f) * scaleY,
@@ -340,8 +340,8 @@ class OverlayView @JvmOverloads constructor(
                         (bowBox[2].y.toFloat() / 640f) * scaleY,
                         boxPaint
                     )
-                }
-                tempCanvas?.let { c ->
+                }*/
+                /*tempCanvas?.let { c ->
                     c.drawLine(
                         (bowBox[2].x.toFloat() / 640f) * scaleX,
                         (bowBox[2].y.toFloat() / 640f) * scaleY,
@@ -349,8 +349,8 @@ class OverlayView @JvmOverloads constructor(
                         (bowBox[3].y.toFloat() / 640f) * scaleY,
                         boxPaint
                     )
-                }
-                tempCanvas?.let { c ->
+                }*/
+                /*tempCanvas?.let { c ->
                     c.drawLine(
                         (bowBox[3].x.toFloat() / 640f) * scaleX,
                         (bowBox[3].y.toFloat() / 640f) * scaleY,
@@ -358,7 +358,7 @@ class OverlayView @JvmOverloads constructor(
                         (bowBox[0].y.toFloat() / 640f) * scaleY,
                         boxPaint
                     )
-                }
+                }*/
             }
 //            if (stringBox != null) {
 //                canvas.drawLine(stringBox[0].x.toFloat() * scaleX,
@@ -505,7 +505,7 @@ class OverlayView @JvmOverloads constructor(
                         landmarks.get(connection.end()).y() * imageHeight * handsScaleFactor + yOffset,
                         linePaint
                     )
-                    tempCanvas?.let { c ->
+                    /*tempCanvas?.let { c ->
                         c.drawLine(
                             landmarks.get(connection!!.start())
                                 .x() * imageWidth * handsScaleFactor + xOffset,
@@ -517,7 +517,7 @@ class OverlayView @JvmOverloads constructor(
                                 .y() * imageHeight * handsScaleFactor + yOffset,
                             linePaint
                         )
-                    }
+                    }*/
                 }
 
                 // Draw hand points
@@ -527,13 +527,13 @@ class OverlayView @JvmOverloads constructor(
                         normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
                         pointPaint
                     )
-                    tempCanvas?.let { c ->
+                    /*tempCanvas?.let { c ->
                         c.drawPoint(
                             normalizedLandmark.x() * imageWidth * handsScaleFactor + xOffset,
                             normalizedLandmark.y() * imageHeight * handsScaleFactor + yOffset,
                             pointPaint
                         )
-                    }
+                    }*/
                 }
             }
         }
@@ -693,7 +693,7 @@ class OverlayView @JvmOverloads constructor(
         }
 
         file_list.forEach { fName ->
-            saveOverlayBitmap(fName)
+            saveImageForSession(fName)
         }
     }
 
@@ -733,26 +733,43 @@ class OverlayView @JvmOverloads constructor(
         postInvalidate() // remove drawings
     }
 
-    fun saveOverlayBitmap(filename: String) {
-        overlayBitmap?.let { bitmap ->
-            // Use cache directory
-            val dir = File(context.cacheDir, "summary_images")
-            if (!dir.exists()) dir.mkdirs()
-            val file = File(dir, "$filename.png")
-            if (!file.exists()) {
-                try {
-                    FileOutputStream(file).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                    }
-                    Log.d("OverlayView", "Saved overlay to cache at ${file.absolutePath}")
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            } else {
-                Log.d("OverlayView", "File already exists, skipping save: ${file.absolutePath}")
+
+    fun saveImageForSession(filename: String) {
+        val userId = Profile.getUserId()
+        val timestamp = Profile.getTimeStamp()
+
+        val baseDir = File(
+            android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS),
+            "sessions/$userId/$timestamp"
+        )
+
+        // Create the directory if it doesn't exist
+        if (!baseDir.exists()) {
+            val created = baseDir.mkdirs()
+            if (!created) {
+                Log.e("FileSave", "Failed to create directory: ${baseDir.absolutePath}")
             }
         }
+
+        // Now create a file inside that directory
+        val outFile = File(baseDir, filename)
+
+        if (outFile.exists()) {
+            Log.d("SaveOverlay", "File already exists, skipping save: ${outFile.absolutePath}")
+            return
+        }
+
+        // Write to the file
+        try {
+            FileOutputStream(outFile).use { fos ->
+                overlayBitmap?.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            }
+            Log.d("SaveOverlay", "Saved overlay to: ${outFile.absolutePath}")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
+
 
 
     fun setBitmapFrame(frame: Bitmap) {

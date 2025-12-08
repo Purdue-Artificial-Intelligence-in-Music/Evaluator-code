@@ -346,8 +346,8 @@ class CameraxView(
                     matrix, true
                 )
 
-                //set the bitmap in the overlayView so we can capture
-                //frames for summary session
+                // set the bitmap in the overlayView so we can capture
+                // frames for summary session
                 overlayView.setBitmapFrame(rotatedBitmap)
 
                 // Perform YOLO detection
