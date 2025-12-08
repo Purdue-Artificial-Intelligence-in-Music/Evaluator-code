@@ -701,7 +701,7 @@ class OverlayView @JvmOverloads constructor(
         }
 
         // Now create a file inside that directory
-        val outFile = File(baseDir, filename)
+        val outFile = File(baseDir, if (filename.endsWith(".png")) filename else "$filename.png")
 
         if (outFile.exists()) {
             Log.d("SaveOverlay", "File already exists, skipping save: ${outFile.absolutePath}")
