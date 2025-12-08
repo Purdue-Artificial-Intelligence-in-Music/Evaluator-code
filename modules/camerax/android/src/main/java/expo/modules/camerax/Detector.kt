@@ -360,29 +360,31 @@ class Detector (
             strokeWidth = 8f
             isAntiAlias = true
         }
+        val scaleX = 720f * 1.5f
+        val scaleY = 1280f * 1.5f
 
         // Draw string box (rectangle)
         if (points.stringResults != null && points.stringResults!!.size >= 4) {
             val stringBox = points.stringResults!!
             // Draw four lines connecting the corners
             canvas.drawLine(
-                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
-                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
+                stringBox[0].x.toFloat()/640f * scaleX, stringBox[0].y.toFloat()/640f * scaleY,
+                stringBox[1].x.toFloat()/640f * scaleX, stringBox[1].y.toFloat()/640f * scaleY,
                 paint
             )
             canvas.drawLine(
-                stringBox[1].x.toFloat(), stringBox[1].y.toFloat(),
-                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
+                stringBox[1].x.toFloat()/640f * scaleX, stringBox[1].y.toFloat()/640f * scaleY,
+                stringBox[2].x.toFloat()/640f * scaleX, stringBox[2].y.toFloat()/640f * scaleY,
                 paint
             )
             canvas.drawLine(
-                stringBox[2].x.toFloat(), stringBox[2].y.toFloat(),
-                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
+                stringBox[2].x.toFloat()/640f * scaleX, stringBox[2].y.toFloat()/640f * scaleY,
+                stringBox[3].x.toFloat()/640f * scaleX, stringBox[3].y.toFloat()/640f * scaleY,
                 paint
             )
             canvas.drawLine(
-                stringBox[3].x.toFloat(), stringBox[3].y.toFloat(),
-                stringBox[0].x.toFloat(), stringBox[0].y.toFloat(),
+                stringBox[3].x.toFloat()/640f * scaleX, stringBox[3].y.toFloat()/640f * scaleY,
+                stringBox[0].x.toFloat()/640f * scaleX, stringBox[0].y.toFloat()/640f * scaleY,
                 paint
             )
         }
@@ -392,23 +394,23 @@ class Detector (
             val bowBox = points.bowResults!!
             // Draw four lines connecting the corners
             canvas.drawLine(
-                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
-                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
+                bowBox[0].x.toFloat()/640f * scaleX, bowBox[0].y.toFloat()/640f * scaleY,
+                bowBox[1].x.toFloat()/640f * scaleX, bowBox[1].y.toFloat()/640f * scaleY,
                 paint
             )
             canvas.drawLine(
-                bowBox[1].x.toFloat(), bowBox[1].y.toFloat(),
-                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
+                bowBox[1].x.toFloat()/640f * scaleX, bowBox[1].y.toFloat()/640f * scaleY,
+                bowBox[2].x.toFloat()/640f * scaleX, bowBox[2].y.toFloat()/640f * scaleY,
                 paint
             )
             canvas.drawLine(
-                bowBox[2].x.toFloat(), bowBox[2].y.toFloat(),
-                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
+                bowBox[2].x.toFloat()/640f * scaleX, bowBox[2].y.toFloat()/640f * scaleY,
+                bowBox[3].x.toFloat()/640f * scaleX, bowBox[3].y.toFloat()/640f * scaleY,
                 paint
             )
             canvas.drawLine(
-                bowBox[3].x.toFloat(), bowBox[3].y.toFloat(),
-                bowBox[0].x.toFloat(), bowBox[0].y.toFloat(),
+                bowBox[3].x.toFloat()/640f * scaleX, bowBox[3].y.toFloat()/640f * scaleY,
+                bowBox[0].x.toFloat()/640f * scaleX, bowBox[0].y.toFloat()/640f * scaleY,
                 paint
             )
         }
@@ -818,8 +820,8 @@ class Detector (
         intersectionPoints: MutableList<Point>,
         verticalLines: List<List<Double>>
     ): Int {
-        val top_zone_percentage = 0.3
-        val bottom_zone_percentage = 0.15
+        val top_zone_percentage = 0.1
+        val bottom_zone_percentage = 0.1
 
         val vertical_one = verticalLines[0]
         val vertical_two = verticalLines[1]
@@ -923,6 +925,7 @@ class Detector (
         val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
 
         val min_angle: Double = abs(90 - min(angle_one, angle_two))
+        Log.d("angle1", min_angle.toString())
         //println("ANGLE: $min_angle")
         return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
     }
@@ -981,7 +984,11 @@ class Detector (
             val midlines = getMidline()
             val vert_lines = getVerticalLines()
             val intersect_points = intersectsVertical(midlines, vert_lines)
-            classResults.angle = bowAngle(midlines, vert_lines)
+            if (intersect_points != -1 && intersect_points != 1) {
+                classResults.angle = bowAngle(midlines, vert_lines)
+            } else {
+                classResults.angle = -1
+            }
             classResults.classification = intersect_points
             Log.d("BOW", classResults.classification.toString())
             return classResults

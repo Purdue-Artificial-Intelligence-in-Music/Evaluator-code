@@ -200,7 +200,7 @@ class Profile {
 
         if (bowFrames.isNotEmpty()) {
             val total = bowFrames.size.toDouble()
-            val heightCounts = mutableMapOf("Top" to 0, "Middle" to 0, "Bottom" to 0, "Unknown" to 0)
+            val heightCounts = mutableMapOf("Top" to 0, "Middle" to 0, "Bottom" to 0, "Outside" to 0, "Unknown" to 0)
             val angleCounts = mutableMapOf("Correct" to 0, "Wrong" to 0, "Unknown" to 0)
 
             bowFrames.forEach { frame ->
@@ -208,6 +208,7 @@ class Profile {
                     3 -> heightCounts["Top"] = heightCounts["Top"]!! + 1
                     0 -> heightCounts["Middle"] = heightCounts["Middle"]!! + 1
                     2 -> heightCounts["Bottom"] = heightCounts["Bottom"]!! + 1
+                    1 -> heightCounts["Outside"] = heightCounts["Outside"]!! + 1
                     else -> heightCounts["Unknown"] = heightCounts["Unknown"]!! + 1
                 }
                 when (frame.angle) {
