@@ -4,7 +4,7 @@ import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Ale
 
 import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { styles } from './CameraComponentStyles';
+import { styles } from '../styles/CameraComponent.styles';
 
 const CameraxView = requireNativeViewManager('Camerax');
 const CameraxModule = requireNativeModule('Camerax')
@@ -68,6 +68,9 @@ const CameraComponent = ({ startDelay, onClose }) => {
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [currentPage, setCurrentPage] = useState(0); // current page on "Session Summary History"
+
+  // Detail modal state
+  const [selectedDetailSection, setSelectedDetailSection] = useState<string | null>(null);
 
   const SESSIONS_PER_PAGE = 5;
   const TOTAL_SESSIONS = 15;
@@ -190,6 +193,14 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setSettingsVisible(false);
   };
 
+  // Detail modal helpers
+  const openDetail = (sectionKey: string) => {
+    setSelectedDetailSection(sectionKey);
+  };
+
+  const closeDetail = () => {
+    setSelectedDetailSection(null);
+  };
 
   const getCurrentPageSessions = () => {
     const startIndex = currentPage * SESSIONS_PER_PAGE;
@@ -211,44 +222,194 @@ const CameraComponent = ({ startDelay, onClose }) => {
     }
   };
 
+  // Helper function to normalize percentages
+  function normalizePercentages(values: number[]): number[] {
+    const total = values.reduce((sum, v) => sum + (v || 0), 0);
+    if (total <= 0) {
+      return values.map(() => 0);
+    }
+    const raw = values.map(v => ((v || 0) / total) * 100);
+    const rounded = raw.map(v => Math.round(v));
+    const diff = 100 - rounded.reduce((sum, v) => sum + v, 0);
+
+    if (diff !== 0) {
+      let idxMax = 0;
+      for (let i = 1; i < rounded.length; i++) {
+        if (rounded[i] > rounded[idxMax]) idxMax = i;
+      }
+      rounded[idxMax] += diff;
+    }
+
+    return rounded;
+  }
+
+  // Render summary content with normalized percentages and colors (UPDATED)
   const renderSummaryContent = (data: SummaryData | null) => {
     if (!data) {
       return <Text>No data available</Text>;
     }
 
+    // Normalized metric values for Bow Height
+    const heightTopRaw = data.heightBreakdown?.Top ?? 0;
+    const heightMiddleRaw = data.heightBreakdown?.Middle ?? 0;
+    const heightBottomRaw = data.heightBreakdown?.Bottom ?? 0;
+    const [heightTopPct, heightMiddlePct, heightBottomPct] = normalizePercentages([
+      heightTopRaw,
+      heightMiddleRaw,
+      heightBottomRaw,
+    ]);
+
+    // Normalized metric values for Bow Angle
+    const angleCorrectRaw = data.angleBreakdown?.Correct ?? 0;
+    const angleWrongRaw = data.angleBreakdown?.Wrong ?? 0;
+    const [angleCorrectPct, angleWrongPct] = normalizePercentages([
+      angleCorrectRaw,
+      angleWrongRaw,
+    ]);
+
+    // Normalized metric values for Hand Posture
+    const handCorrectRaw = data.handPostureBreakdown?.Correct ?? 0;
+    const handSupinationRaw = data.handPostureBreakdown?.Supination ?? 0;
+    const handTooMuchRaw = data.handPostureBreakdown?.['Too much pronation'] ?? 0;
+    const [handCorrectPct, handSupinationPct, handTooMuchPct] = normalizePercentages([
+      handCorrectRaw,
+      handSupinationRaw,
+      handTooMuchRaw,
+    ]);
+
+    // Normalized metric values for Elbow Posture
+    const elbowCorrectRaw = data.elbowPostureBreakdown?.Correct ?? 0;
+    const elbowLowRaw = data.elbowPostureBreakdown?.['Low elbow'] ?? 0;
+    const elbowHighRaw = data.elbowPostureBreakdown?.['Elbow too high'] ?? 0;
+    const [elbowCorrectPct, elbowLowPct, elbowHighPct] = normalizePercentages([
+      elbowCorrectRaw,
+      elbowLowRaw,
+      elbowHighRaw,
+    ]);
+
+    // Format timestamp
+    let formattedTimestamp = "";
+    if (data.timestamp) {
+      const dt = new Date(data.timestamp.replace(" ", "T"));
+      const weekday = dt.toLocaleString([], { weekday: "short" });
+      const date = dt.toLocaleDateString("en-CA");
+      const time = dt.toLocaleString([], { hour: "numeric", minute: "2-digit" });
+      formattedTimestamp = `${weekday}, ${date}, ${time}`;
+    }
+
     return (
       <>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Bow Height</Text>
-          <Text>Top: {data.heightBreakdown?.Top?.toFixed(1) || 0}%</Text>
-          <Text>Middle: {data.heightBreakdown?.Middle?.toFixed(1) || 0}%</Text>
-          <Text>Bottom: {data.heightBreakdown?.Bottom?.toFixed(1) || 0}%</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Bow Height</Text>
+            <TouchableOpacity
+              style={styles.viewMoreButton}
+              onPress={() => openDetail('bowHeight')}
+            >
+              <Text style={styles.viewMoreButtonText}>View more</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Top</Text>
+            <Text style={styles.metricPercent}>{heightTopPct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotGood} />
+            <Text style={styles.metricLabel}>Middle (ideal)</Text>
+            <Text style={styles.metricPercent}>{heightMiddlePct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Bottom</Text>
+            <Text style={styles.metricPercent}>{heightBottomPct.toFixed(0)}%</Text>
+          </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Bow Angle</Text>
-          <Text>Correct: {data.angleBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-          <Text>Wrong: {data.angleBreakdown?.Wrong?.toFixed(1) || 0}%</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Bow Angle</Text>
+            <TouchableOpacity
+              style={styles.viewMoreButton}
+              onPress={() => openDetail('bowAngle')}
+            >
+              <Text style={styles.viewMoreButtonText}>View more</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotGood} />
+            <Text style={styles.metricLabel}>Parallel with bridge</Text>
+            <Text style={styles.metricPercent}>{angleCorrectPct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Tilted</Text>
+            <Text style={styles.metricPercent}>{angleWrongPct.toFixed(0)}%</Text>
+          </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hand Posture</Text>
-          <Text>Correct: {data.handPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-          <Text>Supination: {data.handPostureBreakdown?.Supination?.toFixed(1) || 0}%</Text>
-          <Text>Too much pronation: {data.handPostureBreakdown?.['Too much pronation']?.toFixed(1) || 0}%</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Hand Posture</Text>
+            <TouchableOpacity
+              style={styles.viewMoreButton}
+              onPress={() => openDetail('handPosture')}
+            >
+              <Text style={styles.viewMoreButtonText}>View more</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotGood} />
+            <Text style={styles.metricLabel}>Natural pronation</Text>
+            <Text style={styles.metricPercent}>{handCorrectPct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Supination</Text>
+            <Text style={styles.metricPercent}>{handSupinationPct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Too much pronation</Text>
+            <Text style={styles.metricPercent}>{handTooMuchPct.toFixed(0)}%</Text>
+          </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Elbow Posture</Text>
-          <Text>Correct: {data.elbowPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-          <Text>Low elbow: {data.elbowPostureBreakdown?.['Low elbow']?.toFixed(1) || 0}%</Text>
-          <Text>Elbow too high: {data.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Elbow Posture</Text>
+            <TouchableOpacity
+              style={styles.viewMoreButton}
+              onPress={() => openDetail('elbowPosture')}
+            >
+              <Text style={styles.viewMoreButtonText}>View more</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotGood} />
+            <Text style={styles.metricLabel}>Natural</Text>
+            <Text style={styles.metricPercent}>{elbowCorrectPct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Elbow too low</Text>
+            <Text style={styles.metricPercent}>{elbowLowPct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <View style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Elbow too high</Text>
+            <Text style={styles.metricPercent}>{elbowHighPct.toFixed(0)}%</Text>
+          </View>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.timestamp}>
             <Text style={styles.subTitle}>Total Playing Time: </Text>
-            {summaryData?.sessionDuration || "0s"}
+            {data?.sessionDuration || "0s"}
           </Text>
         </View>
 
@@ -259,18 +420,6 @@ const CameraComponent = ({ startDelay, onClose }) => {
     );
   };
 
-  let formattedTimestamp = "";
-
-  if (summaryData?.timestamp) {
-    const dt = new Date(summaryData.timestamp.replace(" ", "T"));
-
-    const weekday = dt.toLocaleString([], { weekday: "short" });
-    const date = dt.toLocaleDateString("en-CA");
-    const time = dt.toLocaleString([], { hour: "numeric", minute: "2-digit" });
-
-    formattedTimestamp = `${weekday}, ${date}, ${time}`;
-  }
-
   function formatDuration(ms: number): string {
     const totalSeconds = Math.floor(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
@@ -280,7 +429,6 @@ const CameraComponent = ({ startDelay, onClose }) => {
     if (minutes > 0) return `${minutes}m ${seconds}s`;
     return `${seconds}s`;
   }
-
 
   return (
     <View style={styles.container}>
@@ -441,6 +589,40 @@ const CameraComponent = ({ startDelay, onClose }) => {
         </View>
       </Modal>
 
+      {/* Detail Modal for "View more" */}
+      <Modal
+        visible={!!selectedDetailSection}
+        animationType="fade"
+        transparent={true}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.detailModalContent}>
+            <ScrollView>
+              <Text style={styles.title}>
+                {selectedDetailSection === 'bowHeight' && 'Bow Height Details'}
+                {selectedDetailSection === 'bowAngle' && 'Bow Angle Details'}
+                {selectedDetailSection === 'handPosture' && 'Hand Posture Details'}
+                {selectedDetailSection === 'elbowPosture' && 'Elbow Posture Details'}
+              </Text>
+
+              <View style={styles.detailImagePlaceholder}>
+                <Text style={styles.detailImageText}>
+                  Screenshot / posture example (mock)
+                </Text>
+              </View>
+
+              <Text style={styles.detailText}>
+                This is a "View more" panel. You can add real screenshots
+                and detailed guidance for what correct posture looks like and how
+                to fix common mistakes.
+              </Text>
+
+              <Button title="Close" onPress={closeDetail} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <CameraxView
         style={styles.camera}
         userId={userId}
@@ -521,7 +703,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
             <Bullet>Hold phone upright (portrait), ~1-2 ft (30-60 cm) away</Bullet>
             <Bullet>Center yourself and the cello inside the outline</Bullet>
             <Bullet>Keep the bridge near the dotted line</Bullet>
-            <Bullet>Ensure the endpin is visible and background is clear</Bullet>
+            <Bullet>Point your cello towards the camera</Bullet>
 
             <TouchableOpacity style={styles.readyBtn} onPress={handleReady} activeOpacity={0.9}>
               <Text style={styles.readyText}>Ready</Text>

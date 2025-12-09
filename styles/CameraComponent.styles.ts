@@ -118,7 +118,8 @@ export const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 10
+    marginBottom: 0,  // 从 10 改成 0，因为现在间距由 sectionHeaderRow 控制
+    flex: 1,  // 添加这行，让标题占据剩余空间
   },
   subTitle: {
     fontSize: 15,
@@ -360,5 +361,79 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     fontWeight: '500',
+  },
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  metricDotGood: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+    backgroundColor: '#2ecc71', // green
+  },
+  metricDotWarning: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+    backgroundColor: '#e74c3c', // red
+  },
+  metricLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: '#222',
+  },
+  metricPercent: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',  // 改这里：从 'flex-end' 改成 'space-between'
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 8,  // 添加底部间距
+  },
+  viewMoreButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fafafa',
+  },
+  viewMoreButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#333',
+  },
+  historyItemSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  detailModalContent: {
+    width: '90%',
+    maxHeight: '80%',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+  },
+  detailImagePlaceholder: {
+    height: 140,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: '#fafafa',
+  },
+  detailImageText: {
+    fontSize: 14,
+    color: '#555',
   },
 });
