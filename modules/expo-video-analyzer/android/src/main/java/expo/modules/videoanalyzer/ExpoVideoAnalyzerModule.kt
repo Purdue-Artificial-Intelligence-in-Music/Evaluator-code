@@ -11,6 +11,7 @@ import expo.modules.kotlin.Promise
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.InputStream
@@ -27,6 +28,9 @@ import com.google.mediapipe.tasks.vision.core.RunningMode
 import expo.modules.camerax.HandLandmarkerHelper
 
 import kotlin.time.measureTime
+
+private data class DecodedFrame(val bmp: Bitmap, val timeUs: Long)
+private data class AnnotatedFrame(val bmp: Bitmap, val timeUs: Long)
 
 class ExpoVideoAnalyzerModule : Module() {
     private var detector: Detector? = null
@@ -47,6 +51,7 @@ class ExpoVideoAnalyzerModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("ExpoVideoAnalyzer")
         
+        /*
         AsyncFunction("initialize") { promise: Promise ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -63,6 +68,49 @@ class ExpoVideoAnalyzerModule : Module() {
                         ))
                     }
                 } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("INIT_ERROR", "Initialization failed: ${e.message}", e)
+                    }
+                }
+            }
+        }
+        */
+
+        AsyncFunction("initialize") { promise: Promise ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    if (!initializationAttempted) {
+                        initializationAttempted = true
+                        initializeDetector()
+                    } else {
+                        Log.d("VideoAnalyzer", "Initialize called again; detector already attempted.")
+                    }
+
+                    val ok = detector != null
+
+                    withContext(Dispatchers.Main) {
+                        if (ok) {
+                            Log.d("VideoAnalyzer", "Detector initialized successfully.")
+                            promise.resolve(
+                                mapOf(
+                                    "success" to true,
+                                    "detector" to true,
+                                    "message" to "Detector initialized successfully"
+                                )
+                            )
+                        } else {
+                            Log.e("VideoAnalyzer", "Detector initialization failed.")
+                            promise.resolve(
+                                mapOf(
+                                    "success" to false,
+                                    "detector" to false,
+                                    "message" to "Detector initialization failed"
+                                )
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("VideoAnalyzer", "Initialization threw exception: ${e.message}", e)
                     withContext(Dispatchers.Main) {
                         promise.reject("INIT_ERROR", "Initialization failed: ${e.message}", e)
                     }
@@ -139,6 +187,43 @@ class ExpoVideoAnalyzerModule : Module() {
 //            }
 //        }
 
+        AsyncFunction("processVideoOptimized") { videoUri: String, promise: Promise ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    if (detector == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("NOT_INITIALIZED", "Detector not initialized", null)
+                        }
+                        return@launch
+                    }
+
+                    isCancelled = false
+
+                    Log.d("ProcessVideoOpt", "Starting optimized pipeline")
+
+                    val outputPath = processVideoStreamOptimized(videoUri, 15)
+
+                    withContext(Dispatchers.Main) {
+                        if (outputPath != null) {
+                            promise.resolve(
+                                mapOf(
+                                    "success" to true,
+                                    "outputPath" to "file://$outputPath"
+                                )
+                            )
+                        } else {
+                            promise.reject("PIPELINE_FAILED", "Optimized video pipeline failed", null)
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("PIPELINE_ERROR", e.message, e)
+                    }
+                }
+            }
+        }
+
         // TODO not implemented yet
         AsyncFunction("resetDetector") { promise: Promise ->
             CoroutineScope(Dispatchers.IO).launch {
@@ -166,6 +251,8 @@ class ExpoVideoAnalyzerModule : Module() {
         // NOT optimal. It loops through the video, extracts frames into bitmap format, calls
         // detect() and drawPointsOnBitmap(), saves annotated frame, then uses FFmpeg to recollect
         // back into a video.
+
+/*
         AsyncFunction("processVideoComplete") { videoUri: String, promise: Promise ->
             var outputpath: String? = null
             CoroutineScope(Dispatchers.IO).launch {
@@ -239,6 +326,167 @@ class ExpoVideoAnalyzerModule : Module() {
                 }
             }
         }
+*/
+
+        AsyncFunction("processVideoComplete") { videoUri: String, promise: Promise ->
+            var outputPath: String? = null
+
+            CoroutineScope(Dispatchers.Default).launch {
+                val supervisor = SupervisorJob()
+                val scope = CoroutineScope(coroutineContext + supervisor)
+
+                val decodedCh = Channel<DecodedFrame>(capacity = 8)      // decoder → inference
+                val annotatedCh = Channel<AnnotatedFrame>(capacity = 8)  // inference → encoder
+
+                var retriever: MediaMetadataRetriever? = null
+                var encoder: VideoEncoder? = null
+                var landmarkerHelper: HandLandmarkerHelper? = null
+
+                try {
+                if (detector == null) {
+                    withContext(Dispatchers.Main) {
+                    promise.reject("NOT_INITIALIZED", "Detector not initialized", null)
+                    }
+                    return@launch
+                }
+
+                retriever = MediaMetadataRetriever()
+                retriever!!.setDataSource(appContext.reactContext, Uri.parse(videoUri))
+                val durationMs = retriever!!.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+                val srcW = retriever!!.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() ?: 1920
+                val srcH = retriever!!.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 1080
+                val rotation = retriever!!.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toInt() ?: 0
+
+                val (outW, outH) = if (rotation == 90 || rotation == 270) srcH to srcW else srcW to srcH
+                val targetFps = 15
+                val timeDeltaUs = 1_000_000L / targetFps
+
+                val cacheDir = appContext.reactContext!!.cacheDir
+                outputPath = File(cacheDir, "processed_video_${System.currentTimeMillis()}.mp4").absolutePath
+                encoder = VideoEncoder(File(outputPath!!), outW, outH, fps = targetFps)
+
+                landmarkerHelper = HandLandmarkerHelper(
+                    context = appContext.reactContext!!,
+                    runningMode = com.google.mediapipe.tasks.vision.core.RunningMode.VIDEO,
+                    combinedLandmarkerHelperListener = null,
+                    maxNumHands = 2
+                )
+
+                isCancelled = false
+                var processedFrames = 0
+
+                // Decode (IO)
+                val decodeJob = scope.launch(Dispatchers.IO) {
+                    var t = 0L
+                    while (!isCancelled && t < durationMs * 1000L) {
+                    val raw = retriever!!.getFrameAtTime(t, MediaMetadataRetriever.OPTION_CLOSEST) ?: break
+                    val bmp = if (raw.config != Bitmap.Config.ARGB_8888) {
+                        val converted = raw.copy(Bitmap.Config.ARGB_8888, false)
+                        raw.recycle()
+                        converted
+                    } else raw
+
+                    decodedCh.send(DecodedFrame(bmp, t))
+                    t += timeDeltaUs
+                    }
+                    decodedCh.close()
+                }
+
+                // Inference + annotate
+                val inferJob = scope.launch(Dispatchers.Default) {
+                    for (frame in decodedCh) {
+                    if (isCancelled) {
+                        frame.bmp.recycle()
+                        break
+                    }
+                    val work = frame.bmp.copy(Bitmap.Config.ARGB_8888, true)
+                    frame.bmp.recycle()
+                    val drawn = try {
+                        val annotated = detector!!.process_frame(work)
+                        val (_, mpFrame) = landmarkerHelper?.detectAndDrawVideoFrame(annotated, frame.timeUs / 1000)
+                        ?: (null to null)
+                        if (mpFrame != null) {
+                        if (annotated != mpFrame) annotated.recycle()
+                        mpFrame
+                        } else {
+                        annotated
+                        }
+                    } catch (e: Exception) {
+                        work
+                    }
+
+                    annotatedCh.send(AnnotatedFrame(drawn, frame.timeUs))
+                    }
+                    annotatedCh.close()
+                }
+
+                // Encode
+                val encodeJob = scope.launch(Dispatchers.IO) {
+                    var nextTime = 0L
+                    for (af in annotatedCh) {
+                    if (isCancelled) {
+                        af.bmp.recycle()
+                        break
+                    }
+                    if (af.timeUs >= nextTime) {
+                        encoder!!.encodeFrame(af.bmp)
+                        processedFrames++
+                        nextTime = af.timeUs + timeDeltaUs
+                    }
+                    af.bmp.recycle()
+                    }
+                }
+
+                // wait for all stages
+                joinAll(decodeJob, inferJob, encodeJob)
+
+                // finalize
+                if (isCancelled) {
+                    runCatching { encoder?.finish() }
+                    outputPath?.let { File(it).delete() }
+                    withContext(Dispatchers.Main) {
+                    promise.reject("PROCESSING_CANCELLED", "User cancelled video processing", null)
+                    }
+                    return@launch
+                }
+
+                encoder?.finish()
+
+                val ok = outputPath?.let { File(it).exists() && File(it).length() > 0 } == true
+                withContext(Dispatchers.Main) {
+                    if (ok && processedFrames > 0) {
+                    promise.resolve(
+                        mapOf(
+                        "success" to true,
+                        "frameCount" to processedFrames,
+                        "message" to "Video processing completed successfully",
+                        "outputPath" to "file://$outputPath"
+                        )
+                    )
+                    } else {
+                    outputPath?.let { File(it).delete() }
+                    promise.reject("PROCESSING_ERROR", "Failed to process video frames", null)
+                    }
+                }
+                } catch (e: CancellationException) {
+                outputPath?.let { File(it).delete() }
+                withContext(Dispatchers.Main) {
+                    promise.reject("CANCELLED", e.message, e)
+                }
+                } catch (e: Exception) {
+                outputPath?.let { File(it).delete() }
+                Log.e("ProcessVideo", "Hybrid pipeline failed: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    promise.reject("PROCESS_ERROR", "Video processing failed: ${e.message}", e)
+                }
+                } finally {
+                runCatching { retriever?.release() }
+                runCatching { landmarkerHelper?.clearLandmarkers() }
+                supervisor.cancel()
+                isCancelled = false
+                }
+            }
+        }
 
         AsyncFunction("cancelProcessing") {
             isCancelled = true
@@ -266,8 +514,6 @@ class ExpoVideoAnalyzerModule : Module() {
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     Log.d("FFmpegTest", "Testing FFmpeg availability...")
-
-                    // Verify that FFmpegKit works
                     val session = FFmpegKit.execute("-version")
 
                     Log.d("FFmpegTest", "FFmpeg version command completed")
@@ -293,6 +539,183 @@ class ExpoVideoAnalyzerModule : Module() {
         }
     }
     
+    private suspend fun processVideoStreamOptimized(
+        videoURI: String,
+        targetFPS: Int
+    ): String? {
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
+
+        val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+        val videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() ?: 1920
+        val videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 1080
+        val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toInt() ?: 0
+
+        retriever.release()
+
+        val (outputWidth, outputHeight) =
+            if (rotation == 90 || rotation == 270) Pair(videoHeight, videoWidth)
+            else Pair(videoWidth, videoHeight)
+
+        val cacheDir = appContext.reactContext!!.cacheDir
+        val outputPath =
+            File(cacheDir, "optimized_${System.currentTimeMillis()}.mp4").absolutePath
+
+        val timeDelta = 1_000_000L / targetFPS
+        val maxTimeUs = duration * 1000L
+
+        val numDetectors = 1
+
+        inputBitmaps = Array(numDetectors) { ArrayDeque() }
+        inputMutexes = Array(numDetectors) { Mutex() }
+
+        val resultsMap = HashMap<Long, Bitmap?>()
+
+        // STATES
+        readingBitmaps = true
+        var detecting = true
+        var processingComplete = false
+
+        // 3 pipeline stages
+        val readerJob = readBitmapsAsyncOptimized(videoURI, timeDelta, maxTimeUs, numDetectors)
+        val detectorJob = detectBitmapsAsyncOptimized(resultsMap, timeDelta, maxTimeUs, numDetectors)
+        val encoderJob = encodeBitmapsAsyncOptimized(
+            resultsMap,
+            timeDelta,
+            maxTimeUs,
+            outputPath,
+            outputWidth,
+            outputHeight,
+            targetFPS
+        )
+
+        // Wait for encoder to finish (last stage)
+        encoderJob.join()
+
+        return if (File(outputPath).exists() && File(outputPath).length() > 0)
+            outputPath else null
+    }
+
+    private fun readBitmapsAsyncOptimized(
+        videoURI: String,
+        timeDelta: Long,
+        maxTimeUs: Long,
+        numDetectors: Int
+    ) = CoroutineScope(Dispatchers.Default).launch {
+
+        val retriever = MediaMetadataRetriever()
+        retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
+
+        var timeUs = 0L
+        var index = 0
+
+        try {
+            while (timeUs < maxTimeUs && !isCancelled) {
+
+                val frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    ?: break
+
+                val bitmap = frame.copy(Bitmap.Config.ARGB_8888, true)
+                frame.recycle()
+
+                val mutex = inputMutexes!![index]
+                val queue = inputBitmaps!![index]
+
+                // backpressure
+                while (mutex.withLock { queue.size > 20 }) {
+                    delay(50)
+                }
+
+                mutex.withLock { queue.addLast(bitmap) }
+
+                timeUs += timeDelta
+                index = (index + 1) % numDetectors
+            }
+        } finally {
+            retriever.release()
+            readingBitmaps = false
+        }
+    }
+
+    private fun detectBitmapsAsyncOptimized(
+        resultsMap: HashMap<Long, Bitmap?>,
+        timeDelta: Long,
+        maxTimeUs: Long,
+        numDetectors: Int
+    ) = CoroutineScope(Dispatchers.Default).launch {
+
+        repeat(numDetectors) { workerIndex ->
+
+            launch {
+                var timeUs = workerIndex * timeDelta
+
+                while (timeUs < maxTimeUs && !isCancelled) {
+
+                    val mutex = inputMutexes!![workerIndex]
+                    val queue = inputBitmaps!![workerIndex]
+
+                    var inputBitmap: Bitmap? = null
+
+                    // Wait for a new bitmap
+                    while (inputBitmap == null && readingBitmaps && !isCancelled) {
+                        mutex.withLock {
+                            if (queue.isNotEmpty()) inputBitmap = queue.removeFirst()
+                        }
+                        if (inputBitmap == null) delay(10)
+                    }
+
+                    if (inputBitmap == null) break
+
+                    val annotated = detector!!.process_frame(inputBitmap!!)
+                    inputBitmap?.recycle()
+
+                    outputMutex.withLock {
+                        resultsMap[timeUs] = annotated
+                    }
+
+                    timeUs += numDetectors * timeDelta
+                }
+            }
+        }
+    }
+
+    private fun encodeBitmapsAsyncOptimized(
+        resultsMap: HashMap<Long, Bitmap?>,
+        timeDelta: Long,
+        maxTimeUs: Long,
+        outputPath: String,
+        width: Int,
+        height: Int,
+        fps: Int
+    ) = CoroutineScope(Dispatchers.Default).launch {
+
+        val encoder = VideoEncoder(File(outputPath), width, height, fps)
+
+        var timeUs = 0L
+
+        try {
+            while (timeUs < maxTimeUs && !isCancelled) {
+
+                var bmp: Bitmap? = null
+
+                // Wait for correct timestamp
+                while (bmp == null && !isCancelled) {
+                    outputMutex.withLock {
+                        bmp = resultsMap.remove(timeUs)
+                    }
+                    if (bmp == null) delay(10)
+                }
+
+                if (bmp == null) break
+
+                encoder.encodeFrame(bmp!!)
+                bmp!!.recycle()
+                timeUs += timeDelta
+            }
+        } finally {
+            encoder.finish()
+        }
+    }
 
     private fun initializeDetector() {
         try {

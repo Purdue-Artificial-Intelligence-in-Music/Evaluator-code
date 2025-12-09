@@ -44,3 +44,7 @@ export async function checkFileExists(filePath: String): Promise<any> {
 export async function cancelProcessing() {
   return await ExpoVideoAnalyzerModule.cancelProcessing();
 }
+
+export async function processVideoOptimized(videoUri: String): Promise<any> {
+  return await ExpoVideoAnalyzerModule.processVideoOptimized(videoUri);
+}
