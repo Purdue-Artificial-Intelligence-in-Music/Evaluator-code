@@ -85,6 +85,12 @@ class OverlayView @JvmOverloads constructor(
     private val issueHoldDuration = 3000L // 3 seconds in milliseconds
     private var issueMinDisplayTime: Long = 1000 // must remain visible 1s after disappearing
 
+    private var isFrontCameraActive: Boolean = false
+
+    fun setFrontCameraState(isFront: Boolean) {
+        isFrontCameraActive = isFront
+    }
+
     companion object {
         // Classification constants
         const val CLASS_NONE = -2
@@ -618,7 +624,12 @@ class OverlayView @JvmOverloads constructor(
         val pose = poseLandmarkerResult?.landmarks() ?: return null
         if (hands.isEmpty() || pose.isEmpty() || pose[0].size <= 16) return null
 
-        val poseHand = pose[0][16]
+        // Select which wrist landmark to use
+        val wristIndex = if (isFrontCameraActive) 15 else 16
+        
+        if (pose[0].size <= wristIndex) return null
+        
+        val poseHand = pose[0][wristIndex]
         val px = poseHand.x()
         val py = poseHand.y()
 
