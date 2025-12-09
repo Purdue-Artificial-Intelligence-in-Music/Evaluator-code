@@ -399,6 +399,7 @@ class CameraxView(
 
     override fun onResults(resultBundle: HandLandmarkerHelper.CombinedResultBundle) {
         if (!isDetectionEnabled) return
+        overlayView.setFrontCameraState(lensType == CameraSelector.LENS_FACING_FRONT)
         profile.addSessionData(userId, resultBundle)
         latestHandPoints = resultBundle.handResults
         latestPosePoints = resultBundle.poseResults
