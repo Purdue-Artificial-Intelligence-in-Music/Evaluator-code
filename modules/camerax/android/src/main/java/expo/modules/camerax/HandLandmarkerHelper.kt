@@ -227,16 +227,6 @@ class HandLandmarkerHelper(
         }
     }
 
-    fun detectBitmap(bitmap: Bitmap, frontCamera: Boolean) {
-        synchronized(tfliteLock) {
-            latestFrameTime = SystemClock.uptimeMillis()
-            isFrontCameraActive = frontCamera
-            latestImage = BitmapImageBuilder(bitmap).build()
-            handLandmarker?.detectAsync(latestImage!!, latestFrameTime)
-            poseLandmarker?.detectAsync(latestImage!!, latestFrameTime)
-        }
-    }
-
     // VIDEO MODE: detect + draw only the selected hand
     fun detectAndDrawVideoFrame(frame: Bitmap?, timestampMs: Long): Pair<CombinedResultBundle?, Bitmap?> {
         if (runningMode != RunningMode.VIDEO) {
@@ -261,12 +251,13 @@ class HandLandmarkerHelper(
             poseResult.landmarks()[0].size > 16
         ) {
             val poseLandmarks = poseResult.landmarks()[0]
-            val poseHandX = poseLandmarks[16].x()
-            val poseHandY = poseLandmarks[16].y()
+            val handIndex = if (isFrontCameraActive) 15 else 16
+            val poseHandX = poseLandmarks[handIndex].x()
+            val poseHandY = poseLandmarks[handIndex].y()
 
             val landmarksList = handResult.landmarks()
             var bestDist = Float.MAX_VALUE
-            val threshold = 0.2f
+            val threshold = 0.1f
 
             landmarksList.forEachIndexed { index, handLandmarks ->
                 if (handLandmarks.isNotEmpty()) {
@@ -402,9 +393,11 @@ class HandLandmarkerHelper(
                     latestPoseResult!!.landmarks().isNotEmpty() &&
                     latestPoseResult!!.landmarks()[0].size > 16
                 ) {
-                    val pose16 = latestPoseResult!!.landmarks()[0][16]
-                    val poseX = pose16.x()
-                    val poseY = pose16.y()
+                    val index = if (isFrontCameraActive) 15 else 16
+                    val poseRef = latestPoseResult!!.landmarks()[0][index]
+                    val poseX = poseRef.x()
+                    val poseY = poseRef.y()
+
 
                     var bestDist = Float.MAX_VALUE
                     val threshold = 0.1f
