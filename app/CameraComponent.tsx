@@ -290,55 +290,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
           <View style={styles.modalContent}>
             <ScrollView>
               <Text style={styles.title}>Session Summary</Text>
-
               {renderSummaryContent(summaryData)}
-
-
-              {summaryData ? (
-                <>
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Bow Height</Text>
-                    <Text>Top: {summaryData.heightBreakdown?.Top?.toFixed(1) || 0}%</Text>
-                    <Text>Middle: {summaryData.heightBreakdown?.Middle?.toFixed(1) || 0}%</Text>
-                    <Text>Bottom: {summaryData.heightBreakdown?.Bottom?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Bow Angle</Text>
-                    <Text>Correct: {summaryData.angleBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-                    <Text>Wrong: {summaryData.angleBreakdown?.Wrong?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Hand Posture</Text>
-                    <Text>Correct: {summaryData.handPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-                    <Text>Supination: {summaryData.handPostureBreakdown?.Supination?.toFixed(1) || 0}%</Text>
-                    <Text>Too much pronation: {summaryData.handPostureBreakdown?.['Too much pronation']?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Elbow Posture</Text>
-                    <Text>Correct: {summaryData.elbowPostureBreakdown?.Correct?.toFixed(1) || 0}%</Text>
-                    <Text>Low elbow: {summaryData.elbowPostureBreakdown?.['Low elbow']?.toFixed(1) || 0}%</Text>
-                    <Text>Elbow too high: {summaryData.elbowPostureBreakdown?.['Elbow too high']?.toFixed(1) || 0}%</Text>
-                  </View>
-
-                <View style={styles.section}>
-                  <Text style={styles.timestamp}>
-                    <Text style={styles.subTitle}>Total Playing Time: </Text>
-                    {summaryData?.sessionDuration || "0s"}
-                  </Text>
-                </View>
-
-                  <View style={styles.section}>
-                    <Text style={styles.timestamp}>Completed On: {formattedTimestamp}</Text>
-                  </View>
-                </>
-              ) : (
-                <Text>No data available</Text>
-              )}
-
-
               <Button title="Close" onPress={closeSummary} />
             </ScrollView>
           </View>
