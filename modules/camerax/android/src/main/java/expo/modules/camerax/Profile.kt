@@ -11,23 +11,23 @@ import java.util.concurrent.TimeUnit
 
 class Profile {
 
-        companion object {
-            private var ts: String = ""
-            private var id: String = ""
+    companion object {
+        private var ts: String = ""
+        private var id: String = ""
 
-            fun setSession(userId: String, timestamp: String) {
-                id = userId
-                ts = timestamp
-            }
-
-            fun getTimeStamp(): String {
-                return ts
-            }
-
-            fun getUserId(): String {
-                return id
-            }
+        fun setSession(userId: String, timestamp: String) {
+            id = userId
+            ts = timestamp
         }
+
+        fun getTimeStamp(): String {
+            return ts
+        }
+
+        fun getUserId(): String {
+            return id
+        }
+    }
 
     data class SessionSummary(
         val heightBreakdown: Map<String, Double>,
@@ -35,13 +35,15 @@ class Profile {
         val handPresenceBreakdown: Map<String, Double>,
         val handPostureBreakdown: Map<String, Double>,
         val posePresenceBreakdown: Map<String, Double>,
-        val elbowPostureBreakdown: Map<String, Double>
+        val elbowPostureBreakdown: Map<String, Double>,
+        val timestamp: String
     )
 
     private val sessionDict: MutableMap<String, MutableList<Any>> = mutableMapOf()
     private val scheduler = Executors.newScheduledThreadPool(1)
     private val outputFiles: MutableMap<String, File> = mutableMapOf()
     private val sessionTimestamps: MutableMap<String, String> = mutableMapOf() // store timestamp when session began
+    private val sessionTimestampsFormatted: MutableMap<String, String> = mutableMapOf()
 
     private var ts: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
     private var id: String = ""
@@ -55,14 +57,22 @@ class Profile {
                 ), "sessions"
             )
             if (!baseDir.exists()) baseDir.mkdirs()
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+
+            val now = Date()
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(now)
+            val timestampFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(now)
 
             //populate globals to grab in other classes
             setSession(userId, timestamp)
 
-            sessionTimestamps[userId] = timestamp // 保存timestamp
+            sessionTimestamps[userId] = timestamp // timestamp format used for filename (eg. 20251209_011308)
+            sessionTimestampsFormatted[userId] = timestampFormatted // timestamp stored in JSON (eg. 2025-12-09 01:13:08)
 
-            // 创建详细数据文件（不包含最终summary）
+            android.util.Log.d("Profile", "Session created for $userId")
+            android.util.Log.d("Profile", "Timestamp (file): $timestamp")
+            android.util.Log.d("Profile", "Timestamp (json): $timestampFormatted")
+
+            // create file with detail breakdown（without summary）
             val file = File(baseDir, "session_${userId}_$timestamp.json")
 
             // Write initial user ID at top of JSON
@@ -97,6 +107,7 @@ class Profile {
             sessionDict.remove(userId)
             outputFiles.remove(userId)
             sessionTimestamps.remove(userId)
+            sessionTimestampsFormatted.remove(userId)
             return null
         }
 
@@ -110,14 +121,17 @@ class Profile {
                 writer.write("]}")
             }
         }
+        val sessionTimestamp = sessionTimestampsFormatted[userId]
+            ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
         // create JSON file with summary
-        val summary = analyzeSession(session)
+        val summary = analyzeSession(session, sessionTimestamp)
         saveSummaryFile(userId, summary)
 
         sessionDict.remove(userId)
         outputFiles.remove(userId)
         sessionTimestamps.remove(userId)
+        sessionTimestampsFormatted.remove(userId)
 
         return summary
     }
@@ -148,7 +162,7 @@ class Profile {
     private fun appendNewBreakdown(userId: String) {
         val session = sessionDict[userId] ?: return
         if (session.isEmpty()) return
-        val summary = analyzeSession(session)
+        val summary = analyzeSession(session, SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
         val jsonSummary = formatSummaryAsJson(summary, userId)
         val file = outputFiles[userId] ?: return
 
@@ -160,10 +174,15 @@ class Profile {
     }
 
     private fun formatSummaryAsJson(summary: SessionSummary, userId: String): String {
+        val sessionTimestamp = sessionTimestampsFormatted[userId]
+            ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+        android.util.Log.d("Profile", "Formatting JSON with timestamp: $sessionTimestamp")
+
         val json = buildString {
             append("{")
             append("\"user_id\":\"$userId\",")
-            append("\"timestamp\":\"${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\",")
+            append("\"timestamp\":\"$sessionTimestamp\",")
             append("\"heightBreakdown\":${mapToJson(summary.heightBreakdown)},")
             append("\"angleBreakdown\":${mapToJson(summary.angleBreakdown)},")
             append("\"handPresenceBreakdown\":${mapToJson(summary.handPresenceBreakdown)},")
@@ -189,8 +208,8 @@ class Profile {
         return id
     }
 
-    fun analyzeSession(session: List<Any>): SessionSummary {
-        if (session.isEmpty()) return emptySummary()
+    fun analyzeSession(session: List<Any>, timestamp: String): SessionSummary {
+        if (session.isEmpty()) return emptySummary(timestamp)
 
         val bowFrames = session.filterIsInstance<returnBow>()
         val combinedFrames = session.filterIsInstance<CombinedResultBundle>()
@@ -279,20 +298,12 @@ class Profile {
             handPresenceBreakdown,
             handPostureBreakdown,
             posePresenceBreakdown,
-            elbowPostureBreakdown
+            elbowPostureBreakdown,
+            timestamp
         )
     }
 
-    private fun emptySummary(): SessionSummary {
-        return SessionSummary(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
-    }
-
-    fun getDetailedSummary(userId: String): SessionSummary? {
-        val session = sessionDict[userId] ?: return null
-        return if (session.isNotEmpty()) {
-            analyzeSession(session)
-        } else {
-            null
-        }
+    private fun emptySummary(timestamp: String): SessionSummary {
+        return SessionSummary(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), timestamp)
     }
 }

@@ -174,10 +174,10 @@ class CameraxView(
                 "posePresenceBreakdown" to summary.posePresenceBreakdown,
                 "elbowPostureBreakdown" to summary.elbowPostureBreakdown,
                 "userId" to userId,
-                "timestamp" to SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                "timestamp" to summary.timestamp
             )
 
-            Log.d(TAG, "Sending session summary: $summaryMap")
+            Log.d("SessionImages", "Sending session summary: $summaryMap")
             onSessionEnd(summaryMap)
         } catch (e: Exception) {
             Log.e(TAG, "Error sending session summary", e)
