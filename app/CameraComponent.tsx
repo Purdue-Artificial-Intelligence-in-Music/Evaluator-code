@@ -47,15 +47,15 @@ interface SummaryData {
   sessionDuration?: string;
 }
 
-interface CategorizedImages {
-  bowHeight: string[];  // bow_too_high, correct_bow, (bow_outside_zone)
-  bowAngle: string[];   // correct_angle, incorrect_angle
-  handPosture: string[]; // good_pronation, supination
-  elbowPosture: string[]; // good_elbow, high_elbow, low_elbow
-  all: string[];
+// props interface for CameraComponent
+interface CameraComponentProps {
+  startDelay?: number;
+  onClose: () => void;
+  initialHistoryOpen?: boolean; // if true, auto-open Session History on mount
 }
 
-const CameraComponent = ({ startDelay, onClose }) => {
+//UPDATED: typed props and support for initialHistoryOpen
+const CameraComponent: React.FC<CameraComponentProps> = ({startDelay, onClose, initialHistoryOpen,}) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
   const [lensType, setLensType] = useState('back'); // use front or back camera
@@ -92,20 +92,12 @@ const CameraComponent = ({ startDelay, onClose }) => {
   // Detail modal state
   const [selectedDetailSection, setSelectedDetailSection] = useState<string | null>(null);
 
-  const SESSIONS_PER_PAGE = 5;
-  const TOTAL_SESSIONS = 15;
-
-  const [sessionImages, setSessionImages] = useState<CategorizedImages>({
-    bowHeight: [],
-    bowAngle: [],
-    handPosture: [],
-    elbowPosture: [],
-    all: []
-  });
-  const [isLoadingImages, setIsLoadingImages] = useState(false);
-
-  // Total playing time
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  // if parent asks to open history, show Session History modal on mount
+  useEffect(() => {
+    if (initialHistoryOpen) {
+      setHistoryVisible(true);
+    }
+  }, [initialHistoryOpen]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
