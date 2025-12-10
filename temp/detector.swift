@@ -76,15 +76,18 @@ class Detector {
         }
         
         // Initialize interpreter
-        /*let coreMLDelegate = CoreMLDelegate()
+        let coreMLDelegate = CoreMLDelegate()
+        let metalDelegate = MetalDelegate()
         // Core ML delegate will only be created for devices with Neural Engine
-        if coreMLDelegate != nil {
-            print("SUCCESSFUL USE OF MLDELEGATE")
+        /*if coreMLDelegate != nil {
+            print("SUCCESSFUL USE OF METALDELEGATE")
             interpreter = try Interpreter(modelPath: modelPath,
                                         options: options,
-                                        delegates: [coreMLDelegate!])
+                                        delegates: [coreMLDelegate!, metalDelegate])
         } else {*/
-            interpreter = try Interpreter(modelPath: modelPath, options: options)
+            interpreter = try Interpreter(modelPath: modelPath,
+                                          options: options,
+                                          delegates: [metalDelegate])
         //}
         try interpreter.allocateTensors()
         
@@ -126,6 +129,7 @@ class Detector {
         }
         
         // Run inference
+        let start = CFAbsoluteTimeGetCurrent()
         do {
             try interpreter.copy(inputData, toInputAt: 0)
             try interpreter.invoke()
@@ -166,6 +170,8 @@ class Detector {
             }
             
             //var inferenceTime = Date().timeIntervalSince(inferenceStartTime)
+            let diff = CFAbsoluteTimeGetCurrent() - start
+            print("Took \(diff) seconds")
             
             if results.bowResults == nil && results.stringResults == nil {
                 listener?.noDetect()

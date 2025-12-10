@@ -8,5 +8,6 @@ target 'temp' do
   # Pods for temp
   pod 'TensorFlowLiteSwift'
   pod 'TensorFlowLiteSwift/CoreML'
+  pod 'TensorFlowLiteSwift/Metal'
 
 end

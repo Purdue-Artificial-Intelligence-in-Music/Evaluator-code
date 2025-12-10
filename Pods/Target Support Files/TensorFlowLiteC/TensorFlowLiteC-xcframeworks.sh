@@ -29,6 +29,12 @@ variant_for_slice()
   "TensorFlowLiteCCoreML.xcframework/ios-arm64_x86_64-simulator")
     echo "simulator"
     ;;
+  "TensorFlowLiteCMetal.xcframework/ios-arm64")
+    echo ""
+    ;;
+  "TensorFlowLiteCMetal.xcframework/ios-arm64_x86_64-simulator")
+    echo "simulator"
+    ;;
   esac
 }
 
@@ -45,6 +51,12 @@ archs_for_slice()
     echo "arm64"
     ;;
   "TensorFlowLiteCCoreML.xcframework/ios-arm64_x86_64-simulator")
+    echo "arm64 x86_64"
+    ;;
+  "TensorFlowLiteCMetal.xcframework/ios-arm64")
+    echo "arm64"
+    ;;
+  "TensorFlowLiteCMetal.xcframework/ios-arm64_x86_64-simulator")
     echo "arm64 x86_64"
     ;;
   esac
@@ -131,4 +143,5 @@ install_xcframework() {
 
 install_xcframework "${PODS_ROOT}/TensorFlowLiteC/Frameworks/TensorFlowLiteC.xcframework" "TensorFlowLiteC/Core" "framework" "ios-arm64" "ios-arm64_x86_64-simulator"
 install_xcframework "${PODS_ROOT}/TensorFlowLiteC/Frameworks/TensorFlowLiteCCoreML.xcframework" "TensorFlowLiteC/CoreML" "framework" "ios-arm64" "ios-arm64_x86_64-simulator"
+install_xcframework "${PODS_ROOT}/TensorFlowLiteC/Frameworks/TensorFlowLiteCMetal.xcframework" "TensorFlowLiteC/Metal" "framework" "ios-arm64" "ios-arm64_x86_64-simulator"
 

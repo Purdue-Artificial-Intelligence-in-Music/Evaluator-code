@@ -13,7 +13,7 @@ if let myImage = UIImage(named: "Sample Input") {
         let start = CFAbsoluteTimeGetCurrent()
         let result = detector.detect(frame: myImage)
         let diff = CFAbsoluteTimeGetCurrent() - start
-        print("Took \(diff) seconds")
+        //print("Took \(diff) seconds")
     }
 } else {
     // Image not found in the Assets Catalog
