@@ -791,17 +791,17 @@ class Detector (
         var pt2 = getIntersection(verticalTwo, xRight)
         Log.d("INTERSECTION", pt1.toString() + " " + pt2.toString())
 
-        if (pt1 == null && pt2 == null) {
+        if (pt1 == null || pt2 == null) {
             //println("One or both intersections invalid")
             Log.d("BOW", "INVALID INTERSECTION")
             return 1
         }
-        if (pt1 == null) {
-            pt1 = pt2
-        }
-        if (pt2 == null){
-            pt2 = pt1
-        }
+//        if (pt1 == null) {
+//            pt1 = pt2
+//        }
+//        if (pt2 == null){
+//            pt2 = pt1
+//        }
         return bowHeightIntersection(mutableListOf(pt1!!, pt2!!), mutableListOf(verticalOne, verticalTwo))
     }
 
@@ -925,6 +925,7 @@ class Detector (
         val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
 
         val min_angle: Double = abs(90 - min(angle_one, angle_two))
+        val other_angle =
         Log.d("angle1", min_angle.toString())
         //println("ANGLE: $min_angle")
         return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
