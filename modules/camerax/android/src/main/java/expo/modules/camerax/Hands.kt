@@ -36,13 +36,14 @@ class Hands(private val context: Context) {
         private const val LANDMARK_MODEL = "mediapipe_hand-handlandmarkdetector.tflite"
         private const val DETECTOR_INPUT_SIZE = 256
         private const val LANDMARK_INPUT_SIZE = 256
-        // Detection/landmark score gates (detector lower to tolerate blur; landmark higher to filter noise)
-        private const val DET_SCORE_THRESHOLD_DET = 0.4f
-        private const val DET_SCORE_THRESHOLD_LMK = 0.6f
-        // NMS IoU for palm detections (lower suppresses more overlaps; higher allows close hands)
-        private const val NMS_IOU = 0.1f
-        // ROI shaping: shift along wrist->middle vector (negative pulls toward fingertips), expand box
-        private const val ROI_DXY = -0.2f
+        // Detection/landmark score gates (mirror Python app; keep tighter detector gate)
+        private const val DET_SCORE_THRESHOLD_DET = 0.5f
+        private const val DET_SCORE_THRESHOLD_LMK = 0.5f
+        // NMS IoU for palm detections (match Python sample)
+        private const val NMS_IOU = 0.3f
+        // ROI shaping: shift along wrist->middle vector (negative pulls toward fingertips), expand box.
+        // Keep the negative offset as requested even though Python uses +0.5.
+        private const val ROI_DXY = -0.25f
         private const val ROI_DSCALE = 2.5f
         // IoU match threshold when assigning detections to existing tracks
         private const val MATCH_IOU_THRESHOLD = 0.2f
@@ -50,8 +51,11 @@ class Hands(private val context: Context) {
         private const val SMOOTH_ALPHA = 0.5f
         // ROI smoothing (EMA) when matching detections to existing tracks
         private const val ROI_SMOOTH_ALPHA = 0f
+        // ROI prediction: MediaPipe-style velocity EMA and small cap to limit overshoot
+        private const val ROI_PRED_ALPHA = 0.5f
+        private const val ROI_PRED_CAP_FRAC = 0.15f
         // Tracking/backoff: consider a track "fresh" for this many ms; skip detector if fresh
-        private const val TRACK_FRESH_MS = 0L
+        private const val TRACK_FRESH_MS = 100L
         // Drop tracks after this age (unless refreshed)
         private const val TRACK_MAX_AGE_MS = 1200L
         // Run detector every N frames when not forced (set to 1 to run every frame)
@@ -61,7 +65,7 @@ class Hands(private val context: Context) {
         // keypoints for rotation: wrist center idx 0, middle finger base idx 2 (from model.py)
         private const val KP_ROT_START = 0
         private const val KP_ROT_END = 2
-        // 21 landmarks expected
+        // 21 landmarks expected (to mirror Python MediaPipe hand landmark layout)
         private const val NUM_LANDMARKS = 21
 
         private enum class DelegateChoice { HTP, GPU, CPU }
@@ -76,14 +80,7 @@ class Hands(private val context: Context) {
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
-    private var lastPoseLandmarks: List<Pair<Float, Float>>? = null
-    var usePoseHandedness: Boolean = true
-    var singleBodyMode: Boolean = true
-    var bowHandIsRight: Boolean = true
     private var handClassifier: Interpreter? = null
-    private val tracks = mutableListOf<HandTrack>()
-    private var nextTrackId = 0
-    private var frameCount = 0
     // Reusable buffers to cut allocations
     private var detectorTensorImage: TensorImage? = null
     private var detectorCoordsBuf: ByteBuffer? = null
@@ -127,24 +124,11 @@ class Hands(private val context: Context) {
         val roi: FloatArray? = null
     )
 
-    private data class HandTrack(
-        val id: Int,
-        var roi: FloatArray,
-        var lastLandmarks: FloatArray?,
-        var lastUpdate: Long,
-        var lastScore: Float,
-        var lowStreak: Int = 0
-    )
-
     fun detectAndLandmark(
         bitmap: Bitmap,
         poseHints: List<List<Pair<Float, Float>>>? = null
     ): List<HandResult> {
         Log.d(TAG, "hand detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
-        if (poseHints != null && poseHints.isNotEmpty()) {
-            lastPoseLandmarks = poseHints.firstOrNull()
-        }
-        frameCount++
         val det = detector ?: return emptyList()
         val prep = MediapipeLiteRtUtil.resizePadTo(bitmap, DETECTOR_INPUT_SIZE, DETECTOR_INPUT_SIZE)
         val input = buildInputBuffer(prep.bitmap, det.getInputTensor(0))
@@ -155,64 +139,7 @@ class Hands(private val context: Context) {
 
         val lmInterp = landmark ?: return emptyList()
         val results = mutableListOf<HandResult>()
-        val nowMs = System.currentTimeMillis()
-
-        // Step 1: reuse active tracks (landmark-only pass).
-        val activeTracks = tracks.filter { nowMs - it.lastUpdate < TRACK_MAX_AGE_MS }
-        val usedIds = mutableSetOf<Int>()
-        activeTracks.forEach { track ->
-            val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
-                track.roi,
-                LANDMARK_INPUT_SIZE,
-                LANDMARK_INPUT_SIZE
-            )
-            val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE, 0)
-            val lmInput = buildInputBuffer(crop, lmInterp.getInputTensor(0))
-            val out = runLandmark(lmInterp, lmInput, lmInterp.getOutputTensor(0), lmInterp.getOutputTensor(1), lmInterp.getOutputTensor(2))
-            val score = out.first
-            val lmk = out.third
-            if (score < DET_SCORE_THRESHOLD_LMK || lmk.isEmpty()) {
-                track.lowStreak += 1
-                track.lastScore = score
-                track.lastUpdate = nowMs
-                return@forEach
-            }
-            val mapped = FloatArray(lmk.size)
-            inverse?.mapPoints(mapped, lmk)
-            track.lastLandmarks?.let { prev ->
-                if (prev.size == mapped.size) {
-                    for (i in mapped.indices) {
-                        mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
-                    }
-                }
-            }
-            track.lastLandmarks = mapped.copyOf()
-            track.lastUpdate = nowMs
-            track.lastScore = score
-            track.lowStreak = 0
-            val pairs = mutableListOf<Pair<Float, Float>>()
-            var i = 0
-            while (i < mapped.size) {
-                pairs.add(Pair(mapped[i], mapped[i + 1]))
-                i += 2
-            }
-            val handed = out.second
-            Log.d("classifcation", "hand track=${track.id} side=${if (handed) "right" else "left"} score=$score (track reuse)")
-            if (handed == bowHandIsRight) {
-                runHandClassifier(pairs)
-            }
-            results.add(HandResult(score, handed, pairs, track.roi))
-            usedIds.add(track.id)
-        }
-
-        // Step 2: detector pass to refresh/spawn tracks.
-        val hasFreshTrack = activeTracks.any { nowMs - it.lastUpdate < TRACK_FRESH_MS && it.lastScore >= DET_SCORE_THRESHOLD_LMK }
-        val shouldRunDetector = !hasFreshTrack || (frameCount % DETECTOR_PERIOD == 0)
-        if (!shouldRunDetector) {
-            tracks.removeAll { nowMs - it.lastUpdate > TRACK_MAX_AGE_MS }
-            Log.d(TAG, "hand landmarks count=${results.size}")
-            return results
-        }
+        val poseHint = poseHints?.firstOrNull()
         val anchorsLocal = anchors ?: run {
             Log.w(TAG, "Anchors missing; skipping hand detection")
             return results
@@ -251,22 +178,14 @@ class Hands(private val context: Context) {
                 out
             }
             val detObj = detObjRaw.copy(
-                x0 = (x0 / prep.originalWidth).coerceIn(0f, 1f),
-                y0 = (y0 / prep.originalHeight).coerceIn(0f, 1f),
-                x1 = (x1 / prep.originalWidth).coerceIn(0f, 1f),
-                y1 = (y1 / prep.originalHeight).coerceIn(0f, 1f),
+                x0 = (x0 / prep.originalWidth),
+                y0 = (y0 / prep.originalHeight),
+                x1 = (x1 / prep.originalWidth),
+                y1 = (y1 / prep.originalHeight),
                 keypoints = mappedKp
             )
             // Build ROI corners from keypoints and box.
             val roi = computeHandRoi(detObj, bitmap.width, bitmap.height) ?: continue
-            val matched = tracks.maxByOrNull { iou(it.roi, roi) }
-            val track = if (matched != null && iou(matched.roi, roi) > MATCH_IOU_THRESHOLD) {
-                matched.roi = smoothRoi(matched.roi, roi)
-                matched
-            } else {
-                if (tracks.size >= 2) continue
-                HandTrack(nextTrackId++, roi, null, nowMs, 0f).also { tracks.add(it) }
-            }
             val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
                 roi,
                 LANDMARK_INPUT_SIZE,
@@ -278,41 +197,25 @@ class Hands(private val context: Context) {
             val score = out.first
             val lmk = out.third
             if (score < DET_SCORE_THRESHOLD_LMK || lmk.isEmpty()) {
-                track.lowStreak += 1
-                track.lastScore = score
-                track.lastUpdate = nowMs
                 continue
             }
             val mapped = FloatArray(lmk.size)
             inverse?.mapPoints(mapped, lmk)
-            track.lastLandmarks?.let { prev ->
-                if (prev.size == mapped.size) {
-                    for (i in mapped.indices) {
-                        mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
-                    }
-                }
-            }
-            track.lastLandmarks = mapped.copyOf()
-            track.lastUpdate = nowMs
-            track.lastScore = score
-            track.lowStreak = 0
             val pairs = mutableListOf<Pair<Float, Float>>()
             var i = 0
             while (i < mapped.size) {
                 pairs.add(Pair(mapped[i], mapped[i + 1]))
                 i += 2
             }
-            val handed = out.second
-            Log.d("classifcation", "hand track=${track.id} side=${if (handed) "right" else "left"} score=$score (detector)")
-            if (handed == bowHandIsRight) {
+            val handedModel = out.second
+            val handedPose = poseHint?.let { inferHandednessFromPose(pairs, it) }
+            val handed = handedPose ?: handedModel
+            if (handed) {
                 runHandClassifier(pairs)
             }
-            if (!usedIds.contains(track.id)) {
-                results.add(HandResult(score, handed, pairs, roi))
-                usedIds.add(track.id)
-            }
+            Log.d("classifcation", "hand side=${if (handed) "right" else "left"} score=$score (detector-only) poseHint=${handedPose != null}")
+            results.add(HandResult(score, handed, pairs, roi))
         }
-        tracks.removeAll { nowMs - it.lastUpdate > TRACK_MAX_AGE_MS || it.lowStreak >= 2 }
         Log.d(TAG, "hand landmarks count=${results.size}")
         return results
     }
@@ -372,6 +275,28 @@ class Hands(private val context: Context) {
         }
         Log.d(TAG, "ROI pts=${pts.contentToString()} center=($xcPix,$ycPix) wh=($wPix,$hPix) img=($imgW,$imgH)")
         return pts
+    }
+
+    // Infer handedness using pose wrists: choose the closer wrist to the hand wrist (landmark 0).
+    private fun inferHandednessFromPose(handLandmarks: List<Pair<Float, Float>>, pose: List<Pair<Float, Float>>): Boolean? {
+        val wrist = handLandmarks.getOrNull(0) ?: return null
+        val leftPose = pose.getOrNull(15) // MediaPipe left wrist
+        val rightPose = pose.getOrNull(16) // MediaPipe right wrist
+        if (leftPose == null && rightPose == null) return null
+        val dLeft = leftPose?.let { d2(it, wrist) }
+        val dRight = rightPose?.let { d2(it, wrist) }
+        return when {
+            dLeft != null && dRight != null -> dRight < dLeft // closer to right wrist => right hand
+            dRight != null -> true
+            dLeft != null -> false
+            else -> null
+        }
+    }
+
+    private fun d2(a: Pair<Float, Float>, b: Pair<Float, Float>): Float {
+        val dx = a.first - b.first
+        val dy = a.second - b.second
+        return dx * dx + dy * dy
     }
 
     private fun setupDetector() {
@@ -726,73 +651,6 @@ class Hands(private val context: Context) {
             }
             else -> throw IllegalStateException("Unsupported type ${tensor.dataType()}")
         }
-    }
-
-    // Use pose wrist/index hints to assign side; fallback to model if pose unavailable.
-    private fun assignHandByPose(handLandmarks: List<Pair<Float, Float>>, fallback: Boolean): Boolean {
-        val pose = lastPoseLandmarks
-        if (!usePoseHandedness || pose == null || pose.isEmpty()) return fallback
-        val leftIdx = listOf(15, 19)
-        val rightIdx = listOf(16, 20)
-        val left = meanPair(pose, leftIdx)
-        val right = meanPair(pose, rightIdx)
-        if (left == null && right == null) return fallback
-        val wrist = handLandmarks.getOrNull(0) ?: return fallback
-        val distL = left?.let { d2(wrist, it) }
-        val distR = right?.let { d2(wrist, it) }
-        return when {
-            distL != null && distR != null -> distR <= distL
-            distR != null -> true
-            distL != null -> false
-            else -> fallback
-        }
-    }
-
-    private fun meanPair(pts: List<Pair<Float, Float>>, idxs: List<Int>): Pair<Float, Float>? {
-        val valid = idxs.mapNotNull { pts.getOrNull(it) }
-        if (valid.isEmpty()) return null
-        val sx = valid.sumOf { it.first.toDouble() }.toFloat()
-        val sy = valid.sumOf { it.second.toDouble() }.toFloat()
-        val n = valid.size.toFloat()
-        return Pair(sx / n, sy / n)
-    }
-
-    private fun d2(a: Pair<Float, Float>, b: Pair<Float, Float>): Float {
-        val dx = a.first - b.first
-        val dy = a.second - b.second
-        return dx * dx + dy * dy
-    }
-
-    private fun iou(roiA: FloatArray, roiB: FloatArray): Float {
-        if (roiA.size < 8 || roiB.size < 8) return 0f
-        val aMinX = min(min(roiA[0], roiA[2]), min(roiA[4], roiA[6]))
-        val aMaxX = max(max(roiA[0], roiA[2]), max(roiA[4], roiA[6]))
-        val aMinY = min(min(roiA[1], roiA[3]), min(roiA[5], roiA[7]))
-        val aMaxY = max(max(roiA[1], roiA[3]), max(roiA[5], roiA[7]))
-        val bMinX = min(min(roiB[0], roiB[2]), min(roiB[4], roiB[6]))
-        val bMaxX = max(max(roiB[0], roiB[2]), max(roiB[4], roiB[6]))
-        val bMinY = min(min(roiB[1], roiB[3]), min(roiB[5], roiB[7]))
-        val bMaxY = max(max(roiB[1], roiB[3]), max(roiB[5], roiB[7]))
-        val interX0 = max(aMinX, bMinX)
-        val interY0 = max(aMinY, bMinY)
-        val interX1 = min(aMaxX, bMaxX)
-        val interY1 = min(aMaxY, bMaxY)
-        val interW = max(0f, interX1 - interX0)
-        val interH = max(0f, interY1 - interY0)
-        val inter = interW * interH
-        val areaA = (aMaxX - aMinX) * (aMaxY - aMinY)
-        val areaB = (bMaxX - bMinX) * (bMaxY - bMinY)
-        val union = areaA + areaB - inter
-        return if (union > 0f) inter / union else 0f
-    }
-
-    private fun smoothRoi(prev: FloatArray, cur: FloatArray): FloatArray {
-        if (prev.size != cur.size) return cur
-        val out = FloatArray(prev.size)
-        for (i in prev.indices) {
-            out[i] = ROI_SMOOTH_ALPHA * prev[i] + (1f - ROI_SMOOTH_ALPHA) * cur[i]
-        }
-        return out
     }
 
     private fun runHandClassifier(landmarks: List<Pair<Float, Float>>) {

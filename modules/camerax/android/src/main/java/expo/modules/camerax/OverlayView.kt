@@ -596,7 +596,36 @@ class OverlayView @JvmOverloads constructor(
                 style = Paint.Style.FILL
                 isAntiAlias = true
             }
+            val detKpPaint = Paint().apply {
+                strokeWidth = LANDMARK_STROKE_WIDTH
+                style = Paint.Style.FILL
+                isAntiAlias = true
+            }
+            val detKpTextPaint = Paint().apply {
+                color = Color.WHITE
+                textSize = 28f
+                isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+            }
+            val detKpColors = listOf(Color.MAGENTA, Color.YELLOW, Color.CYAN, Color.RED, Color.GREEN, Color.BLUE)
+            val roiPaint = Paint().apply {
+                color = Color.GREEN
+                strokeWidth = LANDMARK_STROKE_WIDTH
+                style = Paint.Style.STROKE
+                isAntiAlias = true
+            }
             poses.forEach { pose ->
+                pose.roi?.let { r ->
+                    if (r.size >= 8) {
+                        val pts = floatArrayOf(
+                            r[0] * sx, r[1] * sy, r[2] * sx, r[3] * sy,
+                            r[0] * sx, r[1] * sy, r[4] * sx, r[5] * sy,
+                            r[2] * sx, r[3] * sy, r[6] * sx, r[7] * sy,
+                            r[4] * sx, r[5] * sy, r[6] * sx, r[7] * sy
+                        )
+                        canvas.drawLines(pts, roiPaint)
+                    }
+                }
                 val pts = pose.landmarks
                 Pose.POSE_CONNECTIONS.forEach { (a, b) ->
                     if (a < pts.size && b < pts.size) {
@@ -606,6 +635,17 @@ class OverlayView @JvmOverloads constructor(
                 }
                 pts.forEach { p ->
                     canvas.drawCircle(p.first * sx, p.second * sy, 6f, point)
+                }
+                pose.detKeypoints?.let { kps ->
+                    var i = 0
+                    while (i + 1 < kps.size) {
+                        detKpPaint.color = detKpColors[i / 2 % detKpColors.size]
+                        val cx = kps[i] * sx
+                        val cy = kps[i + 1] * sy
+                        canvas.drawCircle(cx, cy, 5f, detKpPaint)
+                        canvas.drawText((i / 2).toString(), cx, cy - 8f, detKpTextPaint)
+                        i += 2
+                    }
                 }
             }
         }

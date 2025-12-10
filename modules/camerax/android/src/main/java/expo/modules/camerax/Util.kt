@@ -213,7 +213,8 @@ object MediapipeLiteRtUtil {
         keypointStartIdx: Int = 2,
         keypointEndIdx: Int = 3,
         boxScale: Float = 1.5f,
-        rotationOffsetRad: Float = (Math.PI.toFloat() / 2f)
+        rotationOffsetRad: Float = (Math.PI.toFloat() / 2f),
+        dxy: Float = 0f
     ): FloatArray? {
         val kps = detection.keypoints ?: return null
         val kpCount = kps.size / 2
@@ -236,6 +237,10 @@ object MediapipeLiteRtUtil {
 
         val cosA = kotlin.math.cos(angle)
         val sinA = kotlin.math.sin(angle)
+        // Optional directional offset along rotation vector (positive = along vector).
+        val offset = dxy * w
+        val xcShifted = xc + offset * cosA
+        val ycShifted = yc + offset * sinA
         val hw = w / 2f
         val hh = h / 2f
 
@@ -249,8 +254,8 @@ object MediapipeLiteRtUtil {
         for (i in 0 until 4) {
             val x = pts[i * 2]
             val y = pts[i * 2 + 1]
-            pts[i * 2] = x * cosA - y * sinA + xc
-            pts[i * 2 + 1] = x * sinA + y * cosA + yc
+            pts[i * 2] = x * cosA - y * sinA + xcShifted
+            pts[i * 2 + 1] = x * sinA + y * cosA + ycShifted
         }
         return pts
     }

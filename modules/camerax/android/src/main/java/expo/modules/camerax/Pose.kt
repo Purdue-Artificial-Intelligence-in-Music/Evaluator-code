@@ -37,11 +37,12 @@ class Pose(private val context: Context) {
         // Detector input dims from model card (3x128x128)
         private const val DETECTOR_INPUT_SIZE = 128
         private const val LANDMARK_INPUT_SIZE = 256
-        private const val DET_SCORE_THRESHOLD = 0.6f
-        private const val NMS_IOU = 0.3f
-        private const val ROI_SCALE = 1.5f
+        private const val DET_SCORE_THRESHOLD = 0.2f
+        private const val LM_SCORE_THRESHOLD = 0.5f
+        private const val NMS_IOU = 0.5f
+        private const val ROI_SCALE = 1.75f
+        private const val POSE_ROI_DXY = 0f
         private const val DEFAULT_POSE_ANCHORS = "anchors_pose.npy"
-        private const val SMOOTH_ALPHA = 0.5f
 
         private enum class DelegateChoice { HTP, GPU, CPU }
 
@@ -66,7 +67,8 @@ class Pose(private val context: Context) {
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
-    private var track: PoseTrack? = null
+    private var lastRoi: FloatArray? = null
+    private var lastLandmarksArr: FloatArray? = null
     // Reusable buffers to cut allocations
     private var detectorTensorImage: TensorImage? = null
     private var coords0Buf: ByteBuffer? = null
@@ -139,7 +141,7 @@ class Pose(private val context: Context) {
 
         Log.d(TAG, "pose detector raw dets=${detections.size}")
         val nms = MediapipeLiteRtUtil.nms(detections, NMS_IOU)
-        val limited = nms.sortedByDescending { it.score }.take(1)
+        val limited = nms.sortedByDescending { it.score }.take(3)
         Log.d(TAG, "pose detector nms dets=${nms.size} capped=${limited.size}")
         return limited.map { detObj ->
             // Map back to original image coordinates.
@@ -161,10 +163,10 @@ class Pose(private val context: Context) {
                 out
             }
             detObj.copy(
-                x0 = clamp01(x0 / prep.originalWidth),
-                y0 = clamp01(y0 / prep.originalHeight),
-                x1 = clamp01(x1 / prep.originalWidth),
-                y1 = clamp01(y1 / prep.originalHeight),
+                x0 = x0 / prep.originalWidth,
+                y0 = y0 / prep.originalHeight,
+                x1 = x1 / prep.originalWidth,
+                y1 = y1 / prep.originalHeight,
                 keypoints = mappedKp
             )
         }
@@ -172,13 +174,9 @@ class Pose(private val context: Context) {
 
     data class PoseLandmarks(
         val score: Float,
-        val landmarks: List<Pair<Float, Float>>
-    )
-
-    private data class PoseTrack(
-        var roi: FloatArray,
-        var lastLandmarks: FloatArray?,
-        var lastUpdate: Long
+        val landmarks: List<Pair<Float, Float>>,
+        val roi: FloatArray? = null,
+        val detKeypoints: FloatArray? = null // normalized detector keypoints (x0,y0,...)
     )
 
     /**
@@ -187,98 +185,91 @@ class Pose(private val context: Context) {
     fun detectAndLandmark(bitmap: Bitmap): List<PoseLandmarks> {
         Log.d(TAG, "pose detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
         val lmInterp = landmark ?: return emptyList()
-        val results = mutableListOf<PoseLandmarks>()
-        val nowMs = System.currentTimeMillis()
-
-        // Step 1: try existing track.
-        track?.let { tr ->
-            if (nowMs - tr.lastUpdate < 800) {
-                val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
-                    tr.roi,
-                    LANDMARK_INPUT_SIZE,
-                    LANDMARK_INPUT_SIZE
-                )
+        // Step 1: try reuse last ROI (with smoothing) before running detector.
+        lastRoi?.let { prevRoi ->
+            val reuse = prevRoi
+            val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
+                reuse,
+                LANDMARK_INPUT_SIZE,
+                LANDMARK_INPUT_SIZE
+            )
             val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE)
             val input = buildInputBuffer(crop, lmInterp.getInputTensor(0))
-                val scoreTensor = lmInterp.getOutputTensor(0)
-                val lmkTensor = lmInterp.getOutputTensor(1)
-                val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
-                if (out.first >= DET_SCORE_THRESHOLD && out.second.isNotEmpty()) {
-                    val mapped = FloatArray(out.second.size)
-                    inverse?.mapPoints(mapped, out.second)
-                    tr.lastLandmarks?.let { prev ->
-                        if (prev.size == mapped.size) {
-                            for (i in mapped.indices) {
-                                mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
-                            }
+            val scoreTensor = lmInterp.getOutputTensor(0)
+            val lmkTensor = lmInterp.getOutputTensor(1)
+            val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
+            if (out.first >= LM_SCORE_THRESHOLD && out.second.isNotEmpty()) {
+                val mapped = FloatArray(out.second.size)
+                inverse?.mapPoints(mapped, out.second)
+                lastLandmarksArr?.let { prev ->
+                    if (prev.size == mapped.size) {
+                        for (i in mapped.indices) {
+                            mapped[i] = 0.5f * prev[i] + 0.5f * mapped[i]
                         }
                     }
-                    tr.lastLandmarks = mapped.copyOf()
-                    tr.lastUpdate = nowMs
-                    val pairs = mutableListOf<Pair<Float, Float>>()
-                    var i = 0
-                    while (i < mapped.size) {
-                        pairs.add(Pair(mapped[i], mapped[i + 1]))
-                        i += 2
-                    }
-                    Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (track)")
-                    results.add(PoseLandmarks(out.first, pairs))
                 }
+                lastLandmarksArr = mapped.copyOf()
+                val pairs = mutableListOf<Pair<Float, Float>>()
+                var i = 0
+                while (i < mapped.size) {
+                    pairs.add(Pair(mapped[i], mapped[i + 1]))
+                    i += 2
+                }
+                Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (reuse)")
+                return listOf(PoseLandmarks(out.first, pairs, reuse, null))
             }
         }
-
-        // Step 2: detector to refresh/create track if needed.
         val detections = detectPoses(bitmap)
-        if (detections.isNotEmpty()) {
-            val det = detections.first()
+        if (detections.isEmpty()) {
+            Log.d(TAG, "pose landmarks count=0")
+            return emptyList()
+        }
+        val results = mutableListOf<PoseLandmarks>()
+        for (det in detections) {
             val roiCorners = MediapipeLiteRtUtil.computePoseRoiCorners(
                 det,
                 bitmap.width,
                 bitmap.height,
-                boxScale = ROI_SCALE
+                boxScale = ROI_SCALE,
+                keypointStartIdx = 2,
+                keypointEndIdx = 3,
+                dxy = POSE_ROI_DXY
+            ) ?: continue
+            val smoothedRoi = lastRoi?.let { prev ->
+                if (prev.size == roiCorners.size) {
+                    FloatArray(prev.size) { idx ->
+                        0.5f * prev[idx] + 0.5f * roiCorners[idx]
+                    }
+                } else roiCorners
+            } ?: roiCorners
+            val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
+                smoothedRoi,
+                LANDMARK_INPUT_SIZE,
+                LANDMARK_INPUT_SIZE
             )
-            if (roiCorners != null) {
-                val matched = track?.let { if (poseIou(it.roi, roiCorners) > 0.3f) it else null }
-                val tr = matched ?: PoseTrack(roiCorners, null, nowMs).also { track = it }
-                tr.roi = roiCorners
-                val (forward, inverse) = MediapipeLiteRtUtil.buildAffineFromRoi(
-                    roiCorners,
-                    LANDMARK_INPUT_SIZE,
-                    LANDMARK_INPUT_SIZE
-                )
-                val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE)
-                val input = buildInputBuffer(crop, lmInterp.getInputTensor(0))
-                val scoreTensor = lmInterp.getOutputTensor(0)
-                val lmkTensor = lmInterp.getOutputTensor(1)
-                val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
-                if (out.first >= DET_SCORE_THRESHOLD && out.second.isNotEmpty()) {
-                    val mapped = FloatArray(out.second.size)
-                    inverse?.mapPoints(mapped, out.second)
-                    tr.lastLandmarks?.let { prev ->
-                        if (prev.size == mapped.size) {
-                            for (i in mapped.indices) {
-                                mapped[i] = SMOOTH_ALPHA * prev[i] + (1f - SMOOTH_ALPHA) * mapped[i]
-                            }
-                        }
-                    }
-                    tr.lastLandmarks = mapped.copyOf()
-                    tr.lastUpdate = nowMs
-                    val pairs = mutableListOf<Pair<Float, Float>>()
-                    var i = 0
-                    while (i < mapped.size) {
-                        pairs.add(Pair(mapped[i], mapped[i + 1]))
-                        i += 2
-                    }
-                    Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (detector)")
-                    if (results.isEmpty()) {
-                        results.add(PoseLandmarks(out.first, pairs))
-                    } else {
-                        results[0] = PoseLandmarks(out.first, pairs)
-                    }
-                }
+            val crop = reuseWarp(bitmap, forward, LANDMARK_INPUT_SIZE, LANDMARK_INPUT_SIZE)
+            val input = buildInputBuffer(crop, lmInterp.getInputTensor(0))
+            val scoreTensor = lmInterp.getOutputTensor(0)
+            val lmkTensor = lmInterp.getOutputTensor(1)
+            val out = runLandmark(lmInterp, input, scoreTensor, lmkTensor)
+            if (out.first < LM_SCORE_THRESHOLD || out.second.isEmpty()) {
+                Log.d(TAG, "pose landmarks skip (low score ${out.first})")
+                continue
             }
+            val mapped = FloatArray(out.second.size)
+            inverse?.mapPoints(mapped, out.second)
+            val pairs = mutableListOf<Pair<Float, Float>>()
+            var i = 0
+            while (i < mapped.size) {
+                pairs.add(Pair(mapped[i], mapped[i + 1]))
+                i += 2
+            }
+            Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (detector-only)")
+            lastRoi = smoothedRoi.copyOf()
+            lastLandmarksArr = mapped.copyOf()
+            results.add(PoseLandmarks(out.first, pairs, smoothedRoi, det.keypoints))
+            if (results.isNotEmpty()) break
         }
-        track?.let { if (nowMs - it.lastUpdate > 1500) track = null }
         Log.d(TAG, "pose landmarks count=${results.size}")
         return results
     }
@@ -629,6 +620,7 @@ class Pose(private val context: Context) {
             isAntiAlias = true
         }
         poses.forEach { pose ->
+            drawPoseRoi(bitmap, pose.roi, android.graphics.Color.GREEN)
             val pts = pose.landmarks
             POSE_CONNECTIONS.forEach { (a, b) ->
                 if (a < pts.size && b < pts.size) {
@@ -640,6 +632,30 @@ class Pose(private val context: Context) {
                 canvas.drawCircle(p.first, p.second, 6f, pointPaint)
             }
         }
+        return bitmap
+    }
+
+    /**
+     * Draw a pose ROI rotated-rect (tl, bl, tr, br order) on a bitmap.
+     */
+    fun drawPoseRoi(bitmap: Bitmap, roi: FloatArray?, color: Int = android.graphics.Color.GREEN): Bitmap {
+        if (roi == null || roi.size < 8) return bitmap
+        // Usage: drawPoseRoi(bitmap, roiCorners, android.graphics.Color.GREEN) where roiCorners
+        // comes from computePoseRoiCorners and is ordered TL, BL, TR, BR.
+        val canvas = android.graphics.Canvas(bitmap)
+        val roiPaint = android.graphics.Paint().apply {
+            this.color = color
+            strokeWidth = 4f
+            style = android.graphics.Paint.Style.STROKE
+            isAntiAlias = true
+        }
+        val pts = floatArrayOf(
+            roi[0], roi[1], roi[2], roi[3],
+            roi[0], roi[1], roi[4], roi[5],
+            roi[2], roi[3], roi[6], roi[7],
+            roi[4], roi[5], roi[6], roi[7]
+        )
+        canvas.drawLines(pts, roiPaint)
         return bitmap
     }
 
@@ -718,29 +734,6 @@ class Pose(private val context: Context) {
             }
             else -> throw IllegalStateException("Unsupported type ${tensor.dataType()}")
         }
-    }
-
-    private fun poseIou(roiA: FloatArray, roiB: FloatArray): Float {
-        if (roiA.size < 8 || roiB.size < 8) return 0f
-        val aMinX = min(min(roiA[0], roiA[2]), min(roiA[4], roiA[6]))
-        val aMaxX = max(max(roiA[0], roiA[2]), max(roiA[4], roiA[6]))
-        val aMinY = min(min(roiA[1], roiA[3]), min(roiA[5], roiA[7]))
-        val aMaxY = max(max(roiA[1], roiA[3]), max(roiA[5], roiA[7]))
-        val bMinX = min(min(roiB[0], roiB[2]), min(roiB[4], roiB[6]))
-        val bMaxX = max(max(roiB[0], roiB[2]), max(roiB[4], roiB[6]))
-        val bMinY = min(min(roiB[1], roiB[3]), min(roiB[5], roiB[7]))
-        val bMaxY = max(max(roiB[1], roiB[3]), max(roiB[5], roiB[7]))
-        val interX0 = max(aMinX, bMinX)
-        val interY0 = max(aMinY, bMinY)
-        val interX1 = min(aMaxX, bMaxX)
-        val interY1 = min(aMaxY, bMaxY)
-        val interW = max(0f, interX1 - interX0)
-        val interH = max(0f, interY1 - interY0)
-        val inter = interW * interH
-        val areaA = (aMaxX - aMinX) * (aMaxY - aMinY)
-        val areaB = (bMaxX - bMinX) * (bMaxY - bMinY)
-        val union = areaA + areaB - inter
-        return if (union > 0f) inter / union else 0f
     }
 
     // Reuse warp into a preallocated bitmap to reduce allocations.
