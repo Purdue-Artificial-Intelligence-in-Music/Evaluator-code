@@ -925,7 +925,6 @@ class Detector (
         val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
 
         val min_angle: Double = abs(90 - min(angle_one, angle_two))
-        val other_angle =
         Log.d("angle1", min_angle.toString())
         //println("ANGLE: $min_angle")
         return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
