@@ -499,6 +499,15 @@ class Detector (
         return bitmap
     }
 
+    /*
+     * Function to calibrate the camera.
+     * Returns 0 if correctly calibrated. 
+     */
+    
+    fun calibrate(bitmap: Bitmap): Int {
+        
+    }
+    
     fun process_frame(bitmap: Bitmap): Bitmap {
         val classificationResult = classify(detect(bitmap))
         val annotatedBitmap = drawPointsOnBitmap(

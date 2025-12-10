@@ -63,6 +63,10 @@ class CameraxView(
     private var cameraProvider: ProcessCameraProvider? = null
 
     private var detector: Detector? = null
+    private var calibrated: Boolean = false
+    private var calibration_correct: Int = 0
+    private var calibration_count: Int = 0
+
     private lateinit var handLandmarkerHelper: HandLandmarkerHelper
 
     private val profile = Profile()
@@ -335,9 +339,8 @@ class CameraxView(
                     lensType != CameraSelector.LENS_FACING_BACK
                 )
 
+
                  */
-
-
 
                 // Rotate + mirror if needed
                 val matrix = Matrix().apply {
@@ -377,8 +380,23 @@ class CameraxView(
     override fun detected(results: Detector.YoloResults, sourceWidth: Int, sourceHeight: Int) {
         if (!isDetectionEnabled) return
         val bowPoints = detector?.classify(results)
-        if (bowPoints != null) {
-            profile.addSessionData(userId, bowPoints)
+        if (calibrated) {
+            if (bowPoints != null) {
+                profile.addSessionData(userId, bowPoints)
+            }
+        } else {
+            calibration_count++
+            calibration_correct++
+            if (calibration_count == 30) {
+                if (calibration_correct / ((Double) calibration_count) > .6) {
+                    calibrated = true
+                }
+                calibration_count = 0
+                calibration_correct = 0
+            }
+            /*
+            * Add some function here to update overlay with information for calibration
+            */
         }
         latestBowResults = bowPoints
         updateOverlay()
@@ -387,6 +405,12 @@ class CameraxView(
 
     override fun noDetect() {
         if (!isDetectionEnabled) return
+        if (!calibrated) {
+            calibration_count++
+            /*
+             * Add some function here to update overlay with information for calibration
+             */
+        }
         latestBowResults = Detector.returnBow(-2, null, null, 0)
         updateOverlay()
         onNoDetection(mapOf("message" to "No objects detected"))
@@ -398,6 +422,10 @@ class CameraxView(
     }
 
     override fun onResults(resultBundle: HandLandmarkerHelper.CombinedResultBundle) {
+        if (!isDetectionEnabled) returna
+        if (calibrated) {
+            profile.addSessionData(userId, resultBundle)
+        }
         if (!isDetectionEnabled) return
         overlayView.setFrontCameraState(lensType == CameraSelector.LENS_FACING_FRONT)
         profile.addSessionData(userId, resultBundle)
