@@ -176,8 +176,6 @@ class CameraxView(
                 "userId" to userId,
                 "timestamp" to summary.timestamp
             )
-
-            Log.d("SessionImages", "Sending session summary: $summaryMap")
             onSessionEnd(summaryMap)
         } catch (e: Exception) {
             Log.e(TAG, "Error sending session summary", e)
