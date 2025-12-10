@@ -85,6 +85,22 @@ class OverlayView @JvmOverloads constructor(
     private val issueHoldDuration = 3000L // 3 seconds in milliseconds
     private var issueMinDisplayTime: Long = 1000 // must remain visible 1s after disappearing
 
+    private val issueFrequency = mutableMapOf<String, Int>()
+
+    private val MAX_LINES = 2 // max instructions displayed
+
+    // Helper function to count frequency of issues during session
+    private fun recordIssue(message: String) {
+        if (message.isEmpty()) return
+        issueFrequency[message] = (issueFrequency[message] ?: 0) + 1
+    }
+
+    private var isFrontCameraActive: Boolean = false
+
+    fun setFrontCameraState(isFront: Boolean) {
+        isFrontCameraActive = isFront
+    }
+
     companion object {
         // Classification constants
         const val CLASS_NONE = -2
@@ -372,6 +388,7 @@ class OverlayView @JvmOverloads constructor(
             }
 
             if (bowMessage.isNotEmpty()) {
+                recordIssue(bowMessage)
                 if (bowMessage == lastBowIssue) {
                     if (now - bowIssueStartTime >= issueHoldDuration) {
                         displayBowIssue = bowMessage
@@ -400,6 +417,7 @@ class OverlayView @JvmOverloads constructor(
             }
 
             if (angleMessage.isNotEmpty()) {
+                recordIssue(angleMessage)
                 if (angleMessage == lastAngleIssue) {
                     if (now - angleIssueStartTime >= issueHoldDuration) {
                         displayAngleIssue = angleMessage
@@ -453,6 +471,7 @@ class OverlayView @JvmOverloads constructor(
 
         }
 
+        /*
         if (displayBowIssue != null) {
             val textWidth = textPaint.measureText(displayBowIssue)
             val fm = textPaint.fontMetrics
@@ -486,6 +505,7 @@ class OverlayView @JvmOverloads constructor(
             canvas.drawText(displayAngleIssue!!, centerX, currentY, textPaint)
             currentY += (fm.bottom - fm.top) + lineSpacing
         }
+        */
 
         // Parse hand classification
         val handClassRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
@@ -511,6 +531,7 @@ class OverlayView @JvmOverloads constructor(
                 else -> "good_pronation"
             }
             if (currentHandIssue.isNotEmpty()) {
+                recordIssue(currentHandIssue)
                 file_list.add(wristFileLabel)
                 if (currentHandIssue == lastHandIssue) {
                     if (now - handIssueStartTime >= issueHoldDuration) {
@@ -532,6 +553,7 @@ class OverlayView @JvmOverloads constructor(
                 }
             }
 
+            /*
             if (displayHandIssue != null) {
 
                 val textWidth = textPaint.measureText(displayHandIssue)
@@ -550,6 +572,7 @@ class OverlayView @JvmOverloads constructor(
 
                 currentY += (fm.bottom - fm.top) + lineSpacing
             }
+            */
         } else {
             file_list.add("good_pronation")
         }
@@ -567,6 +590,7 @@ class OverlayView @JvmOverloads constructor(
                 else -> "good_elbow"
             }
             if (currentPoseIssue.isNotEmpty()) {
+                recordIssue(currentPoseIssue)
                 file_list.add(pose_file_name)
                 if (currentPoseIssue == lastPoseIssue) {
                     if (now - poseIssueStartTime >= issueHoldDuration) {
@@ -588,6 +612,7 @@ class OverlayView @JvmOverloads constructor(
                 }
             }
 
+            /*
             if (displayPoseIssue != null) {
 
                 val textWidth = textPaint.measureText(displayPoseIssue)
@@ -604,8 +629,39 @@ class OverlayView @JvmOverloads constructor(
 
                 canvas.drawText(displayPoseIssue!!, centerX, currentY, textPaint)
             }
-        } else {
+            */
+        }
+         else {
             file_list.add("good_elbow")
+        }
+
+        // display most frequent issues
+        val activeIssues = mutableListOf<String>()
+        displayBowIssue?.let { activeIssues.add(it) }
+        displayAngleIssue?.let { activeIssues.add(it) }
+        displayHandIssue?.let { activeIssues.add(it) }
+        displayPoseIssue?.let { activeIssues.add(it) }
+
+        if (activeIssues.isNotEmpty()) {
+            val fm = textPaint.fontMetrics
+            val lineHeight = fm.bottom - fm.top
+
+            // sort by how often the issue has occurred, descending
+            val sortedIssues = activeIssues.sortedByDescending { issueFrequency[it] ?: 0 }
+
+            sortedIssues.take(MAX_LINES).forEach { message ->
+                val textWidth = textPaint.measureText(message)
+
+                val left = centerX - textWidth / 2 - padding
+                val top = currentY + fm.top - padding
+                val right = centerX + textWidth / 2 + padding
+                val bottom = currentY + fm.bottom + padding
+
+                canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+                canvas.drawText(message, centerX, currentY, textPaint)
+
+                currentY += lineHeight + lineSpacing
+            }
         }
 
         file_list.forEach { fName ->
@@ -618,7 +674,12 @@ class OverlayView @JvmOverloads constructor(
         val pose = poseLandmarkerResult?.landmarks() ?: return null
         if (hands.isEmpty() || pose.isEmpty() || pose[0].size <= 16) return null
 
-        val poseHand = pose[0][16]
+        // Select which wrist landmark to use
+        val wristIndex = if (isFrontCameraActive) 15 else 16
+        
+        if (pose[0].size <= wristIndex) return null
+        
+        val poseHand = pose[0][wristIndex]
         val px = poseHand.x()
         val py = poseHand.y()
 
@@ -680,6 +741,7 @@ class OverlayView @JvmOverloads constructor(
         handDetect = ""
         poseDetect = ""
         postInvalidate() // remove drawings
+        issueFrequency.clear()
     }
 
 
