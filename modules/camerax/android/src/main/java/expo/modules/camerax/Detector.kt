@@ -39,7 +39,7 @@ class Detector (
     private var qnnDelegate: QnnDelegate? = null
     private var tfliteGpu: GpuDelegate? = null
     private enum class DelegateChoice { HTP, GPU, CPU }
-    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.HTP
+    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.CPU
 
     private var tensorWidth = 0
     private var tensorHeight = 0

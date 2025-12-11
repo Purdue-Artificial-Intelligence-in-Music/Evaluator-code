@@ -61,8 +61,8 @@ class Pose(private val context: Context) {
     private var landmark: Interpreter? = null
     private var qnnDelegate: QnnDelegate? = null
     private var gpuDelegate: GpuDelegate? = null
-    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.HTP
-    private var landmarkDelegateChoice: DelegateChoice = DelegateChoice.HTP
+    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.CPU
+    private var landmarkDelegateChoice: DelegateChoice = DelegateChoice.CPU
     private var detectorInputType: DataType = DataType.FLOAT32
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
