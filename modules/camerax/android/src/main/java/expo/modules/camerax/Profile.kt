@@ -218,9 +218,9 @@ class Profile {
 
             bowFrames.forEach { frame ->
                 when (frame.classification) {
-                    3 -> heightCounts["Top"] = heightCounts["Top"]!! + 1
+                    2 -> heightCounts["Top"] = heightCounts["Top"]!! + 1
                     0 -> heightCounts["Middle"] = heightCounts["Middle"]!! + 1
-                    2 -> heightCounts["Bottom"] = heightCounts["Bottom"]!! + 1
+                    3 -> heightCounts["Bottom"] = heightCounts["Bottom"]!! + 1
                     1 -> heightCounts["Outside"] = heightCounts["Outside"]!! + 1
                     else -> heightCounts["Unknown"] = heightCounts["Unknown"]!! + 1
                 }
