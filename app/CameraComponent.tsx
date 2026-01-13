@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert, Image } from 'react-native';
 
 import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -47,6 +47,14 @@ interface SummaryData {
   sessionDuration?: string;
 }
 
+interface CategorizedImages {
+  bowHeight: string[];  // bow_too_high, correct_bow, (bow_outside_zone)
+  bowAngle: string[];   // correct_angle, incorrect_angle
+  handPosture: string[]; // good_pronation, supination
+  elbowPosture: string[]; // good_elbow, high_elbow, low_elbow
+  all: string[];
+}
+
 const CameraComponent = ({ startDelay, onClose }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
@@ -74,6 +82,16 @@ const CameraComponent = ({ startDelay, onClose }) => {
 
   const SESSIONS_PER_PAGE = 5;
   const TOTAL_SESSIONS = 15;
+
+  const [sessionImages, setSessionImages] = useState<CategorizedImages>({
+    bowHeight: [],
+    bowAngle: [],
+    handPosture: [],
+    elbowPosture: [],
+    all: []
+  });
+  const [isLoadingImages, setIsLoadingImages] = useState(false);
+
   // Total playing time
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
 
@@ -117,6 +135,14 @@ const CameraComponent = ({ startDelay, onClose }) => {
       // load history session
       const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
       
+      console.log('=== LOADED SESSIONS ===');
+      console.log('Number of sessions:', sessions.length);
+      if (sessions.length > 0) {
+        console.log('First session:', JSON.stringify(sessions[0], null, 2));
+        console.log('First session timestamp:', sessions[0].timestamp);
+        console.log('First session userId:', sessions[0].userId);
+      }
+      
       if (sessions && sessions.length > 0) {
         setHistorySessions(sessions as SummaryData[]);
         setHistoryVisible(true);
@@ -133,6 +159,129 @@ const CameraComponent = ({ startDelay, onClose }) => {
     }
   };
 
+  const categorizeImages = (imagePaths: string[]): CategorizedImages => {
+    const categorized: CategorizedImages = {
+      bowHeight: [],
+      bowAngle: [],
+      handPosture: [],
+      elbowPosture: [],
+      all: imagePaths
+    };
+
+    console.log('=== CATEGORIZING IMAGES ===');
+    imagePaths.forEach((path, index) => {
+      const fileName = path.toLowerCase();
+      console.log(`Image ${index}: ${path.split('/').pop()}`);
+      
+      // Bow Height: bow_too_high, correct_bow
+      // TODO: bow_outside_zone
+      if (fileName.includes('bow_too_high') || fileName.includes('correct_bow')) {
+        categorized.bowHeight.push(path);
+        console.log(`  -> Categorized as bowHeight`);
+      }
+      
+      // Bow Angle: correct_angle, incorrect_angle
+      if (fileName.includes('correct_angle') || fileName.includes('incorrect_angle')) {
+        categorized.bowAngle.push(path);
+        console.log(`  -> Categorized as bowAngle`);
+      }
+      
+      // Hand Posture: good_pronation, supination
+      if (fileName.includes('good_pronation') || fileName.includes('supination')) {
+        categorized.handPosture.push(path);
+        console.log(`  -> Categorized as handPosture`);
+      }
+      
+      // Elbow Posture: good_elbow, high_elbow, low_elbow
+      if (fileName.includes('good_elbow') || fileName.includes('high_elbow') || fileName.includes('low_elbow')) {
+        categorized.elbowPosture.push(path);
+        console.log(`  -> Categorized as elbowPosture`);
+      }
+    });
+
+    console.log('=== CATEGORIZATION SUMMARY ===');
+    console.log('Bow Height images:', categorized.bowHeight.length);
+    console.log('Bow Angle images:', categorized.bowAngle.length);
+    console.log('Hand Posture images:', categorized.handPosture.length);
+    console.log('Elbow Posture images:', categorized.elbowPosture.length);
+    console.log('Total images:', categorized.all.length);
+
+    return categorized;
+  };
+
+  const getImagesForSection = (sectionKey: string): string[] => {
+    switch (sectionKey) {
+      case 'bowHeight':
+        return sessionImages.bowHeight;
+      case 'bowAngle':
+        return sessionImages.bowAngle;
+      case 'handPosture':
+        return sessionImages.handPosture;
+      case 'elbowPosture':
+        return sessionImages.elbowPosture;
+      default:
+        return sessionImages.all;
+    }
+  };
+
+  const loadSessionImages = async (session: SummaryData) => {
+    if (!session.timestamp || !session.userId) {
+      console.error('=== MISSING SESSION INFO ===');
+      console.log('Session data:', JSON.stringify(session, null, 2));
+      Alert.alert('Error', 'Missing session information');
+      return;
+    }
+
+    console.log('=== LOADING IMAGES ===');
+    console.log('Session userId:', session.userId);
+    console.log('Session timestamp:', session.timestamp);
+    console.log('Session timestamp type:', typeof session.timestamp);
+    console.log('Full session data:', JSON.stringify(session, null, 2));
+
+    setIsLoadingImages(true);
+    try {
+      const images = await CameraxModule.getSessionImages(
+        session.userId,
+        session.timestamp
+      );
+      
+      console.log('=== RAW IMAGES LOADED ===');
+      console.log('Number of images:', images.length);
+      if (images.length > 0) {
+        console.log('First 3 image paths:');
+        images.slice(0, 3).forEach((img, idx) => {
+          console.log(`  ${idx + 1}. ${img}`);
+        });
+        
+        const categorized = categorizeImages(images);
+        setSessionImages(categorized);
+      } else {
+        console.warn('No images found for this session');
+        console.log('Expected path format: /Documents/sessions/{userId}/{timestamp}/*.png');
+        setSessionImages({
+          bowHeight: [],
+          bowAngle: [],
+          handPosture: [],
+          elbowPosture: [],
+          all: []
+        });
+      }
+    } catch (error) {
+      console.error('=== ERROR LOADING IMAGES ===');
+      console.error('Error:', error);
+      Alert.alert('Error', 'Failed to load session images');
+      setSessionImages({
+        bowHeight: [],
+        bowAngle: [],
+        handPosture: [],
+        elbowPosture: [],
+        all: []
+      });
+    } finally {
+      setIsLoadingImages(false);
+    }
+  };
+
   const handleSessionEnd = async (event: any) => {
     const {
       heightBreakdown,
@@ -144,6 +293,11 @@ const CameraComponent = ({ startDelay, onClose }) => {
       userId: eventUserId,
       timestamp
     } = event.nativeEvent;
+
+    console.log('=== SESSION END EVENT ===');
+    console.log('Event userId:', eventUserId);
+    console.log('Event timestamp:', timestamp);
+    console.log('Event timestamp type:', typeof timestamp);
 
     let finalDuration = "0s";
     if (sessionStartTime) {
@@ -195,7 +349,17 @@ const CameraComponent = ({ startDelay, onClose }) => {
 
   // Detail modal helpers
   const openDetail = (sectionKey: string) => {
+    console.log('=== OPENING DETAIL ===');
+    console.log('Section:', sectionKey);
     setSelectedDetailSection(sectionKey);
+    
+    // load image
+    if (summaryData) {
+      console.log('Loading images for current summary data');
+      loadSessionImages(summaryData);
+    } else {
+      console.warn('No summaryData available');
+    }
   };
 
   const closeDetail = () => {
@@ -470,7 +634,13 @@ const CameraComponent = ({ startDelay, onClose }) => {
                         <TouchableOpacity
                           key={actualIndex}
                           style={styles.historyItem}
-                          onPress={() => setSelectedHistoryIndex(actualIndex)}
+                          onPress={() => {
+                            console.log('=== HISTORY ITEM CLICKED ===');
+                            console.log('Actual index:', actualIndex);
+                            console.log('Session:', JSON.stringify(session, null, 2));
+                            setSelectedHistoryIndex(actualIndex);
+                            loadSessionImages(historySessions[actualIndex]);
+                          }}
                         >
                           <Text style={styles.historyItemTitle}>
                             Session {actualIndex + 1}
@@ -605,16 +775,54 @@ const CameraComponent = ({ startDelay, onClose }) => {
                 {selectedDetailSection === 'elbowPosture' && 'Elbow Posture Details'}
               </Text>
 
-              <View style={styles.detailImagePlaceholder}>
-                <Text style={styles.detailImageText}>
-                  Screenshot / posture example (mock)
-                </Text>
-              </View>
+              {/* Images section */}
+              {isLoadingImages ? (
+                <View style={styles.detailImagePlaceholder}>
+                  <Text style={styles.detailImageText}>Loading images...</Text>
+                </View>
+              ) : getImagesForSection(selectedDetailSection || '').length > 0 ? (
+                <>
+                  <Text style={styles.imageCountText}>
+                    {getImagesForSection(selectedDetailSection || '').length} images found
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                    {getImagesForSection(selectedDetailSection || '').map((imagePath, index) => {
+                      console.log(`Rendering image ${index}:`, imagePath);
+                      return (
+                        <View key={index} style={styles.imageContainer}>
+                          <Image
+                            source={{ uri: `file://${imagePath}` }}
+                            style={styles.detailImage}
+                            resizeMode="contain"
+                            onError={(error) => {
+                              console.error(`Image ${index} failed to load:`, error.nativeEvent.error);
+                            }}
+                            onLoad={() => {
+                              console.log(`Image ${index} loaded successfully`);
+                            }}
+                          />
+                          <Text style={styles.imageLabel}>
+                            {imagePath.split('/').pop()?.split('.')[0].replace(/_/g, ' ')}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                </>
+              ) : (
+                <View style={styles.detailImagePlaceholder}>
+                  <Text style={styles.detailImageText}>
+                    No images available for this section
+                  </Text>
+                  <Text style={styles.detailImageSubtext}>
+                    Total images loaded: {sessionImages.all.length}
+                  </Text>
+                </View>
+              )}
 
               <Text style={styles.detailText}>
-                This is a "View more" panel. You can add real screenshots
-                and detailed guidance for what correct posture looks like and how
-                to fix common mistakes.
+                This panel shows screenshots from your session categorized by posture type.
+                Review your technique across different moments during practice.
               </Text>
 
               <Button title="Close" onPress={closeDetail} />

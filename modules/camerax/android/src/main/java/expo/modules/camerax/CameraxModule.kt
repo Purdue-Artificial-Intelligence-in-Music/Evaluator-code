@@ -103,11 +103,20 @@ class CameraxModule : Module() {
     private fun getSessionImagesImpl(userId: String, timestamp: String): List<String> {
         val images = mutableListOf<String>()
         try {
+            // convert timestamp
+            // eg. from "2025-12-09 01:13:48" to "20251209_011348"
+            val normalizedTimestamp = normalizeTimestampToFolderName(timestamp)
+
+            Log.d("SessionImages", "Original timestamp: $timestamp")
+            Log.d("SessionImages", "Normalized timestamp: $normalizedTimestamp")
+
             // Build the session directory path
             val sessionDir = File(
-                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOCUMENTS),
-                "sessions/$userId/$timestamp"
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                "sessions/$userId/$normalizedTimestamp"
             )
+
+            Log.d("SessionImages", "Looking for images in: ${sessionDir.absolutePath}")
 
             if (!sessionDir.exists() || !sessionDir.isDirectory) {
                 Log.w("SessionImages", "Session directory does not exist: ${sessionDir.absolutePath}")
@@ -121,7 +130,7 @@ class CameraxModule : Module() {
             } ?: emptyArray()
 
             imageFiles.sortedBy { it.name }.forEach { file ->
-                images.add(file.absolutePath) // or file.toURI().toString() for a URI
+                images.add(file.absolutePath)
                 Log.d("SessionImages", "Found image: ${file.absolutePath}")
             }
 
@@ -130,6 +139,20 @@ class CameraxModule : Module() {
         }
 
         return images
+    }
+
+    private fun normalizeTimestampToFolderName(timestamp: String): String {
+        try {
+            // input format: "2025-12-09 01:13:48"
+            // output format: "20251209_011348"
+            val cleaned = timestamp.replace("-", "").replace(" ", "_").replace(":", "")
+
+            Log.d("SessionImages", "Timestamp conversion: $timestamp -> $cleaned")
+            return cleaned
+        } catch (e: Exception) {
+            Log.e("SessionImages", "Error normalizing timestamp: ${e.message}", e)
+            return timestamp
+        }
     }
 
 

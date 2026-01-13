@@ -392,10 +392,10 @@ export const styles = StyleSheet.create({
   },
   sectionHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',  // 改这里：从 'flex-end' 改成 'space-between'
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 6,
-    marginBottom: 8,  // 添加底部间距
+    marginBottom: 8,
   },
   viewMoreButton: {
     paddingHorizontal: 10,
@@ -435,5 +435,40 @@ export const styles = StyleSheet.create({
   detailImageText: {
     fontSize: 14,
     color: '#555',
+  },
+  imageContainer: {
+  marginRight: 10,
+  alignItems: 'center',
+},
+  detailImage: {
+    width: 250,
+    height: 350,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  imageLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
+    maxWidth: 250,
+  },
+  imageCountText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  detailImageSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 8,
+  },
+  detailText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 16,
   },
 });

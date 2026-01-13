@@ -11,23 +11,23 @@ import java.util.concurrent.TimeUnit
 
 class Profile {
 
-        companion object {
-            private var ts: String = ""
-            private var id: String = ""
+    companion object {
+        private var ts: String = ""
+        private var id: String = ""
 
-            fun setSession(userId: String, timestamp: String) {
-                id = userId
-                ts = timestamp
-            }
-
-            fun getTimeStamp(): String {
-                return ts
-            }
-
-            fun getUserId(): String {
-                return id
-            }
+        fun setSession(userId: String, timestamp: String) {
+            id = userId
+            ts = timestamp
         }
+
+        fun getTimeStamp(): String {
+            return ts
+        }
+
+        fun getUserId(): String {
+            return id
+        }
+    }
 
     data class SessionSummary(
         val heightBreakdown: Map<String, Double>,
@@ -35,13 +35,23 @@ class Profile {
         val handPresenceBreakdown: Map<String, Double>,
         val handPostureBreakdown: Map<String, Double>,
         val posePresenceBreakdown: Map<String, Double>,
-        val elbowPostureBreakdown: Map<String, Double>
+        val elbowPostureBreakdown: Map<String, Double>,
+        val timestamp: String
     )
 
     private val sessionDict: MutableMap<String, MutableList<Any>> = mutableMapOf()
     private val scheduler = Executors.newScheduledThreadPool(1)
     private val outputFiles: MutableMap<String, File> = mutableMapOf()
     private val sessionTimestamps: MutableMap<String, String> = mutableMapOf() // store timestamp when session began
+    private val sessionTimestampsFormatted: MutableMap<String, String> = mutableMapOf()
+
+    // Accumulation counter used for session summary
+    private val accumulatedHeightCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
+    private val accumulatedAngleCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
+    private val accumulatedHandCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
+    private val accumulatedPoseCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
+    private val accumulatedHandPostureCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
+    private val accumulatedElbowPostureCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
 
     private var ts: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
     private var id: String = ""
@@ -55,14 +65,29 @@ class Profile {
                 ), "sessions"
             )
             if (!baseDir.exists()) baseDir.mkdirs()
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
 
-            //populate globals to grab in other classes
+            val now = Date()
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(now)
+            val timestampFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(now)
+
             setSession(userId, timestamp)
 
-            sessionTimestamps[userId] = timestamp // 保存timestamp
+            sessionTimestamps[userId] = timestamp
+            sessionTimestampsFormatted[userId] = timestampFormatted
 
-            // 创建详细数据文件（不包含最终summary）
+            // initialize counters
+            accumulatedHeightCounts[userId] = mutableMapOf("Top" to 0, "Middle" to 0, "Bottom" to 0, "Outside" to 0, "Unknown" to 0)
+            accumulatedAngleCounts[userId] = mutableMapOf("Correct" to 0, "Wrong" to 0, "Unknown" to 0)
+            accumulatedHandCounts[userId] = mutableMapOf("Detected" to 0, "None" to 0)
+            accumulatedPoseCounts[userId] = mutableMapOf("Detected" to 0, "None" to 0)
+            accumulatedHandPostureCounts[userId] = mutableMapOf()
+            accumulatedElbowPostureCounts[userId] = mutableMapOf()
+
+            android.util.Log.d("Profile", "Session created for $userId")
+            android.util.Log.d("Profile", "Timestamp (file): $timestamp")
+            android.util.Log.d("Profile", "Timestamp (json): $timestampFormatted")
+
+            // create file with detail breakdown（without summary）
             val file = File(baseDir, "session_${userId}_$timestamp.json")
 
             // Write initial user ID at top of JSON
@@ -93,14 +118,18 @@ class Profile {
         val file = outputFiles[userId]
         val session = sessionDict[userId] ?: return null
 
-        if (session.isEmpty()) {
-            sessionDict.remove(userId)
-            outputFiles.remove(userId)
-            sessionTimestamps.remove(userId)
-            return null
+        // Add remaining data in the last interval before ending to the details file
+        if (session.isNotEmpty()) {
+            val currentTimestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            val windowSummary = analyzeSessionWindow(session, currentTimestamp, userId)
+            val jsonSummary = formatSummaryAsJson(windowSummary, userId)
+
+            FileWriter(file, true).use { writer ->
+                writer.write("$jsonSummary,")
+            }
         }
 
-        // finalize JSON file with details
+        // Finalize details file
         if (file != null) {
             FileWriter(file, true).use { writer ->
                 val fileContent = file.readText()
@@ -111,15 +140,27 @@ class Profile {
             }
         }
 
-        // create JSON file with summary
-        val summary = analyzeSession(session)
-        saveSummaryFile(userId, summary)
+        // Create session summary file
+        val sessionStartTimestamp = sessionTimestampsFormatted[userId]
+            ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
+        val totalSummary = generateTotalSummary(userId, sessionStartTimestamp)
+
+        saveSummaryFile(userId, totalSummary)
+
+        // Reset
         sessionDict.remove(userId)
         outputFiles.remove(userId)
         sessionTimestamps.remove(userId)
+        sessionTimestampsFormatted.remove(userId)
+        accumulatedHeightCounts.remove(userId)
+        accumulatedAngleCounts.remove(userId)
+        accumulatedHandCounts.remove(userId)
+        accumulatedPoseCounts.remove(userId)
+        accumulatedHandPostureCounts.remove(userId)
+        accumulatedElbowPostureCounts.remove(userId)
 
-        return summary
+        return totalSummary
     }
 
     private fun saveSummaryFile(userId: String, summary: SessionSummary) {
@@ -148,7 +189,8 @@ class Profile {
     private fun appendNewBreakdown(userId: String) {
         val session = sessionDict[userId] ?: return
         if (session.isEmpty()) return
-        val summary = analyzeSession(session)
+        val currentTimestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        val summary = analyzeSessionWindow(session, currentTimestamp, userId)
         val jsonSummary = formatSummaryAsJson(summary, userId)
         val file = outputFiles[userId] ?: return
 
@@ -159,38 +201,9 @@ class Profile {
         sessionDict[userId]?.clear()
     }
 
-    private fun formatSummaryAsJson(summary: SessionSummary, userId: String): String {
-        val json = buildString {
-            append("{")
-            append("\"user_id\":\"$userId\",")
-            append("\"timestamp\":\"${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\",")
-            append("\"heightBreakdown\":${mapToJson(summary.heightBreakdown)},")
-            append("\"angleBreakdown\":${mapToJson(summary.angleBreakdown)},")
-            append("\"handPresenceBreakdown\":${mapToJson(summary.handPresenceBreakdown)},")
-            append("\"handPostureBreakdown\":${mapToJson(summary.handPostureBreakdown)},")
-            append("\"posePresenceBreakdown\":${mapToJson(summary.posePresenceBreakdown)},")
-            append("\"elbowPostureBreakdown\":${mapToJson(summary.elbowPostureBreakdown)}")
-            append("}")
-        }
-        return json
-    }
-
-    private fun mapToJson(map: Map<String, Double>): String {
-        return map.entries.joinToString(prefix = "{", postfix = "}", separator = ",") { (key, value) ->
-            "\"$key\":$value"
-        }
-    }
-
-    fun getTimeStamp(): String {
-        return ts
-    }
-
-    fun getUserId(): String {
-        return id
-    }
-
-    fun analyzeSession(session: List<Any>): SessionSummary {
-        if (session.isEmpty()) return emptySummary()
+    private fun analyzeSessionWindow(session: List<Any>, timestamp: String, userId: String): SessionSummary {
+        // analyze curren session interval
+        if (session.isEmpty()) return emptySummary(timestamp)
 
         val bowFrames = session.filterIsInstance<returnBow>()
         val combinedFrames = session.filterIsInstance<CombinedResultBundle>()
@@ -205,9 +218,9 @@ class Profile {
 
             bowFrames.forEach { frame ->
                 when (frame.classification) {
-                    3 -> heightCounts["Top"] = heightCounts["Top"]!! + 1
+                    2 -> heightCounts["Top"] = heightCounts["Top"]!! + 1
                     0 -> heightCounts["Middle"] = heightCounts["Middle"]!! + 1
-                    2 -> heightCounts["Bottom"] = heightCounts["Bottom"]!! + 1
+                    3 -> heightCounts["Bottom"] = heightCounts["Bottom"]!! + 1
                     1 -> heightCounts["Outside"] = heightCounts["Outside"]!! + 1
                     else -> heightCounts["Unknown"] = heightCounts["Unknown"]!! + 1
                 }
@@ -216,6 +229,13 @@ class Profile {
                     1 -> angleCounts["Wrong"] = angleCounts["Wrong"]!! + 1
                     else -> angleCounts["Unknown"] = angleCounts["Unknown"]!! + 1
                 }
+            }
+            // Record the counts
+            heightCounts.forEach { (key, value) ->
+                accumulatedHeightCounts[userId]!![key] = accumulatedHeightCounts[userId]!!.getOrDefault(key, 0) + value
+            }
+            angleCounts.forEach { (key, value) ->
+                accumulatedAngleCounts[userId]!![key] = accumulatedAngleCounts[userId]!!.getOrDefault(key, 0) + value
             }
 
             heightBreakdown = heightCounts.mapValues { (it.value / total) * 100 }
@@ -266,6 +286,19 @@ class Profile {
                     poseCounts["None"] = poseCounts["None"]!! + 1
                 }
             }
+            // Record the counts
+            handCounts.forEach { (key, value) ->
+                accumulatedHandCounts[userId]!![key] = accumulatedHandCounts[userId]!!.getOrDefault(key, 0) + value
+            }
+            poseCounts.forEach { (key, value) ->
+                accumulatedPoseCounts[userId]!![key] = accumulatedPoseCounts[userId]!!.getOrDefault(key, 0) + value
+            }
+            handPostureCounts.forEach { (key, value) ->
+                accumulatedHandPostureCounts[userId]!![key] = accumulatedHandPostureCounts[userId]!!.getOrDefault(key, 0) + value
+            }
+            elbowPostureCounts.forEach { (key, value) ->
+                accumulatedElbowPostureCounts[userId]!![key] = accumulatedElbowPostureCounts[userId]!!.getOrDefault(key, 0) + value
+            }
 
             handPresenceBreakdown = handCounts.mapValues { (it.value / total) * 100 }
             posePresenceBreakdown = poseCounts.mapValues { (it.value / total) * 100 }
@@ -279,20 +312,95 @@ class Profile {
             handPresenceBreakdown,
             handPostureBreakdown,
             posePresenceBreakdown,
-            elbowPostureBreakdown
+            elbowPostureBreakdown,
+            timestamp
         )
     }
 
-    private fun emptySummary(): SessionSummary {
-        return SessionSummary(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap())
+    private fun generateTotalSummary(userId: String, timestamp: String): SessionSummary {
+        val heightCounts = accumulatedHeightCounts[userId] ?: mutableMapOf()
+        val angleCounts = accumulatedAngleCounts[userId] ?: mutableMapOf()
+        val handCounts = accumulatedHandCounts[userId] ?: mutableMapOf()
+        val poseCounts = accumulatedPoseCounts[userId] ?: mutableMapOf()
+        val handPostureCounts = accumulatedHandPostureCounts[userId] ?: mutableMapOf()
+        val elbowPostureCounts = accumulatedElbowPostureCounts[userId] ?: mutableMapOf()
+
+        val heightTotal = heightCounts.values.sum().toDouble()
+        val heightBreakdown = if (heightTotal > 0) {
+            heightCounts.mapValues { (it.value / heightTotal) * 100 }
+        } else {
+            emptyMap()
+        }
+
+        val angleTotal = angleCounts.values.sum().toDouble()
+        val angleBreakdown = if (angleTotal > 0) {
+            angleCounts.mapValues { (it.value / angleTotal) * 100 }
+        } else {
+            emptyMap()
+        }
+
+        val handTotal = handCounts.values.sum().toDouble()
+        val handPresenceBreakdown = if (handTotal > 0) {
+            handCounts.mapValues { (it.value / handTotal) * 100 }
+        } else {
+            emptyMap()
+        }
+
+        val poseTotal = poseCounts.values.sum().toDouble()
+        val posePresenceBreakdown = if (poseTotal > 0) {
+            poseCounts.mapValues { (it.value / poseTotal) * 100 }
+        } else {
+            emptyMap()
+        }
+
+        val handPostureTotal = handPostureCounts.values.sum().toDouble()
+        val handPostureBreakdown = if (handPostureTotal > 0) {
+            handPostureCounts.mapValues { (it.value / handPostureTotal) * 100 }
+        } else {
+            emptyMap()
+        }
+
+        val elbowPostureTotal = elbowPostureCounts.values.sum().toDouble()
+        val elbowPostureBreakdown = if (elbowPostureTotal > 0) {
+            elbowPostureCounts.mapValues { (it.value / elbowPostureTotal) * 100 }
+        } else {
+            emptyMap()
+        }
+
+        return SessionSummary(
+            heightBreakdown,
+            angleBreakdown,
+            handPresenceBreakdown,
+            handPostureBreakdown,
+            posePresenceBreakdown,
+            elbowPostureBreakdown,
+            timestamp
+        )
     }
 
-    fun getDetailedSummary(userId: String): SessionSummary? {
-        val session = sessionDict[userId] ?: return null
-        return if (session.isNotEmpty()) {
-            analyzeSession(session)
-        } else {
-            null
+    private fun formatSummaryAsJson(summary: SessionSummary, userId: String): String {
+        val json = buildString {
+            append("{")
+            append("\"user_id\":\"$userId\",")
+            append("\"timestamp\":\"${summary.timestamp}\",")
+            append("\"heightBreakdown\":${mapToJson(summary.heightBreakdown)},")
+            append("\"angleBreakdown\":${mapToJson(summary.angleBreakdown)},")
+            append("\"handPresenceBreakdown\":${mapToJson(summary.handPresenceBreakdown)},")
+            append("\"handPostureBreakdown\":${mapToJson(summary.handPostureBreakdown)},")
+            append("\"posePresenceBreakdown\":${mapToJson(summary.posePresenceBreakdown)},")
+            append("\"elbowPostureBreakdown\":${mapToJson(summary.elbowPostureBreakdown)}")
+            append("}")
         }
+        return json
+    }
+
+    private fun mapToJson(map: Map<String, Double>): String {
+        return map.entries.joinToString(prefix = "{", postfix = "}", separator = ",") { (key, value) ->
+            "\"$key\":$value"
+        }
+    }
+
+    private fun emptySummary(timestamp: String): SessionSummary {
+        return SessionSummary(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), timestamp)
     }
 }
