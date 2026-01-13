@@ -26,6 +26,8 @@ node_modules/
 # Logs
 *.log
 
+*.tflite
+
 # IDE
 .vscode/
 .idea/
