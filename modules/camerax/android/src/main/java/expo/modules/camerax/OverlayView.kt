@@ -575,6 +575,12 @@ class OverlayView @JvmOverloads constructor(
             */
         } else {
             file_list.add("good_pronation")
+            if (displayHandIssue != null && now - handIssueLastShownTime >= issueMinDisplayTime) {
+                lastHandIssue = null
+                handIssueStartTime = 0L
+                displayHandIssue = null
+                handIssueLastShownTime = 0L
+            }
         }
 
         // Draw pose message if there's an issue
@@ -631,8 +637,15 @@ class OverlayView @JvmOverloads constructor(
             }
             */
         }
-         else {
+        else {
             file_list.add("good_elbow")
+
+            if (displayPoseIssue != null && now - poseIssueLastShownTime >= issueMinDisplayTime) {
+                lastPoseIssue = null
+                poseIssueStartTime = 0L
+                displayPoseIssue = null
+                poseIssueLastShownTime = 0L
+            }
         }
 
         // display most frequent issues
@@ -676,9 +689,9 @@ class OverlayView @JvmOverloads constructor(
 
         // Select which wrist landmark to use
         val wristIndex = if (isFrontCameraActive) 15 else 16
-        
+
         if (pose[0].size <= wristIndex) return null
-        
+
         val poseHand = pose[0][wristIndex]
         val px = poseHand.x()
         val py = poseHand.y()

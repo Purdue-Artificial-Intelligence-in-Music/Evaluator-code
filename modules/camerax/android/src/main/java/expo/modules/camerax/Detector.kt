@@ -28,6 +28,7 @@ import com.qualcomm.qti.QnnDelegate.Options.BackendType
 import java.io.File
 import kotlin.math.*
 import android.graphics.Typeface
+import java.nio.ByteBuffer
 
 
 class Detector (
@@ -105,7 +106,7 @@ class Detector (
 
     companion object {
         private const val TAG = "CheckDel"
-        private const val MODEL_ASSET = "nanoV2.tflite" // <-- set your model file name here
+        private const val MODEL_ASSET = "try.tflite" // <-- set your model file name here
         private const val INPUT_MEAN = 0f
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
@@ -137,11 +138,71 @@ class Detector (
 
         modelReadyLatch.countDown()
     }
-    private fun createInterpreterWithFallbacks(context: Context): Interpreter {
-        val model = FileUtil.loadMappedFile(context, MODEL_ASSET)
-        val options = Interpreter.Options()
+    private fun createInterpreterWithFallbacks(context: Context): org.tensorflow.lite.Interpreter {
+        // use the correct TFLite FileUtil and cast to ByteBuffer to solve ambiguity
+        val modelBuffer: java.nio.ByteBuffer = org.tensorflow.lite.support.common.FileUtil.loadMappedFile(context, MODEL_ASSET)
 
-        // 1) Qualcomm NPU (QNN/HTP)
+        // 1) Qualcomm NPU (QNN/HTP) attempt
+        val skelDir = tryLoadQnnAndPickSkelDir()
+        if (skelDir != null) {
+            try {
+                val qnnOptions = org.tensorflow.lite.Interpreter.Options()
+                val qOpts = QnnDelegate.Options().apply {
+                    setBackendType(BackendType.HTP_BACKEND)
+                    setSkelLibraryDir(skelDir)
+                }
+                qnnDelegate = QnnDelegate(qOpts)
+                qnnOptions.addDelegate(qnnDelegate)
+
+                Log.i(TAG, "Trying Qualcomm QNN delegate...")
+                // Fix 2: Explicitly pass the casted buffer
+                val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, qnnOptions)
+                Log.i(TAG, "Successfully using QNN delegate (HTP/NPU)")
+                return interp
+            } catch (t: Throwable) {
+                Log.w(TAG, "QNN delegate failed, cleaning up: ${t.message}")
+                qnnDelegate?.close()
+                qnnDelegate = null
+                // Fall through to next attempt
+            }
+        }
+
+        // 2) GPU attempt
+        try {
+            val gpuOptions = org.tensorflow.lite.Interpreter.Options()
+            val cl = org.tensorflow.lite.gpu.CompatibilityList()
+
+            if (cl.isDelegateSupportedOnThisDevice) {
+                tfliteGpu = org.tensorflow.lite.gpu.GpuDelegate(cl.bestOptionsForThisDevice)
+                gpuOptions.addDelegate(tfliteGpu)
+
+                Log.i(TAG, "Trying TFLite GPU delegate...")
+                val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, gpuOptions)
+                Log.i(TAG, "Successfully using GPU delegate")
+                return interp
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "GPU delegate failed, cleaning up: ${t.message}")
+            tfliteGpu?.close()
+            tfliteGpu = null
+        }
+
+        // 3) CPU Fallback
+        val cpuOptions = org.tensorflow.lite.Interpreter.Options()
+        Log.i(TAG, "Falling back to CPU/XNNPACK")
+        try {
+            cpuOptions.setUseXNNPACK(true)
+        } catch (_: Throwable) {}
+        cpuOptions.setNumThreads(4)
+
+        return org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, cpuOptions)
+    }
+
+//    private fun createInterpreterWithFallbacks(context: Context): Interpreter {
+//        val model = FileUtil.loadMappedFile(context, MODEL_ASSET)
+//        val options = Interpreter.Options()
+//
+//        // 1) Qualcomm NPU (QNN/HTP)
 //        val skelDir = tryLoadQnnAndPickSkelDir()
 //        if (skelDir != null) {
 //            try {
@@ -152,31 +213,34 @@ class Detector (
 //                qnnDelegate = QnnDelegate(qOpts)
 //                options.addDelegate(qnnDelegate)
 //                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
+//                Log.i("Time Comparing", "Using Qualcomm QNN delegate (HTP/NPU)")
+//
 //                return Interpreter(model, options)
 //            } catch (t: Throwable) {
 //                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
 //            }
 //        }
-
-        // 2) GPU
-        try {
-            val cl = CompatibilityList()
-            if (cl.isDelegateSupportedOnThisDevice) {
-                tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
-                options.addDelegate(tfliteGpu)
-                Log.i(TAG, "Using TFLite GPU delegate")
-                return Interpreter(model, options)
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "GPU delegate unavailable: ${t.message}")
-        }
-
-        // 3) CPU/XNNPACK
-        Log.i(TAG, "Falling back to CPU/XNNPACK")
-        try { options.setUseXNNPACK(true) } catch (_: Throwable) {}
-        options.setNumThreads(4)
-        return Interpreter(model, options)
-    }
+//
+//        // 2) GPU
+//        try {
+//            val cl = CompatibilityList()
+//            // if (cl.isDelegateSupportedOnThisDevice) {
+//                tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
+//                options.addDelegate(tfliteGpu)
+//                Log.i(TAG, "Using TFLite GPU delegate")
+//                return Interpreter(model, options)
+//            // }
+//        } catch (t: Throwable) {
+//            Log.w(TAG, "GPU delegate unavailable: ${t.message}")
+//        }
+//
+//        // 3) CPU/XNNPACK
+//        Log.i("Time Comparing", "Using CPU/XNNPACK")
+//        Log.i(TAG, "Falling back to CPU/XNNPACK")
+//        try { options.setUseXNNPACK(true) } catch (_: Throwable) {}
+//        options.setNumThreads(4)
+//        return Interpreter(model, options)
+//    }
 
     fun close() {
         try { interpreter.close() } catch (_: Throwable) {}
@@ -232,6 +296,7 @@ class Detector (
         interpreter.run(imageBuffer, output.buffer)
         val inferMs = SystemClock.uptimeMillis() - t0
         Log.d(TAG, "inference ${inferMs}ms")
+        Log.i("Time Comparing", "Bow YOLO: inference ${inferMs}ms")
 
         // Handle output layout: [1, 7, N] vs [1, N, 7] (e.g., 8400)
         val outShape = interpreter.getOutputTensor(0).shape()
