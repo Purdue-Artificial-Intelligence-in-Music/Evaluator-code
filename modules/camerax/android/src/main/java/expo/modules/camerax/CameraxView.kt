@@ -73,6 +73,13 @@ class CameraxView(
     private var isCameraActive = false
     private var lensType = CameraSelector.LENS_FACING_BACK
 
+    // NPU Pipeline Toggle
+    private var useNpuPipeline = true  // Default to NPU when available
+
+    // LiteRT instances (lazy init)
+    private var handsLiteRt: Hands? = null
+    private var poseLiteRt: Pose? = null
+
     private lateinit var overlayView: OverlayView
 
     private var latestBowResults: Detector.returnBow? = null
@@ -80,6 +87,12 @@ class CameraxView(
     private var latestPosePoints: List<PoseLandmarkerResult> = emptyList()
     private var latestHandDetection: String = ""
     private var latestPoseDetection: String = ""
+
+    // LiteRT results (for NPU pipeline)
+    private var latestLiteRtHandResults: List<Hands.HandResult> = emptyList()
+    private var latestLiteRtPoseResults: List<Pose.PoseLandmarks> = emptyList()
+    private var latestImageWidth: Int = 0
+    private var latestImageHeight: Int = 0
 
     init {
         // Root layout
@@ -195,6 +208,15 @@ class CameraxView(
         }
     }
 
+    fun setUseNpuPipeline(enabled: Boolean) {
+        if (useNpuPipeline == enabled) return
+        useNpuPipeline = enabled
+        Log.d(TAG, "NPU pipeline: $enabled")
+        if (cameraProvider != null && isCameraActive) {
+            initializePipeline()
+        }
+    }
+
     fun setCameraActive(active: Boolean) {
         if (isCameraActive == active) return
         isCameraActive = active
@@ -217,6 +239,10 @@ class CameraxView(
         cameraExecutor.shutdown()
         cameraProvider?.unbindAll()
         cameraProvider = null
+        handsLiteRt?.close()
+        poseLiteRt?.close()
+        handsLiteRt = null
+        poseLiteRt = null
     }
 
     private fun stopCamera() {
@@ -224,6 +250,27 @@ class CameraxView(
         camera = null
         preview = null
         imageAnalyzer = null
+    }
+
+    private fun initializePipeline() {
+        if (useNpuPipeline) {
+            Log.d("NPUPipeline", "initializePipeline starting...")
+            try {
+                if (handsLiteRt == null) {
+                    Log.d("NPUPipeline", "Creating Hands instance...")
+                    handsLiteRt = Hands(context)
+                    Log.d("NPUPipeline", "Hands instance created: ${handsLiteRt != null}")
+                }
+                if (poseLiteRt == null) {
+                    Log.d("NPUPipeline", "Creating Pose instance...")
+                    poseLiteRt = Pose(context)
+                    Log.d("NPUPipeline", "Pose instance created: ${poseLiteRt != null}")
+                }
+                Log.d("NPUPipeline", "initializePipeline complete - hands=${handsLiteRt != null}, pose=${poseLiteRt != null}")
+            } catch (e: Exception) {
+                Log.e("NPUPipeline", "initializePipeline FAILED: ${e.message}", e)
+            }
+        }
     }
 
     private fun installHierarchyFitter(view: ViewGroup) {
@@ -357,7 +404,19 @@ class CameraxView(
 
                 // Perform YOLO detection
                 performDetection(rotatedBitmap)
-                handLandmarkerHelper.detectBitmap(rotatedBitmap, lensType == CameraSelector.LENS_FACING_FRONT)
+
+                // Hand/Pose pipeline - NPU or MediaPipe
+                if (useNpuPipeline) {
+                    initializePipeline()  // Lazy init on first frame
+                    if (handsLiteRt != null && poseLiteRt != null) {
+                        processWithNpuPipeline(rotatedBitmap)
+                    } else {
+                        // Fallback if initialization failed
+                        handLandmarkerHelper.detectBitmap(rotatedBitmap, lensType == CameraSelector.LENS_FACING_FRONT)
+                    }
+                } else {
+                    handLandmarkerHelper.detectBitmap(rotatedBitmap, lensType == CameraSelector.LENS_FACING_FRONT)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Analyzer failure", e)
@@ -369,6 +428,134 @@ class CameraxView(
 
     private fun performDetection(bitmap: Bitmap) {
         detector?.detect(bitmap)
+    }
+
+    private fun processWithNpuPipeline(bitmap: Bitmap) {
+        if (!isDetectionEnabled) return
+        Log.d("NPUPipeline", "processWithNpuPipeline frame=${bitmap.width}x${bitmap.height}")
+
+        try {
+            // Run pose detection first (provides hints for hand detection)
+            val poseResults = poseLiteRt?.detectAndLandmark(bitmap) ?: emptyList()
+            Log.d("NPUPipeline", "Pose results: ${poseResults.size} detections")
+
+            // Convert pose results to hints for hand detection
+            val poseHints = poseResults.map { it.landmarks }
+
+            // Run hand detection with pose hints
+            val handResults = handsLiteRt?.detectAndLandmark(bitmap, poseHints) ?: emptyList()
+            Log.d("NPUPipeline", "Hand results: ${handResults.size} detections")
+
+            // Store results
+            latestLiteRtHandResults = handResults
+            latestLiteRtPoseResults = poseResults
+            latestImageWidth = bitmap.width
+            latestImageHeight = bitmap.height
+
+            // Generate classification strings
+            val isFront = lensType == CameraSelector.LENS_FACING_FRONT
+            val handPrediction = if (handResults.isNotEmpty()) {
+                runLiteRtHandClassifier(handResults.first(), isFront)
+            } else {
+                "No hand detected"
+            }
+
+            val posePrediction = if (poseResults.isNotEmpty()) {
+                runLiteRtPoseClassifier(poseResults.first(), isFront)
+            } else {
+                "No pose detected"
+            }
+
+            latestHandDetection = handPrediction
+            latestPoseDetection = posePrediction
+
+            // Clear MediaPipe results when using NPU pipeline
+            latestHandPoints = emptyList()
+            latestPosePoints = emptyList()
+
+            // Update overlay
+            overlayView.setFrontCameraState(isFront)
+            overlayView.setImageDimensions(bitmap.width, bitmap.height)
+            updateOverlayLiteRt()
+            Log.d("NPUPipeline", "Frame processed successfully")
+        } catch (e: Exception) {
+            Log.e("NPUPipeline", "processWithNpuPipeline FAILED: ${e.message}", e)
+        }
+    }
+
+    private fun runLiteRtHandClassifier(handResult: Hands.HandResult, isFront: Boolean): String {
+        try {
+            val landmarks = handResult.landmarks
+            if (landmarks.size < 21) return "No hand detected"
+
+            // Extract coordinates relative to wrist (landmark 0), normalized
+            val originX = landmarks[0].first
+            val originY = landmarks[0].second
+            val coords = FloatArray(42)
+            var maxAbsValue = 0f
+
+            for ((j, lm) in landmarks.withIndex()) {
+                var relX = lm.first - originX
+                val relY = lm.second - originY
+                if (!isFront) relX *= -1  // Flip x for back camera
+
+                coords[j * 2] = relX
+                coords[j * 2 + 1] = relY
+                maxAbsValue = maxOf(maxAbsValue, kotlin.math.abs(relX), kotlin.math.abs(relY))
+            }
+
+            // Normalize
+            if (maxAbsValue > 0f) {
+                for (i in coords.indices) {
+                    coords[i] /= maxAbsValue
+                }
+            }
+
+            // Run classifier (reuse HandLandmarkerHelper's method via reflection or direct call)
+            // For now, return a placeholder - classifier integration in Step 6
+            return "Prediction: 0 (Confidence: 0.90)"
+        } catch (e: Exception) {
+            Log.e(TAG, "Hand classifier error", e)
+            return "Error: ${e.message}"
+        }
+    }
+
+    private fun runLiteRtPoseClassifier(poseResult: Pose.PoseLandmarks, isFront: Boolean): String {
+        try {
+            val landmarks = poseResult.landmarks
+            if (landmarks.size < 17) return "No pose detected"
+
+            // Extract shoulder-elbow-hand coordinates
+            val (shoulderIdx, elbowIdx, handIdx) = if (isFront) {
+                Triple(11, 13, 15)
+            } else {
+                Triple(12, 14, 16)
+            }
+
+            if (landmarks.size <= maxOf(shoulderIdx, elbowIdx, handIdx)) {
+                return "No pose detected"
+            }
+
+            // For now, return a placeholder - classifier integration in Step 6
+            return "Prediction: 0 (Confidence: 0.90)"
+        } catch (e: Exception) {
+            Log.e(TAG, "Pose classifier error", e)
+            return "Error: ${e.message}"
+        }
+    }
+
+    private fun updateOverlayLiteRt() {
+        activity.runOnUiThread {
+            overlayView.updateResultsLiteRt(
+                results = latestBowResults,
+                handResults = latestLiteRtHandResults,
+                poseResults = latestLiteRtPoseResults,
+                handDetection = latestHandDetection,
+                poseDetection = latestPoseDetection,
+                imageWidth = latestImageWidth,
+                imageHeight = latestImageHeight
+            )
+        }
     }
 
     // ===== Detector Callbacks =====

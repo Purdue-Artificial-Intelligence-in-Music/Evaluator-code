@@ -330,7 +330,7 @@ class Hands(private val context: Context) {
                         opts.addDelegate(qnnDelegate)
                         selected = "HTP"
                     } catch (t: Throwable) {
-                        Log.w("CheckDel", "$name: QNN delegate unavailable: ${t.message}")
+                        Log.w("HandsNPU", "$name: QNN delegate unavailable: ${t.message}")
                     }
                 }
                 if (selected == null) {
@@ -342,7 +342,7 @@ class Hands(private val context: Context) {
                             selected = "GPU"
                         }
                     } catch (t: Throwable) {
-                        Log.w("CheckDel", "$name: GPU delegate unavailable: ${t.message}")
+                        Log.w("HandsNPU", "$name: GPU delegate unavailable: ${t.message}")
                     }
                 }
             }
@@ -355,7 +355,7 @@ class Hands(private val context: Context) {
                         selected = "GPU"
                     }
                 } catch (t: Throwable) {
-                    Log.w("CheckDel", "$name: GPU delegate unavailable: ${t.message}")
+                    Log.w("HandsNPU", "$name: GPU delegate unavailable: ${t.message}")
                 }
             }
             DelegateChoice.CPU -> {
@@ -367,7 +367,7 @@ class Hands(private val context: Context) {
             opts.setNumThreads(4)
             selected = "CPU"
         }
-        Log.i("CheckDel", String.format(Locale.US, "%s delegate=%s", name, selected))
+        Log.i("HandsNPU", String.format(Locale.US, "%s delegate=%s", name, selected))
         return opts
     }
 

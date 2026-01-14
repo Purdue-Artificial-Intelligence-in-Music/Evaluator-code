@@ -32,6 +32,10 @@ class OverlayView @JvmOverloads constructor(
     private var handLandmarkerResult: HandLandmarkerResult? = null
     private var poseLandmarkerResult: PoseLandmarkerResult? = null
 
+    // LiteRT results (for NPU pipeline)
+    private var liteRtHandResults: List<Hands.HandResult> = emptyList()
+    private var liteRtPoseResults: List<Pose.PoseLandmarks> = emptyList()
+
     private var handDetect: String = ""
     private var poseDetect: String = ""
 
@@ -440,7 +444,7 @@ class OverlayView @JvmOverloads constructor(
         }
 
         // Draw Hand Landmarks
-        handLandmarkerResult?.let { handResult ->
+        if (handLandmarkerResult != null) {
             val filteredHands = selectClosestHand()
 
             filteredHands?.let { list ->
@@ -468,7 +472,48 @@ class OverlayView @JvmOverloads constructor(
                     )
                 }
             }
-
+        } else if (liteRtHandResults.isNotEmpty()) {
+            // Draw LiteRT hand landmarks (pixel coordinates from Hands.kt)
+            // Scale: pixel coords in image space → view space
+            val sx = if (imageWidth > 0) width.toFloat() / imageWidth else 1f
+            val sy = if (imageHeight > 0) height.toFloat() / imageHeight else 1f
+            Log.d("NPUPipeline", "Drawing LiteRT hands: ${liteRtHandResults.size} results, sx=$sx, sy=$sy, imgW=$imageWidth, imgH=$imageHeight, viewW=$width, viewH=$height")
+            val handResult = selectClosestLiteRtHand()
+            Log.d("NPUPipeline", "Selected hand: ${handResult != null}, landmarks=${handResult?.landmarks?.size ?: 0}")
+            handResult?.let { hr ->
+                val landmarks = hr.landmarks
+                if (landmarks.size >= 21) {
+                    Log.d("NPUPipeline", "Drawing ${landmarks.size} landmarks, first=(${landmarks[0].first}, ${landmarks[0].second}) -> (${landmarks[0].first * sx}, ${landmarks[0].second * sy})")
+                    // Draw hand connections (MediaPipe hand landmark indices)
+                    val connections = listOf(
+                        0 to 1, 1 to 2, 2 to 3, 3 to 4,  // thumb
+                        0 to 5, 5 to 6, 6 to 7, 7 to 8,  // index
+                        0 to 9, 9 to 10, 10 to 11, 11 to 12,  // middle
+                        0 to 13, 13 to 14, 14 to 15, 15 to 16,  // ring
+                        0 to 17, 17 to 18, 18 to 19, 19 to 20,  // pinky
+                        5 to 9, 9 to 13, 13 to 17  // palm
+                    )
+                    for ((start, end) in connections) {
+                        val s = landmarks[start]
+                        val e = landmarks[end]
+                        canvas.drawLine(
+                            s.first * sx,
+                            s.second * sy,
+                            e.first * sx,
+                            e.second * sy,
+                            linePaint
+                        )
+                    }
+                    // Draw keypoints
+                    for (lm in landmarks) {
+                        canvas.drawPoint(
+                            lm.first * sx,
+                            lm.second * sy,
+                            pointPaint
+                        )
+                    }
+                }
+            }
         }
 
         /*
@@ -718,6 +763,45 @@ class OverlayView @JvmOverloads constructor(
         return listOf(hands[selectedIndex])
     }
 
+    private fun selectClosestLiteRtHand(): Hands.HandResult? {
+        if (liteRtHandResults.isEmpty()) return null
+        if (liteRtPoseResults.isEmpty()) return liteRtHandResults.firstOrNull()
+
+        val pose = liteRtPoseResults.firstOrNull() ?: return liteRtHandResults.firstOrNull()
+        val poseLandmarks = pose.landmarks
+        if (poseLandmarks.size <= 16) return liteRtHandResults.firstOrNull()
+
+        // Select which wrist landmark to use
+        val wristIndex = if (isFrontCameraActive) 15 else 16
+        if (poseLandmarks.size <= wristIndex) return liteRtHandResults.firstOrNull()
+
+        val poseWrist = poseLandmarks[wristIndex]
+        val px = poseWrist.first
+        val py = poseWrist.second
+
+        var selectedHand: Hands.HandResult? = null
+        var bestDist = Float.MAX_VALUE
+        // Threshold in pixel space (10% of image width, since landmarks are pixel coords)
+        val threshold = imageWidth * 0.1f
+
+        for (handResult in liteRtHandResults) {
+            val landmarks = handResult.landmarks
+            if (landmarks.isNotEmpty()) {
+                val wrist = landmarks[0]
+                val dx = wrist.first - px
+                val dy = wrist.second - py
+                val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                if (dist < threshold && dist < bestDist) {
+                    bestDist = dist
+                    selectedHand = handResult
+                }
+            }
+        }
+
+        return selectedHand ?: liteRtHandResults.firstOrNull()
+    }
+
     fun updateResults(
         results: Detector.returnBow?,
         hands: HandLandmarkerResult?,
@@ -728,8 +812,31 @@ class OverlayView @JvmOverloads constructor(
         this.results = results
         this.handLandmarkerResult = hands
         this.poseLandmarkerResult = pose
+        this.liteRtHandResults = emptyList()
+        this.liteRtPoseResults = emptyList()
         this.handDetect = handDetection
         this.poseDetect = poseDetection
+        invalidate()
+    }
+
+    fun updateResultsLiteRt(
+        results: Detector.returnBow?,
+        handResults: List<Hands.HandResult>,
+        poseResults: List<Pose.PoseLandmarks>,
+        handDetection: String,
+        poseDetection: String,
+        imageWidth: Int,
+        imageHeight: Int
+    ) {
+        this.results = results
+        this.handLandmarkerResult = null
+        this.poseLandmarkerResult = null
+        this.liteRtHandResults = handResults
+        this.liteRtPoseResults = poseResults
+        this.handDetect = handDetection
+        this.poseDetect = poseDetection
+        this.imageWidth = imageWidth
+        this.imageHeight = imageHeight
         invalidate()
     }
 
@@ -751,6 +858,8 @@ class OverlayView @JvmOverloads constructor(
         results = null
         handLandmarkerResult = null
         poseLandmarkerResult = null
+        liteRtHandResults = emptyList()
+        liteRtPoseResults = emptyList()
         handDetect = ""
         poseDetect = ""
         postInvalidate() // remove drawings
