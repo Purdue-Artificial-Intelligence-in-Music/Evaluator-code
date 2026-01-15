@@ -38,7 +38,7 @@ repositories {
 
   // ✅ Required so Gradle can find Qualcomm LiteRT AARs and .so libraries
   flatDir {
-    dirs "H:/Downloads/QualcommSDK/qairt/2.38.0.250901/lib/aarch64-android"
+    dirs "/home/jut/qairt/2.42.0.251225/lib/aarch64-android"
   }
 }
 

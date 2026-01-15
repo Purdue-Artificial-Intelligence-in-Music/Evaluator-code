@@ -67,16 +67,11 @@ class Hands(private val context: Context) {
         private const val KP_ROT_END = 2
         // 21 landmarks expected (to mirror Python MediaPipe hand landmark layout)
         private const val NUM_LANDMARKS = 21
-
-        private enum class DelegateChoice { HTP, GPU, CPU }
     }
 
     private var detector: Interpreter? = null
     private var landmark: Interpreter? = null
-    private var qnnDelegate: QnnDelegate? = null
-    private var gpuDelegate: GpuDelegate? = null
-    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.HTP
-    private var landmarkDelegateChoice: DelegateChoice = DelegateChoice.HTP
+    // Delegates now managed by DelegateManager.kt
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
     private var anchors: FloatArray? = null
@@ -113,8 +108,7 @@ class Hands(private val context: Context) {
     fun close() {
         try { detector?.close() } catch (_: Throwable) {}
         try { landmark?.close() } catch (_: Throwable) {}
-        try { qnnDelegate?.close() } catch (_: Throwable) {}
-        try { gpuDelegate?.close() } catch (_: Throwable) {}
+        // Note: Delegates are now managed by DelegateManager.kt
     }
 
     data class HandResult(
@@ -300,101 +294,21 @@ class Hands(private val context: Context) {
     }
 
     private fun setupDetector() {
-        val opts = buildInterpreterOptions(detectorDelegateChoice, "hand detector")
-        val model = FileUtil.loadMappedFile(context, DETECTOR_MODEL)
-        detector = Interpreter(model, opts)
+        // Delegation moved to DelegateManager.kt
+        detector = DelegateManager.createInterpreter(context, DETECTOR_MODEL, "Hands")
         val out0 = detector?.getOutputTensor(0)
         detectorCoordsPerAnchor = out0?.shape()?.lastOrNull() ?: 0
         detectorNumAnchors = out0?.shape()?.getOrNull(out0.shape().size - 2) ?: 0
     }
 
     private fun setupLandmark() {
-        val opts = buildInterpreterOptions(landmarkDelegateChoice, "hand landmark")
-        val model = FileUtil.loadMappedFile(context, LANDMARK_MODEL)
-        landmark = Interpreter(model, opts)
+        // Delegation moved to DelegateManager.kt
+        landmark = DelegateManager.createInterpreter(context, LANDMARK_MODEL, "HandsLM")
     }
 
-    private fun buildInterpreterOptions(choice: DelegateChoice, name: String): Interpreter.Options {
-        val opts = Interpreter.Options()
-        var selected: String? = null
-        when (choice) {
-            DelegateChoice.HTP -> {
-                val skelDir = tryLoadQnnAndPickSkelDir()
-                if (skelDir != null) {
-                    try {
-                        val qOpts = QnnDelegate.Options().apply {
-                            setBackendType(BackendType.HTP_BACKEND)
-                            setSkelLibraryDir(skelDir)
-                        }
-                        qnnDelegate = QnnDelegate(qOpts)
-                        opts.addDelegate(qnnDelegate)
-                        selected = "HTP"
-                    } catch (t: Throwable) {
-                        Log.w("HandsNPU", "$name: QNN delegate unavailable: ${t.message}")
-                    }
-                }
-                if (selected == null) {
-                    try {
-                        val cl = CompatibilityList()
-                        if (cl.isDelegateSupportedOnThisDevice) {
-                            gpuDelegate = GpuDelegate(cl.bestOptionsForThisDevice)
-                            opts.addDelegate(gpuDelegate)
-                            selected = "GPU"
-                        }
-                    } catch (t: Throwable) {
-                        Log.w("HandsNPU", "$name: GPU delegate unavailable: ${t.message}")
-                    }
-                }
-            }
-            DelegateChoice.GPU -> {
-                try {
-                    val cl = CompatibilityList()
-                    if (cl.isDelegateSupportedOnThisDevice) {
-                        gpuDelegate = GpuDelegate(cl.bestOptionsForThisDevice)
-                        opts.addDelegate(gpuDelegate)
-                        selected = "GPU"
-                    }
-                } catch (t: Throwable) {
-                    Log.w("HandsNPU", "$name: GPU delegate unavailable: ${t.message}")
-                }
-            }
-            DelegateChoice.CPU -> {
-                // fall through
-            }
-        }
-        if (selected == null) {
-            try { opts.setUseXNNPACK(true) } catch (_: Throwable) {}
-            opts.setNumThreads(4)
-            selected = "CPU"
-        }
-        Log.i("HandsNPU", String.format(Locale.US, "%s delegate=%s", name, selected))
-        return opts
-    }
-
-    private fun tryLoadQnnAndPickSkelDir(): String? {
-        val mustLoad = listOf("QnnSystem", "QnnHtp", "QnnHtpPrepare")
-        for (name in mustLoad) {
-            try { System.loadLibrary(name) }
-            catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "QNN: failed to load $name: ${e.message}. nativeLibDir=${context.applicationInfo.nativeLibraryDir}")
-                return null
-            }
-        }
-        val base = context.applicationInfo.nativeLibraryDir
-        val skels = listOf(
-            "libQnnHtpV79Skel.so",
-            "libQnnHtpV75Skel.so",
-            "libQnnHtpV73Skel.so",
-            "libQnnHtpV69Skel.so"
-        )
-        val chosen = skels.firstOrNull { File("$base/$it").exists() }
-        if (chosen == null) {
-            Log.w(TAG, "QNN: no HTP skel found under $base")
-            return null
-        }
-        Log.i(TAG, "QNN: using skel=$chosen in $base")
-        return base
-    }
+    // COMMENTED OUT - moved to DelegateManager.kt
+    // private fun buildInterpreterOptions(choice: DelegateChoice, name: String): Interpreter.Options { ... }
+    // private fun tryLoadQnnAndPickSkelDir(): String? { ... }
 
     private fun buildInputBuffer(bitmap: Bitmap, inputTensor: Tensor): Any {
         val shape = inputTensor.shape()

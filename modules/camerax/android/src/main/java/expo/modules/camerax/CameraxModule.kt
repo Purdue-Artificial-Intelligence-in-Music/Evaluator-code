@@ -32,6 +32,10 @@ class CameraxModule : Module() {
                 view.setMaxBowAngle(angle)
             }
 
+            Prop("forcedDelegate") { view: CameraxView, delegate: String? ->
+                view.setForcedDelegate(delegate)
+            }
+
             Events("onDetectionResult", "onNoDetection", "onSessionEnd")
         }
 

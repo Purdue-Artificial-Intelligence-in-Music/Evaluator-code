@@ -32,8 +32,11 @@ import kotlin.math.min
 class Pose(private val context: Context) {
     companion object {
         private const val TAG = "PoseLiteRt"
-        private const val DETECTOR_MODEL = "mediapipe_pose-posedetector-w8a8.tflite"
-        private const val LANDMARK_MODEL = "mediapipe_pose-poselandmarkdetector-w8a8.tflite"
+        // Model selection: w8a8 for NPU (HTP), float for GPU/CPU
+        private const val DETECTOR_MODEL_W8A8 = "mediapipe_pose-posedetector-w8a8.tflite"
+        private const val LANDMARK_MODEL_W8A8 = "mediapipe_pose-poselandmarkdetector-w8a8.tflite"
+        private const val DETECTOR_MODEL_FLOAT = "mediapipe_pose-posedetector-float.tflite"
+        private const val LANDMARK_MODEL_FLOAT = "mediapipe_pose-poselandmarkdetector-float.tflite"
         // Detector input dims from model card (3x128x128)
         private const val DETECTOR_INPUT_SIZE = 128
         private const val LANDMARK_INPUT_SIZE = 256
@@ -43,8 +46,6 @@ class Pose(private val context: Context) {
         private const val ROI_SCALE = 1.75f
         private const val POSE_ROI_DXY = 0f
         private const val DEFAULT_POSE_ANCHORS = "anchors_pose.npy"
-
-        private enum class DelegateChoice { HTP, GPU, CPU }
 
         // Pose landmark connections (subset from model.py)
         val POSE_CONNECTIONS = listOf(
@@ -59,10 +60,7 @@ class Pose(private val context: Context) {
 
     private var detector: Interpreter? = null
     private var landmark: Interpreter? = null
-    private var qnnDelegate: QnnDelegate? = null
-    private var gpuDelegate: GpuDelegate? = null
-    private var detectorDelegateChoice: DelegateChoice = DelegateChoice.HTP
-    private var landmarkDelegateChoice: DelegateChoice = DelegateChoice.HTP
+    // Delegates now managed by DelegateManager.kt
     private var detectorInputType: DataType = DataType.FLOAT32
     private var detectorCoordsPerAnchor = 0
     private var detectorNumAnchors = 0
@@ -106,8 +104,7 @@ class Pose(private val context: Context) {
     fun close() {
         try { detector?.close() } catch (_: Throwable) {}
         try { landmark?.close() } catch (_: Throwable) {}
-        try { qnnDelegate?.close() } catch (_: Throwable) {}
-        try { gpuDelegate?.close() } catch (_: Throwable) {}
+        // Note: Delegates are now managed by DelegateManager.kt
     }
 
     /**
@@ -277,99 +274,23 @@ class Pose(private val context: Context) {
     private fun clamp01(v: Float): Float = max(0f, min(1f, v))
 
     private fun setupDetector() {
-        val model = FileUtil.loadMappedFile(context, DETECTOR_MODEL)
-        val opts = buildInterpreterOptions(detectorDelegateChoice, "pose detector")
-        detector = Interpreter(model, opts)
+        // Select model based on delegate: w8a8 for NPU, float for GPU/CPU
+        val modelPath = if (DelegateManager.isHtp()) DETECTOR_MODEL_W8A8 else DETECTOR_MODEL_FLOAT
+        Log.i(TAG, "Pose detector model=$modelPath")
+        detector = DelegateManager.createInterpreter(context, modelPath, "Pose")
         detectorInputType = detector?.getInputTensor(0)?.dataType() ?: DataType.FLOAT32
     }
 
     private fun setupLandmark() {
-        val opts = buildInterpreterOptions(landmarkDelegateChoice, "pose landmark")
-        val model = FileUtil.loadMappedFile(context, LANDMARK_MODEL)
-        landmark = Interpreter(model, opts)
+        // Select model based on delegate: w8a8 for NPU, float for GPU/CPU
+        val modelPath = if (DelegateManager.isHtp()) LANDMARK_MODEL_W8A8 else LANDMARK_MODEL_FLOAT
+        Log.i(TAG, "Pose landmark model=$modelPath")
+        landmark = DelegateManager.createInterpreter(context, modelPath, "PoseLM")
     }
 
-    private fun buildInterpreterOptions(choice: DelegateChoice, name: String): Interpreter.Options {
-        val opts = Interpreter.Options()
-        var selected: String? = null
-        when (choice) {
-            DelegateChoice.HTP -> {
-                val skelDir = tryLoadQnnAndPickSkelDir()
-                if (skelDir != null) {
-                    try {
-                        val qOpts = QnnDelegate.Options().apply {
-                            setBackendType(BackendType.HTP_BACKEND)
-                            setSkelLibraryDir(skelDir)
-                        }
-                        qnnDelegate = QnnDelegate(qOpts)
-                        opts.addDelegate(qnnDelegate)
-                        selected = "HTP"
-                    } catch (t: Throwable) {
-                        Log.w("PoseNPU", "$name: QNN delegate unavailable: ${t.message}")
-                    }
-                }
-                if (selected == null) {
-                    try {
-                        val cl = CompatibilityList()
-                        if (cl.isDelegateSupportedOnThisDevice) {
-                            gpuDelegate = GpuDelegate(cl.bestOptionsForThisDevice)
-                            opts.addDelegate(gpuDelegate)
-                            selected = "GPU"
-                        }
-                    } catch (t: Throwable) {
-                        Log.w("PoseNPU", "$name: GPU delegate unavailable: ${t.message}")
-                    }
-                }
-            }
-            DelegateChoice.GPU -> {
-                try {
-                    val cl = CompatibilityList()
-                    if (cl.isDelegateSupportedOnThisDevice) {
-                        gpuDelegate = GpuDelegate(cl.bestOptionsForThisDevice)
-                        opts.addDelegate(gpuDelegate)
-                        selected = "GPU"
-                    }
-                } catch (t: Throwable) {
-                    Log.w("PoseNPU", "$name: GPU delegate unavailable: ${t.message}")
-                }
-            }
-            DelegateChoice.CPU -> {
-                // fall through
-            }
-        }
-        if (selected == null) {
-            try { opts.setUseXNNPACK(true) } catch (_: Throwable) {}
-            opts.setNumThreads(4)
-            selected = "CPU"
-        }
-        Log.i("PoseNPU", String.format(Locale.US, "%s delegate=%s", name, selected))
-        return opts
-    }
-
-    private fun tryLoadQnnAndPickSkelDir(): String? {
-        val mustLoad = listOf("QnnSystem", "QnnHtp", "QnnHtpPrepare")
-        for (name in mustLoad) {
-            try { System.loadLibrary(name) }
-            catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "QNN: failed to load $name: ${e.message}. nativeLibDir=${context.applicationInfo.nativeLibraryDir}")
-                return null
-            }
-        }
-        val base = context.applicationInfo.nativeLibraryDir
-        val skels = listOf(
-            "libQnnHtpV79Skel.so",
-            "libQnnHtpV75Skel.so",
-            "libQnnHtpV73Skel.so",
-            "libQnnHtpV69Skel.so"
-        )
-        val chosen = skels.firstOrNull { File("$base/$it").exists() }
-        if (chosen == null) {
-            Log.w(TAG, "QNN: no HTP skel found under $base")
-            return null
-        }
-        Log.i(TAG, "QNN: using skel=$chosen in $base")
-        return base
-    }
+    // COMMENTED OUT - moved to DelegateManager.kt
+    // private fun buildInterpreterOptions(choice: DelegateChoice, name: String): Interpreter.Options { ... }
+    // private fun tryLoadQnnAndPickSkelDir(): String? { ... }
 
     private fun buildInputBuffer(bitmap: Bitmap, inputTensor: Tensor): Any {
         val shape = inputTensor.shape()

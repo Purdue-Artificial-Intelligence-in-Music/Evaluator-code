@@ -839,6 +839,10 @@ const CameraComponent = ({ startDelay, onClose }) => {
         lensType={lensType}
         onSessionEnd={handleSessionEnd}
         maxBowAngle={maxAngle}
+        // Force delegate for testing (comment/uncomment as needed):
+        //forcedDelegate="gpu"
+        //forcedDelegate="cpu"
+        // forcedDelegate="npu"
       />
       
       <TouchableOpacity

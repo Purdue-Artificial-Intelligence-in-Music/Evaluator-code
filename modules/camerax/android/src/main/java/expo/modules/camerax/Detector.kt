@@ -37,8 +37,7 @@ class Detector (
 ){
 
     private var interpreter: Interpreter
-    private var qnnDelegate: QnnDelegate? = null
-    private var tfliteGpu: GpuDelegate? = null
+    // Delegates now managed by DelegateManager.kt
 
     private var tensorWidth = 0
     private var tensorHeight = 0
@@ -78,34 +77,8 @@ class Detector (
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
         .build()
-    private fun nativeLibDir(): String = context.applicationInfo.nativeLibraryDir
-    private fun tryLoadQnnAndPickSkelDir(): String? {
-        val mustLoad = listOf("QnnSystem", "QnnHtp", "QnnHtpPrepare")
-        for (name in mustLoad) {
-            try { System.loadLibrary(name) }
-            catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "QNN: failed to load $name: ${e.message}. nativeLibDir=${nativeLibDir()}")
-                return null
-            }
-        }
-        val base = nativeLibDir()
-        val skels = listOf(
-            "libQnnHtpV79Skel.so",
-            "libQnnHtpV75Skel.so",
-            "libQnnHtpV73Skel.so",
-            "libQnnHtpV69Skel.so"
-        )
-        val chosen = skels.firstOrNull { File("$base/$it").exists() }
-        if (chosen == null) {
-            Log.w(TAG, "QNN: no HTP skel found under $base")
-            return null
-        }
-        Log.i(TAG, "QNN: using skel=$chosen in $base")
-        return base
-    }
-
     companion object {
-        private const val TAG = "CheckDel"
+        private const val TAG = "CheckDelBow"
         private const val MODEL_ASSET = "try.tflite" // <-- set your model file name here
         private const val INPUT_MEAN = 0f
         private const val INPUT_STANDARD_DEVIATION = 255f
@@ -115,7 +88,8 @@ class Detector (
     }
 
     init {
-        interpreter = createInterpreterWithFallbacks(context)
+        // Delegation moved to DelegateManager.kt
+        interpreter = DelegateManager.createInterpreter(context, MODEL_ASSET, "Bow")
 
         // Cache tensor shapes (NHWC or NCHW)
         val inputShape = interpreter.getInputTensor(0)?.shape()
@@ -138,65 +112,66 @@ class Detector (
 
         modelReadyLatch.countDown()
     }
-    private fun createInterpreterWithFallbacks(context: Context): org.tensorflow.lite.Interpreter {
-        // use the correct TFLite FileUtil and cast to ByteBuffer to solve ambiguity
-        val modelBuffer: java.nio.ByteBuffer = org.tensorflow.lite.support.common.FileUtil.loadMappedFile(context, MODEL_ASSET)
-
-        // 1) Qualcomm NPU (QNN/HTP) attempt
-        val skelDir = tryLoadQnnAndPickSkelDir()
-        if (skelDir != null) {
-            try {
-                val qnnOptions = org.tensorflow.lite.Interpreter.Options()
-                val qOpts = QnnDelegate.Options().apply {
-                    setBackendType(BackendType.HTP_BACKEND)
-                    setSkelLibraryDir(skelDir)
-                }
-                qnnDelegate = QnnDelegate(qOpts)
-                qnnOptions.addDelegate(qnnDelegate)
-
-                Log.i(TAG, "Trying Qualcomm QNN delegate...")
-                // Fix 2: Explicitly pass the casted buffer
-                val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, qnnOptions)
-                Log.i(TAG, "Successfully using QNN delegate (HTP/NPU)")
-                return interp
-            } catch (t: Throwable) {
-                Log.w(TAG, "QNN delegate failed, cleaning up: ${t.message}")
-                qnnDelegate?.close()
-                qnnDelegate = null
-                // Fall through to next attempt
-            }
-        }
-
-        // 2) GPU attempt
-        try {
-            val gpuOptions = org.tensorflow.lite.Interpreter.Options()
-            val cl = org.tensorflow.lite.gpu.CompatibilityList()
-
-            if (cl.isDelegateSupportedOnThisDevice) {
-                tfliteGpu = org.tensorflow.lite.gpu.GpuDelegate(cl.bestOptionsForThisDevice)
-                gpuOptions.addDelegate(tfliteGpu)
-
-                Log.i(TAG, "Trying TFLite GPU delegate...")
-                val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, gpuOptions)
-                Log.i(TAG, "Successfully using GPU delegate")
-                return interp
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "GPU delegate failed, cleaning up: ${t.message}")
-            tfliteGpu?.close()
-            tfliteGpu = null
-        }
-
-        // 3) CPU Fallback
-        val cpuOptions = org.tensorflow.lite.Interpreter.Options()
-        Log.i(TAG, "Falling back to CPU/XNNPACK")
-        try {
-            cpuOptions.setUseXNNPACK(true)
-        } catch (_: Throwable) {}
-        cpuOptions.setNumThreads(4)
-
-        return org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, cpuOptions)
-    }
+    // COMMENTED OUT - moved to DelegateManager.kt
+    // private fun createInterpreterWithFallbacks(context: Context): org.tensorflow.lite.Interpreter {
+    //     // use the correct TFLite FileUtil and cast to ByteBuffer to solve ambiguity
+    //     val modelBuffer: java.nio.ByteBuffer = org.tensorflow.lite.support.common.FileUtil.loadMappedFile(context, MODEL_ASSET)
+    //
+    //     // 1) Qualcomm NPU (QNN/HTP) attempt
+    //     val skelDir = tryLoadQnnAndPickSkelDir()
+    //     if (skelDir != null) {
+    //         try {
+    //             val qnnOptions = org.tensorflow.lite.Interpreter.Options()
+    //             val qOpts = QnnDelegate.Options().apply {
+    //                 setBackendType(BackendType.HTP_BACKEND)
+    //                 setSkelLibraryDir(skelDir)
+    //             }
+    //             qnnDelegate = QnnDelegate(qOpts)
+    //             qnnOptions.addDelegate(qnnDelegate)
+    //
+    //             Log.i(TAG, "Trying Qualcomm QNN delegate...")
+    //             // Fix 2: Explicitly pass the casted buffer
+    //             val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, qnnOptions)
+    //             Log.i(TAG, "Successfully using QNN delegate (HTP/NPU)")
+    //             return interp
+    //         } catch (t: Throwable) {
+    //             Log.w(TAG, "QNN delegate failed, cleaning up: ${t.message}")
+    //             qnnDelegate?.close()
+    //             qnnDelegate = null
+    //             // Fall through to next attempt
+    //         }
+    //     }
+    //
+    //     // 2) GPU attempt
+    //     try {
+    //         val gpuOptions = org.tensorflow.lite.Interpreter.Options()
+    //         val cl = org.tensorflow.lite.gpu.CompatibilityList()
+    //
+    //         if (cl.isDelegateSupportedOnThisDevice) {
+    //             tfliteGpu = org.tensorflow.lite.gpu.GpuDelegate(cl.bestOptionsForThisDevice)
+    //             gpuOptions.addDelegate(tfliteGpu)
+    //
+    //             Log.i(TAG, "Trying TFLite GPU delegate...")
+    //             val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, gpuOptions)
+    //             Log.i(TAG, "Successfully using GPU delegate")
+    //             return interp
+    //         }
+    //     } catch (t: Throwable) {
+    //         Log.w(TAG, "GPU delegate failed, cleaning up: ${t.message}")
+    //         tfliteGpu?.close()
+    //         tfliteGpu = null
+    //     }
+    //
+    //     // 3) CPU Fallback
+    //     val cpuOptions = org.tensorflow.lite.Interpreter.Options()
+    //     Log.i(TAG, "Falling back to CPU/XNNPACK")
+    //     try {
+    //         cpuOptions.setUseXNNPACK(true)
+    //     } catch (_: Throwable) {}
+    //     cpuOptions.setNumThreads(4)
+    //
+    //     return org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, cpuOptions)
+    // }
 
 //    private fun createInterpreterWithFallbacks(context: Context): Interpreter {
 //        val model = FileUtil.loadMappedFile(context, MODEL_ASSET)
@@ -244,8 +219,7 @@ class Detector (
 
     fun close() {
         try { interpreter.close() } catch (_: Throwable) {}
-        try { tfliteGpu?.close() } catch (_: Throwable) {}
-        try { qnnDelegate?.close() } catch (_: Throwable) {}
+        // Note: Delegates are now managed by DelegateManager.kt
     }
     data class YoloResults(
         var bowResults: MutableList<Point>?,

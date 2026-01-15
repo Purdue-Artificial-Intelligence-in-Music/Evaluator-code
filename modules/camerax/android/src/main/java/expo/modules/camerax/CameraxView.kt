@@ -122,7 +122,12 @@ class CameraxView(
         frameLayout.addView(overlayView)
 
         // Initialize detection tools
-        detector = Detector(context, this)
+        // OLD APPROACH (eager init - didn't respect forcedDelegate prop):
+        // detector = Detector(context, this)
+        //
+        // NEW APPROACH: All models initialized in initializePipeline(), called from setupCamera()
+        // This way models load when camera preview starts (before "Start Detection" button)
+        // and forcedDelegate prop is respected since props are applied before setupCamera()
         handLandmarkerHelper = HandLandmarkerHelper(
             context = context,
             runningMode = RunningMode.LIVE_STREAM,
@@ -217,6 +222,34 @@ class CameraxView(
         }
     }
 
+    /**
+     * Force a specific delegate for testing (HTP/GPU/CPU).
+     * Pass null or empty string to return to automatic fallback.
+     * Must be called BEFORE camera is active for effect.
+     */
+    fun setForcedDelegate(delegate: String?) {
+        val type = when (delegate?.lowercase()) {
+            "htp", "npu" -> DelegateManager.DelegateType.HTP
+            "gpu" -> DelegateManager.DelegateType.GPU
+            "cpu" -> DelegateManager.DelegateType.CPU
+            else -> null
+        }
+        DelegateManager.forceDelegate(type)
+        Log.d(TAG, "Delegate forced to: ${type ?: "auto"}")
+        // If camera is already active, need to reinitialize all pipelines
+        if (cameraProvider != null && isCameraActive) {
+            // Close existing instances to force re-creation with new delegate
+            detector?.close()
+            detector = null
+            handsLiteRt?.close()
+            poseLiteRt?.close()
+            handsLiteRt = null
+            poseLiteRt = null
+            DelegateManager.resetDelegateState()
+            initializePipeline()
+        }
+    }
+
     fun setCameraActive(active: Boolean) {
         if (isCameraActive == active) return
         isCameraActive = active
@@ -253,6 +286,13 @@ class CameraxView(
     }
 
     private fun initializePipeline() {
+        // Initialize Detector (YOLO bow/string) - uses DelegateManager
+        if (detector == null) {
+            Log.d("NPUPipeline", "Creating Detector instance...")
+            detector = Detector(context, this)
+            Log.d("NPUPipeline", "Detector instance created")
+        }
+
         if (useNpuPipeline) {
             Log.d("NPUPipeline", "initializePipeline starting...")
             try {
@@ -288,6 +328,10 @@ class CameraxView(
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupCamera() {
+        // Preemptively initialize all models when camera starts
+        // Models load while user sees preview, before "Start Detection" is pressed
+        initializePipeline()
+
         val cameraProviderFuture = ProcessCameraProvider.getInstance(activity)
         cameraProviderFuture.addListener({
             cameraProvider = cameraProviderFuture.get()
@@ -402,12 +446,15 @@ class CameraxView(
                 // frames for summary session
                 overlayView.setBitmapFrame(rotatedBitmap)
 
+                // OLD: Lazy init on first frame (caused 7s delay after "Start Detection")
+                // initializePipeline()
+                // NEW: Now called in setupCamera() - models ready before user hits button
+
                 // Perform YOLO detection
                 performDetection(rotatedBitmap)
 
                 // Hand/Pose pipeline - NPU or MediaPipe
                 if (useNpuPipeline) {
-                    initializePipeline()  // Lazy init on first frame
                     if (handsLiteRt != null && poseLiteRt != null) {
                         processWithNpuPipeline(rotatedBitmap)
                     } else {

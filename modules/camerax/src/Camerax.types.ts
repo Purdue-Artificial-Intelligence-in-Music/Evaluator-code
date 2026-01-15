@@ -54,6 +54,8 @@ export type CameraxViewProps = {
   detectionEnabled?: boolean;
   lensType?: string;
   maxBowAngle?: number;
+  // Force delegate for testing: "npu" | "gpu" | "cpu" | null (auto)
+  forcedDelegate?: string | null;
   onDetectionResult?: (event: { nativeEvent: any }) => void;
   onNoDetection?: (event: { nativeEvent: any }) => void;
   onSessionEnd?: (event: { nativeEvent: SessionSummaryPayload }) => void;
