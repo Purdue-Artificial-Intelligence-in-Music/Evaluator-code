@@ -115,12 +115,14 @@ class Hands(private val context: Context) {
         val score: Float,
         val handedness: Boolean, // true = right, false = left
         val landmarks: List<Pair<Float, Float>>,
-        val roi: FloatArray? = null
+        val roi: FloatArray? = null,
+        val prediction: String = ""  // Classification result (e.g., "Prediction: 0 (Confidence: 0.85)")
     )
 
     fun detectAndLandmark(
         bitmap: Bitmap,
-        poseHints: List<List<Pair<Float, Float>>>? = null
+        poseHints: List<List<Pair<Float, Float>>>? = null,
+        isFrontCamera: Boolean = false
     ): List<HandResult> {
         Log.d(TAG, "hand detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
         val det = detector ?: return emptyList()
@@ -204,11 +206,16 @@ class Hands(private val context: Context) {
             val handedModel = out.second
             val handedPose = poseHint?.let { inferHandednessFromPose(pairs, it) }
             val handed = handedPose ?: handedModel
-            if (handed) {
-                runHandClassifier(pairs)
+            // Classify bow hand - for front camera the bow hand appears as "left" due to mirroring
+            // so we classify if: (front camera AND left) OR (back camera AND right)
+            val isBowHand = if (isFrontCamera) !handed else handed
+            val prediction = if (isBowHand) {
+                classifyHand(pairs, isFrontCamera)
+            } else {
+                ""
             }
-            Log.d("classifcation", "hand side=${if (handed) "right" else "left"} score=$score (detector-only) poseHint=${handedPose != null}")
-            results.add(HandResult(score, handed, pairs, roi))
+            Log.d("classification", "Hand detection - side=${if (handed) "right" else "left"}, isBowHand=$isBowHand, score=$score, prediction=$prediction")
+            results.add(HandResult(score, handed, pairs, roi, prediction))
         }
         Log.d(TAG, "hand landmarks count=${results.size}")
         return results
@@ -567,37 +574,76 @@ class Hands(private val context: Context) {
         }
     }
 
-    private fun runHandClassifier(landmarks: List<Pair<Float, Float>>) {
+    /**
+     * Classify hand posture using wrist-relative normalized coordinates.
+     * Matches HandLandmarkerHelper.extractHandCoordinates + runTFLiteInference logic.
+     *
+     * @param landmarks 21 hand landmarks as (x, y) pairs
+     * @param isFrontCamera true if using front camera (affects X flip)
+     * @return Prediction string like "Prediction: 0 (Confidence: 0.85)" or empty on error
+     */
+    private fun classifyHand(landmarks: List<Pair<Float, Float>>, isFrontCamera: Boolean): String {
         try {
             if (handClassifier == null) {
                 val model = FileUtil.loadMappedFile(context, "keypoint_classifier_FINAL.tflite")
                 handClassifier = Interpreter(model)
+                Log.d(TAG, "Loaded hand classifier")
             }
-            if (landmarks.size < 21) return
-            val xs = landmarks.map { it.first }
-            val ys = landmarks.map { it.second }
-            val minX = xs.minOrNull() ?: return
-            val maxX = xs.maxOrNull() ?: return
-            val minY = ys.minOrNull() ?: return
-            val maxY = ys.maxOrNull() ?: return
-            val scaleX = if (maxX > minX) maxX - minX else 1f
-            val scaleY = if (maxY > minY) maxY - minY else 1f
-            val input = FloatArray(42)
-            var i = 0
-            landmarks.forEach { (x, y) ->
-                input[i++] = (x - minX) / scaleX
-                input[i++] = (y - minY) / scaleY
+            if (landmarks.size < 21) return ""
+
+            // Extract wrist-relative coordinates (matches HandLandmarkerHelper.extractHandCoordinates)
+            val originX = landmarks[0].first
+            val originY = landmarks[0].second
+            val coords = FloatArray(42)
+            var maxAbsValue = 0f
+
+            for ((j, lm) in landmarks.withIndex()) {
+                var relX = lm.first - originX
+                val relY = lm.second - originY
+
+                // Flip X for back camera (matches HandLandmarkerHelper)
+                if (!isFrontCamera) {
+                    relX *= -1
+                }
+
+                coords[j * 2] = relX
+                coords[j * 2 + 1] = relY
+                maxAbsValue = maxOf(maxAbsValue, kotlin.math.abs(relX), kotlin.math.abs(relY))
             }
+
+            // Normalize by max absolute value (matches HandLandmarkerHelper)
+            if (maxAbsValue > 0f) {
+                for (i in coords.indices) {
+                    coords[i] /= maxAbsValue
+                }
+            }
+
+            // Run classifier
             val output = Array(1) { FloatArray(4) }
             val t0 = android.os.SystemClock.uptimeMillis()
-            handClassifier?.run(arrayOf(input), output)
+            handClassifier?.run(arrayOf(coords), output)
             val t1 = android.os.SystemClock.uptimeMillis()
-            val scores = output[0]
-            val idx = scores.indices.maxByOrNull { scores[it] } ?: -1
-            val conf = if (idx >= 0) scores[idx] else 0f
-            Log.d("classifcation", "bow hand class=$idx conf=$conf time=${t1 - t0}ms")
+
+            val results = output[0]
+
+            // Apply supination penalty (matches HandLandmarkerHelper)
+            val supinationIdx = 1
+            results[supinationIdx] *= 0.7f
+
+            val maxIdx = results.indices.maxByOrNull { results[it] } ?: 0
+            val confidence = results[maxIdx]
+
+            // Low-confidence supination → report as class 0 (matches HandLandmarkerHelper)
+            if (maxIdx == supinationIdx && confidence < 0.60f) {
+                Log.d(TAG, "Hand class=0 (supination below threshold) conf=$confidence time=${t1 - t0}ms")
+                return "Prediction: 0 (Confidence: %.2f)".format(confidence)
+            }
+
+            Log.d(TAG, "Hand class=$maxIdx conf=$confidence time=${t1 - t0}ms")
+            return "Prediction: $maxIdx (Confidence: %.2f)".format(confidence)
         } catch (t: Throwable) {
-            Log.w("classifcation", "hand classifier failed: ${t.message}")
+            Log.w(TAG, "Hand classifier failed: ${t.message}")
+            return ""
         }
     }
 }

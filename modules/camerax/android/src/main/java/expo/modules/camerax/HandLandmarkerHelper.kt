@@ -47,6 +47,8 @@ import java.io.IOException
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import kotlin.String
+import expo.modules.camerax.CombinedResultBundle
+import expo.modules.camerax.CombinedLandmarkerListener
 
 class HandLandmarkerHelper(
     var minHandDetectionConfidence: Float = DEFAULT_HAND_DETECTION_CONFIDENCE,
@@ -653,23 +655,9 @@ class HandLandmarkerHelper(
         const val DEFAULT_POSE_PRESENCE_CONFIDENCE = 0.5F
     }
 
-    data class CombinedResultBundle(
-        val handResults: List<HandLandmarkerResult>,
-        val poseResults: List<PoseLandmarkerResult>,
-        val inferenceTime: Long,
-        val inputImageHeight: Int,
-        val inputImageWidth: Int,
-        val handCoordinates: FloatArray?,
-        val poseCoordinates: FloatArray?,
-        val handDetection: String,
-        val poseDetection: String,
-        val targetHandIndex: Int = -1
-    )
-
-    interface CombinedLandmarkerListener {
-        fun onError(error: String, errorCode: Int = OTHER_ERROR)
-        fun onResults(resultBundle: CombinedResultBundle)
-    }
+    // Note: CombinedResultBundle and CombinedLandmarkerListener are now defined in ResultTypes.kt
+    // This class uses them via import. Legacy references like HandLandmarkerHelper.CombinedResultBundle
+    // should be updated to use the top-level CombinedResultBundle directly.
 
     private fun drawMediaPipeAnnotations(
         bitmap: Bitmap,

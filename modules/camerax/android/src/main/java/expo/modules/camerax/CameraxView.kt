@@ -46,7 +46,7 @@ class CameraxView(
     appContext: AppContext
 ) : ExpoView(context, appContext),
     Detector.DetectorListener,
-    HandLandmarkerHelper.CombinedLandmarkerListener {
+    CombinedLandmarkerListener {
 
     private val onDetectionResult by EventDispatcher()
     private val onNoDetection by EventDispatcher()
@@ -482,15 +482,19 @@ class CameraxView(
         Log.d("NPUPipeline", "processWithNpuPipeline frame=${bitmap.width}x${bitmap.height}")
 
         try {
+            val isFront = lensType == CameraSelector.LENS_FACING_FRONT
+
             // Run pose detection first (provides hints for hand detection)
-            val poseResults = poseLiteRt?.detectAndLandmark(bitmap) ?: emptyList()
+            // isFrontCamera passed for correct arm selection in classification
+            val poseResults = poseLiteRt?.detectAndLandmark(bitmap, isFront) ?: emptyList()
             Log.d("NPUPipeline", "Pose results: ${poseResults.size} detections")
 
             // Convert pose results to hints for hand detection
             val poseHints = poseResults.map { it.landmarks }
 
             // Run hand detection with pose hints
-            val handResults = handsLiteRt?.detectAndLandmark(bitmap, poseHints) ?: emptyList()
+            // isFrontCamera passed for correct X-flip in classification
+            val handResults = handsLiteRt?.detectAndLandmark(bitmap, poseHints, isFront) ?: emptyList()
             Log.d("NPUPipeline", "Hand results: ${handResults.size} detections")
 
             // Store results
@@ -499,22 +503,37 @@ class CameraxView(
             latestImageWidth = bitmap.width
             latestImageHeight = bitmap.height
 
-            // Generate classification strings
-            val isFront = lensType == CameraSelector.LENS_FACING_FRONT
+            // Get classification strings from results (classification now done in Hands.kt/Pose.kt)
             val handPrediction = if (handResults.isNotEmpty()) {
-                runLiteRtHandClassifier(handResults.first(), isFront)
+                handResults.first().prediction.ifEmpty { "No hand detected" }
             } else {
                 "No hand detected"
             }
 
             val posePrediction = if (poseResults.isNotEmpty()) {
-                runLiteRtPoseClassifier(poseResults.first(), isFront)
+                poseResults.first().prediction.ifEmpty { "No pose detected" }
             } else {
                 "No pose detected"
             }
 
             latestHandDetection = handPrediction
             latestPoseDetection = posePrediction
+
+            // Feed Profile.kt for session summaries
+            // Create CombinedResultBundle with empty MediaPipe results but valid detection strings
+            // Profile.kt was updated to check detection strings for presence (not just handResults.isNotEmpty())
+            val bundle = CombinedResultBundle(
+                handResults = emptyList(),  // MediaPipe type - empty for NPU path
+                poseResults = emptyList(),  // MediaPipe type - empty for NPU path
+                inferenceTime = 0L,
+                inputImageHeight = bitmap.height,
+                inputImageWidth = bitmap.width,
+                handCoordinates = null,
+                poseCoordinates = null,
+                handDetection = handPrediction,
+                poseDetection = posePrediction
+            )
+            profile.addSessionData(userId, bundle)
 
             // Clear MediaPipe results when using NPU pipeline
             latestHandPoints = emptyList()
@@ -530,66 +549,9 @@ class CameraxView(
         }
     }
 
-    private fun runLiteRtHandClassifier(handResult: Hands.HandResult, isFront: Boolean): String {
-        try {
-            val landmarks = handResult.landmarks
-            if (landmarks.size < 21) return "No hand detected"
-
-            // Extract coordinates relative to wrist (landmark 0), normalized
-            val originX = landmarks[0].first
-            val originY = landmarks[0].second
-            val coords = FloatArray(42)
-            var maxAbsValue = 0f
-
-            for ((j, lm) in landmarks.withIndex()) {
-                var relX = lm.first - originX
-                val relY = lm.second - originY
-                if (!isFront) relX *= -1  // Flip x for back camera
-
-                coords[j * 2] = relX
-                coords[j * 2 + 1] = relY
-                maxAbsValue = maxOf(maxAbsValue, kotlin.math.abs(relX), kotlin.math.abs(relY))
-            }
-
-            // Normalize
-            if (maxAbsValue > 0f) {
-                for (i in coords.indices) {
-                    coords[i] /= maxAbsValue
-                }
-            }
-
-            // Run classifier (reuse HandLandmarkerHelper's method via reflection or direct call)
-            // For now, return a placeholder - classifier integration in Step 6
-            return "Prediction: 0 (Confidence: 0.90)"
-        } catch (e: Exception) {
-            Log.e(TAG, "Hand classifier error", e)
-            return "Error: ${e.message}"
-        }
-    }
-
-    private fun runLiteRtPoseClassifier(poseResult: Pose.PoseLandmarks, isFront: Boolean): String {
-        try {
-            val landmarks = poseResult.landmarks
-            if (landmarks.size < 17) return "No pose detected"
-
-            // Extract shoulder-elbow-hand coordinates
-            val (shoulderIdx, elbowIdx, handIdx) = if (isFront) {
-                Triple(11, 13, 15)
-            } else {
-                Triple(12, 14, 16)
-            }
-
-            if (landmarks.size <= maxOf(shoulderIdx, elbowIdx, handIdx)) {
-                return "No pose detected"
-            }
-
-            // For now, return a placeholder - classifier integration in Step 6
-            return "Prediction: 0 (Confidence: 0.90)"
-        } catch (e: Exception) {
-            Log.e(TAG, "Pose classifier error", e)
-            return "Error: ${e.message}"
-        }
-    }
+    // NOTE: Classification now handled directly in Hands.kt and Pose.kt
+    // The old runLiteRtHandClassifier and runLiteRtPoseClassifier functions have been removed.
+    // Results are read from handResult.prediction and poseResult.prediction instead.
 
     private fun updateOverlayLiteRt() {
         activity.runOnUiThread {
@@ -629,7 +591,7 @@ class CameraxView(
         Log.e(TAG, "Hand/Pose error: $error ($errorCode)")
     }
 
-    override fun onResults(resultBundle: HandLandmarkerHelper.CombinedResultBundle) {
+    override fun onResults(resultBundle: CombinedResultBundle) {
         if (!isDetectionEnabled) return
         overlayView.setFrontCameraState(lensType == CameraSelector.LENS_FACING_FRONT)
         profile.addSessionData(userId, resultBundle)

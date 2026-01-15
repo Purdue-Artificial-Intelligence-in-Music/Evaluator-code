@@ -1,6 +1,6 @@
 package expo.modules.camerax
 
-import expo.modules.camerax.HandLandmarkerHelper.CombinedResultBundle
+import expo.modules.camerax.CombinedResultBundle
 import expo.modules.camerax.Detector.returnBow
 import java.io.File
 import java.io.FileWriter
@@ -256,7 +256,15 @@ class Profile {
             val classRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
 
             combinedFrames.forEach { bundle ->
-                if (bundle.handResults.isNotEmpty()) {
+                // ORIGINAL (MediaPipe path only):
+                // if (bundle.handResults.isNotEmpty()) {
+                //
+                // UPDATED: Support both MediaPipe and NPU paths.
+                // - MediaPipe path: handResults list is populated
+                // - NPU path: handResults is empty, but handDetection string contains valid prediction
+                // NPU returns "No hand detected" when nothing found, so we check for that prefix.
+                val handDetected = bundle.handResults.isNotEmpty() || !bundle.handDetection.startsWith("No ")
+                if (handDetected) {
                     handCounts["Detected"] = handCounts["Detected"]!! + 1
                     val match = classRegex.find(bundle.handDetection)
                     val handClass = match?.groupValues?.get(1)?.toIntOrNull() ?: -1
@@ -271,7 +279,12 @@ class Profile {
                     handCounts["None"] = handCounts["None"]!! + 1
                 }
 
-                if (bundle.poseResults.isNotEmpty()) {
+                // ORIGINAL (MediaPipe path only):
+                // if (bundle.poseResults.isNotEmpty()) {
+                //
+                // UPDATED: Support both MediaPipe and NPU paths (same pattern as hand above).
+                val poseDetected = bundle.poseResults.isNotEmpty() || !bundle.poseDetection.startsWith("No ")
+                if (poseDetected) {
                     poseCounts["Detected"] = poseCounts["Detected"]!! + 1
                     val match = classRegex.find(bundle.poseDetection)
                     val poseClass = match?.groupValues?.get(1)?.toIntOrNull() ?: -1

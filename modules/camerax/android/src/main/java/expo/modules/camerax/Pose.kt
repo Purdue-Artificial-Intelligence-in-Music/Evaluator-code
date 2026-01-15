@@ -21,9 +21,11 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
+import kotlin.math.acos
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * LiteRT/Qualcomm-backed pose pipeline placeholder.
@@ -60,6 +62,7 @@ class Pose(private val context: Context) {
 
     private var detector: Interpreter? = null
     private var landmark: Interpreter? = null
+    private var poseClassifier: Interpreter? = null
     // Delegates now managed by DelegateManager.kt
     private var detectorInputType: DataType = DataType.FLOAT32
     private var detectorCoordsPerAnchor = 0
@@ -173,13 +176,14 @@ class Pose(private val context: Context) {
         val score: Float,
         val landmarks: List<Pair<Float, Float>>,
         val roi: FloatArray? = null,
-        val detKeypoints: FloatArray? = null // normalized detector keypoints (x0,y0,...)
+        val detKeypoints: FloatArray? = null, // normalized detector keypoints (x0,y0,...)
+        val prediction: String = ""  // Classification result (e.g., "Prediction: 0 (Confidence: 0.85)")
     )
 
     /**
      * Full pose path: detect -> ROI -> landmark -> map back.
      */
-    fun detectAndLandmark(bitmap: Bitmap): List<PoseLandmarks> {
+    fun detectAndLandmark(bitmap: Bitmap, isFrontCamera: Boolean = false): List<PoseLandmarks> {
         Log.d(TAG, "pose detectAndLandmark frame=${bitmap.width}x${bitmap.height}")
         val lmInterp = landmark ?: return emptyList()
         // Step 1: try reuse last ROI (with smoothing) before running detector.
@@ -212,8 +216,9 @@ class Pose(private val context: Context) {
                     pairs.add(Pair(mapped[i], mapped[i + 1]))
                     i += 2
                 }
-                Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (reuse)")
-                return listOf(PoseLandmarks(out.first, pairs, reuse, null))
+                val prediction = classifyPose(pairs, bitmap.width, bitmap.height, isFrontCamera)
+                Log.d("classification", "Pose detection - score=${out.first}, points=${pairs.size}, prediction=$prediction (reuse)")
+                return listOf(PoseLandmarks(out.first, pairs, reuse, null, prediction))
             }
         }
         val detections = detectPoses(bitmap)
@@ -261,10 +266,11 @@ class Pose(private val context: Context) {
                 pairs.add(Pair(mapped[i], mapped[i + 1]))
                 i += 2
             }
-            Log.d("classifcation", "pose score=${out.first} points=${pairs.size} (detector-only)")
+            val prediction = classifyPose(pairs, bitmap.width, bitmap.height, isFrontCamera)
+            Log.d("classification", "Pose detection - score=${out.first}, points=${pairs.size}, prediction=$prediction (detector)")
             lastRoi = smoothedRoi.copyOf()
             lastLandmarksArr = mapped.copyOf()
-            results.add(PoseLandmarks(out.first, pairs, smoothedRoi, det.keypoints))
+            results.add(PoseLandmarks(out.first, pairs, smoothedRoi, det.keypoints, prediction))
             if (results.isNotEmpty()) break
         }
         Log.d(TAG, "pose landmarks count=${results.size}")
@@ -272,6 +278,119 @@ class Pose(private val context: Context) {
     }
 
     private fun clamp01(v: Float): Float = max(0f, min(1f, v))
+
+    /**
+     * Classify pose (elbow position) using 9-float input.
+     * Matches HandLandmarkerHelper.extractPoseCoordinates + runTFLitePoseInference logic.
+     *
+     * NOTE: Pose.kt landmarks are 2D only (no z coordinate). We use z=0.
+     * This may reduce accuracy slightly compared to MediaPipe's 3D landmarks,
+     * but should work for basic "elbow high/low" detection.
+     *
+     * @param landmarks 33 pose landmarks as (x, y) pairs IN PIXEL COORDINATES
+     * @param imageWidth width of the source image (for normalization)
+     * @param imageHeight height of the source image (for normalization)
+     * @param isFrontCamera true if using front camera (affects arm selection)
+     * @return Prediction string like "Prediction: 0 (Confidence: 0.85)" or empty on error
+     */
+    private fun classifyPose(
+        landmarks: List<Pair<Float, Float>>,
+        imageWidth: Int,
+        imageHeight: Int,
+        isFrontCamera: Boolean
+    ): String {
+        try {
+            if (poseClassifier == null) {
+                val model = FileUtil.loadMappedFile(context, "keypoint_classifier (1).tflite")
+                poseClassifier = Interpreter(model)
+                Log.d(TAG, "Loaded pose classifier")
+            }
+
+            // Select arm landmarks based on camera (matches HandLandmarkerHelper)
+            // Front camera: left arm (11, 13, 15) - player's right arm appears on left of image
+            // Back camera: right arm (12, 14, 16)
+            val (shoulderIdx, elbowIdx, handIdx) = if (isFrontCamera) {
+                Triple(11, 13, 15)
+            } else {
+                Triple(12, 14, 16)
+            }
+
+            if (landmarks.size <= maxOf(shoulderIdx, elbowIdx, handIdx)) {
+                return ""
+            }
+
+            val shoulder = landmarks[shoulderIdx]
+            val elbow = landmarks[elbowIdx]
+            val hand = landmarks[handIdx]
+
+            // Convert pixel coordinates to normalized 0-1 coordinates
+            // (matches MediaPipe's normalized landmark format)
+            val shoulderNormX = shoulder.first / imageWidth
+            val shoulderNormY = shoulder.second / imageHeight
+            val elbowNormX = elbow.first / imageWidth
+            val elbowNormY = elbow.second / imageHeight
+            val handNormX = hand.first / imageWidth
+            val handNormY = hand.second / imageHeight
+
+            // Apply camera flip for back camera (matches HandLandmarkerHelper)
+            val shoulderX = if (isFrontCamera) shoulderNormX else 1f - shoulderNormX
+            val shoulderY = shoulderNormY
+            val elbowX = if (isFrontCamera) elbowNormX else 1f - elbowNormX
+            val elbowY = elbowNormY
+            val handX = if (isFrontCamera) handNormX else 1f - handNormX
+            val handY = handNormY
+
+            // Compute vectors (z=0 for 2D landmarks)
+            val seVec = floatArrayOf(
+                shoulderX - elbowX,
+                shoulderY - elbowY,
+                0f  // z=0 (2D landmarks)
+            )
+            val heVec = floatArrayOf(
+                handX - elbowX,
+                handY - elbowY,
+                0f  // z=0 (2D landmarks)
+            )
+
+            // Compute distances
+            val seDist = sqrt(seVec[0] * seVec[0] + seVec[1] * seVec[1] + seVec[2] * seVec[2])
+            val heDist = sqrt(heVec[0] * heVec[0] + heVec[1] * heVec[1] + heVec[2] * heVec[2])
+
+            if (seDist <= 0f || heDist <= 0f) return ""
+
+            // Compute angle (theta)
+            val dotProduct = seVec[0] * heVec[0] + seVec[1] * heVec[1] + seVec[2] * heVec[2]
+            val cosTheta = (dotProduct / (seDist * heDist)).coerceIn(-1f, 1f)
+            val theta = acos(cosTheta)
+
+            // Build 9-float input (matches HandLandmarkerHelper.extractPoseCoordinates)
+            val coords = floatArrayOf(
+                seVec[0] / seDist, seVec[1] / seDist, seVec[2] / seDist,  // normalized shoulder-elbow vector
+                heVec[0] / heDist, heVec[1] / heDist, heVec[2] / heDist,  // normalized hand-elbow vector
+                theta,      // angle in radians
+                seDist,     // shoulder-elbow distance (now in normalized coords ~0.1-0.3)
+                heDist      // hand-elbow distance (now in normalized coords ~0.1-0.3)
+            )
+
+            Log.d(TAG, "Pose classifier input: se=(${coords[0]},${coords[1]},${coords[2]}) he=(${coords[3]},${coords[4]},${coords[5]}) theta=${coords[6]} seDist=${coords[7]} heDist=${coords[8]}")
+
+            // Run classifier
+            val output = Array(1) { FloatArray(3) }
+            val t0 = android.os.SystemClock.uptimeMillis()
+            poseClassifier?.run(arrayOf(coords), output)
+            val t1 = android.os.SystemClock.uptimeMillis()
+
+            val results = output[0]
+            val maxIdx = results.indices.maxByOrNull { results[it] } ?: 0
+            val confidence = results[maxIdx]
+
+            Log.d(TAG, "Pose class=$maxIdx conf=$confidence time=${t1 - t0}ms")
+            return "Prediction: $maxIdx (Confidence: %.2f)".format(confidence)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Pose classifier failed: ${t.message}")
+            return ""
+        }
+    }
 
     private fun setupDetector() {
         // Select model based on delegate: w8a8 for NPU, float for GPU/CPU
