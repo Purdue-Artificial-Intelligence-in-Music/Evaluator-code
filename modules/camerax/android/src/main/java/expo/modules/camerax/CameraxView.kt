@@ -51,6 +51,7 @@ class CameraxView(
     private val onDetectionResult by EventDispatcher()
     private val onNoDetection by EventDispatcher()
     private val onSessionEnd by EventDispatcher()
+    private val onCalibrated by EventDispatcher()
 
     private val activity get() = requireNotNull(appContext.activityProvider?.currentActivity)
 
@@ -63,6 +64,11 @@ class CameraxView(
     private var cameraProvider: ProcessCameraProvider? = null
 
     private var detector: Detector? = null
+
+    private var calibrationCount: Int = 0
+    private var calibrationCorrect: Int = 0
+    private var isCalibrated: Boolean = false
+
     private lateinit var handLandmarkerHelper: HandLandmarkerHelper
 
     private val profile = Profile()
@@ -133,8 +139,12 @@ class CameraxView(
     }
 
     fun setDetectionEnabled(enabled: Boolean) {
+        Log.d("DetectionEnabled: ", enabled.toString())
         if (isDetectionEnabled == enabled) return
         isDetectionEnabled = enabled
+        isCalibrated = false
+        calibrationCount = 0
+        calibrationCorrect = 0
 
         if (enabled) {
             // Start a new session
@@ -204,6 +214,14 @@ class CameraxView(
             }
         } else {
             stopCamera()
+        }
+    }
+
+    fun skipCalibration(skip: Boolean) {
+        if (skip) {
+            isCalibrated = true
+            calibrationCorrect = 0
+            calibrationCount = 0
         }
     }
 
@@ -375,16 +393,48 @@ class CameraxView(
     override fun detected(results: Detector.YoloResults, sourceWidth: Int, sourceHeight: Int) {
         if (!isDetectionEnabled) return
         val bowPoints = detector?.classify(results)
-        if (bowPoints != null) {
-            profile.addSessionData(userId, bowPoints)
+        if (isCalibrated) {
+            if (bowPoints != null) {
+                profile.addSessionData(userId, bowPoints)
+            }
+            latestBowResults = bowPoints
+            updateOverlay()
+            sendDetectionResults()
+        } else {
+            calibrationCount++
+            calibrationCorrect++
+            if (calibrationCount == 30) {
+                if ((calibrationCorrect.toDouble() / calibrationCount.toDouble()) >= .6) {
+                    isCalibrated = true
+                    Log.d("Calibration", "Model Calibrated, emitting Event")
+                    onCalibrated(mapOf("calibration" to isCalibrated))
+                } else {
+                    calibrationCount = 0
+                    Log.d("Calibration", "Calibration Failed")
+                }
+            }
+            latestBowResults = Detector.returnBow(-2, null, null, 0)
+            updateOverlay()
+            sendDetectionResults()
+            onNoDetection(mapOf("message" to "No objects detected"))
         }
-        latestBowResults = bowPoints
-        updateOverlay()
-        sendDetectionResults()
     }
 
     override fun noDetect() {
         if (!isDetectionEnabled) return
+        if (!isCalibrated) {
+            calibrationCount++
+            if (calibrationCount == 30) {
+                if ((calibrationCorrect.toDouble() / calibrationCount.toDouble()) >= .6) {
+                    isCalibrated = true
+                    Log.d("Calibration", "Model Calibrated, emitting Event")
+                    onCalibrated(mapOf("calibration" to isCalibrated))
+                } else {
+                    calibrationCount = 0
+                    Log.d("Calibration", "Calibration Failed")
+                }
+            }
+        }
         latestBowResults = Detector.returnBow(-2, null, null, 0)
         updateOverlay()
         onNoDetection(mapOf("message" to "No objects detected"))

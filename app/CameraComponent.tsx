@@ -60,7 +60,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
   const [lensType, setLensType] = useState('back'); // use front or back camera
   const [userId, setUserId] = useState('default_user');
-  const [showSetupOverlay, setShowSetupOverlay] = useState(true);
+  const [showSetupOverlay, setShowSetupOverlay] = useState(false);
 
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
@@ -107,8 +107,16 @@ const CameraComponent = ({ startDelay, onClose }) => {
     setLensType(prev => prev === 'back' ? 'front' : 'back');
   };
 
-  const handleReady = () => {
-    setShowSetupOverlay(false);
+  const handleCalibrated = async (event: any) => {
+      console.log("Calibration", "Calibration successful")
+      setShowSetupOverlay(false)
+      setSessionStartTime(new Date())
+  };
+
+  const skipCalibration = () => {
+    console.log("Calibration", "Skipping Calibration")
+    setShowSetupOverlay(false)
+    setSessionStartTime(new Date());
   };
 
   useEffect(() => {
@@ -838,6 +846,8 @@ const CameraComponent = ({ startDelay, onClose }) => {
         detectionEnabled={isDetectionEnabled}
         lensType={lensType}
         onSessionEnd={handleSessionEnd}
+        onCalibrated={handleCalibrated}
+        skipCalibration={!showSetupOverlay}
         maxBowAngle={maxAngle}
       />
       
@@ -880,11 +890,11 @@ const CameraComponent = ({ startDelay, onClose }) => {
       <TouchableOpacity
         style={styles.detectionButton}
           onPress={() => {
-            if (showSetupOverlay) setShowSetupOverlay(false);
             if (!isDetectionEnabled) {
-              setSessionStartTime(new Date());
+             setShowSetupOverlay(true);
             }
             setIsDetectionEnabled(!isDetectionEnabled);
+            console.log("DetectionEnabled: ", !isDetectionEnabled)
           }}
       >
         <Text style={styles.buttonText}>
@@ -913,8 +923,8 @@ const CameraComponent = ({ startDelay, onClose }) => {
             <Bullet>Keep the bridge near the dotted line</Bullet>
             <Bullet>Point your cello towards the camera</Bullet>
 
-            <TouchableOpacity style={styles.readyBtn} onPress={handleReady} activeOpacity={0.9}>
-              <Text style={styles.readyText}>Ready</Text>
+            <TouchableOpacity style={styles.readyBtn} onPress={skipCalibration} activeOpacity={0.9}>
+              <Text style={styles.readyText}>Skip</Text>
             </TouchableOpacity>
           </View>
         </>
