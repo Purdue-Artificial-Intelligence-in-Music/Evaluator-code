@@ -61,7 +61,7 @@ class Detector (
 
     // flexibility of angle relative to 90 degrees
     // use 15 as default, and receive input (range 0-90) from the frontend
-    private var maxAngle: Int = 15
+    private var maxAngle: Int = 18
 
     // add setter for MaxAngle
     fun setMaxAngle(angle: Int) {

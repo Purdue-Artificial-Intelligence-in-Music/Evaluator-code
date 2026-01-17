@@ -604,16 +604,17 @@ class HandLandmarkerHelper(
                     return "Error: Helper is closed."
                 }
                 Log.d(TAG, "Initializing hand TFLite interpreter.")
-                val model = loadModelFile("keypoint_classifier_FINAL.tflite")
+                val model = loadModelFile("model_tf213.tflite")
                 handTFLite = Interpreter(model)
             }
 
-            val output = Array(1) { FloatArray(4) }
+            val output = Array(1) { FloatArray(3) }
             val inputArray = arrayOf(inputData)
             handTFLite!!.run(inputArray, output)
 
             val results = output[0]
             val supinationIndex = 1
+            Log.d("HAND CONFIDENCE", "${results[0]}, " + "${results[1]}, " + "${results[2]}")
             results[supinationIndex] *= 0.7f
 
             val maxIndex = results.indices.maxByOrNull { results[it] } ?: -1
