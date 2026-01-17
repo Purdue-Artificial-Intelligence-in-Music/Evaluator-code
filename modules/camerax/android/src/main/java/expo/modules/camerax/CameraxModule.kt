@@ -32,7 +32,11 @@ class CameraxModule : Module() {
                 view.setMaxBowAngle(angle)
             }
 
-            Events("onDetectionResult", "onNoDetection", "onSessionEnd")
+            Prop("skipCalibration") { view: CameraxView, skip: Boolean ->
+                view.skipCalibration(skip)
+            }
+
+            Events("onDetectionResult", "onNoDetection", "onSessionEnd", "onCalibrated")
         }
 
         AsyncFunction("getRecentSessions") { userId: String, count: Int ->
