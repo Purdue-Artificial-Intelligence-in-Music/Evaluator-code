@@ -49,9 +49,12 @@ class Detector (
     private var stringRepeat = 0
     private var bowPoints: List<Point>? = null
     private var stringPoints: List<Point>? = null
-    private var yLocked = false
-    private var yAvg: MutableList<Double>? = null
-    private var frameCounter = 0
+    // Queue deltaY for each stringBox
+    private var stringBoxQueue: ArrayDeque<Double> = ArrayDeque< Double>()
+    private var stringBoxCounter: Int = 0
+    private var yDeltaTotal: Double = 0.0
+    private val MAX_QUEUE_SIZE = 120
+    private val MAX_Y_DELTA_THRESHOLD = 3
     private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
     private val numWaitFrames = 5
     private var ogWidth: Int = 0
@@ -168,7 +171,7 @@ class Detector (
         }
 
         // 2) GPU attempt
-        try {
+       try {
             val gpuOptions = org.tensorflow.lite.Interpreter.Options()
             val cl = org.tensorflow.lite.gpu.CompatibilityList()
 
@@ -377,11 +380,14 @@ class Detector (
         //println("bow conf, string conf: $bowConf, $stringConf")
 
         if (results.bowResults == null && results.stringResults == null) {
+            // No Detections Found
             listener?.noDetect()
             Log.d("BOW RESULTS", "NO DETECTIONS")
         } else {
+            // Detected Correctly!
             Log.d("BOXES123", "SOMETHING DETECTED")
             //println(results)
+            // Update y-box averages
             listener?.detected(results, frame.width, frame.height)
             //print(results)
         }
@@ -666,29 +672,52 @@ class Detector (
         stringBox: MutableList<Point>,
         bowBox: MutableList<Point>
     ) {
-
         bowPoints = bowBox //change bow points to mutable list
-        stringPoints = sortStringPoints(stringBox)
+        val stringPoints = updateStringPoints(stringBox)
         Log.d("sorted points", stringPoints.toString())
-        /*
-        if (!yLocked) {
-            //just assign class variable string points to this
-            stringPoints = stringBox
-        } else if (yAvg != null) {
-            //first sort strings if y is locked
-            val sortedString = sortStringPoints(stringBox)
+    }
+
+    /*
+     * Handles updating the queue of string points and the mean string box height (delta)
+     * Returns the stringBox with locked top values if outside of threshold
+     */
+    fun updateStringPoints(stringBox: MutableList<Point>): MutableList<Detector.Point> {
+        val sortedString = sortStringPoints(stringBox)
+
+        // Get top left & bot left points y values for delta
+        val delta_y = kotlin.math.abs(sortedString[0].y - sortedString[3].y)
+        val top_y = stringBox[0].y
+
+        // Update string box delta queue and avg y
+        yDeltaTotal += delta_y
+        stringBoxQueue.add(delta_y)
+        stringBoxCounter += 1
+
+        // Handle locking the points
+        if (stringBoxCounter == 1) {
+            // First point, just set string box
             stringPoints = sortedString
-            Log.d("sorted points", stringPoints.toString())
+        } else {
+            // Check if we need to dequeue old stringBox
+            if (stringBoxCounter > MAX_QUEUE_SIZE) {
+                yDeltaTotal -= stringBoxQueue.removeFirst()
+                stringBoxCounter -= 1
+            }
+            // Check if newest element is within threshold
+            val mean_y_delta = (yDeltaTotal / stringBoxCounter)
+            Log.d("String Box Lock", "Delta_Y: $delta_y")
+            Log.d("String Box Lock", "Avg Delta_Y: $mean_y_delta")
 
-            //stringPoints!![0].y = yAvg!![0]
-            //stringPoints!![1].y = yAvg!![1]
+            // Need to lock points if delta is too different than previous
+            if (kotlin.math.abs(mean_y_delta - delta_y) > MAX_Y_DELTA_THRESHOLD) {
+                // Use avg delta y above bottom point
+                sortedString[0].y = sortedString[2].y - mean_y_delta
+                sortedString[1].y = sortedString[3].y - mean_y_delta
+                Log.d("String Box Lock", "Locked box to avg_delta")
+            }
 
-            //println("y_avg: $yAvg")
-            //println("string_points: $stringPoints")
         }
-
-         */
-
+        return sortedString
     }
     //
     fun sortStringPoints(pts: MutableList<Point>): MutableList<Point> {
@@ -918,7 +947,7 @@ class Detector (
         return 0
     }
 
-    private fun averageYCoordinate(stringBoxCoords: MutableList<Point>) {
+    /*private fun averageYCoordinate(stringBoxCoords: MutableList<Point>) {
         /*
         Recalculate and updates new string Y coordinate heights for every
         n frames.
@@ -947,11 +976,11 @@ class Detector (
             stringPoints!![1].y = topRightAvg
             stringPoints!![2].y = botRightAvg
             stringPoints!![3].y = botLeftAvg
-            yAvg = mutableListOf(topLeftAvg, topRightAvg)
-            yLocked = true
+            //yAvg = mutableListOf(topLeftAvg, topRightAvg)
+            //yLocked = true
             stringYCoordHeights = mutableListOf()
         }
-    }
+    }*/
 
     /*
         Returns median item of a list
