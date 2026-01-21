@@ -66,6 +66,46 @@ class Detector (
     // use 15 as default, and receive input (range 0-90) from the frontend
     private var maxAngle: Int = 18
 
+    //Heaps for yDelta calculation
+    private val lowerHeap = java.util.PriorityQueue<Double>(compareByDescending { it })
+    private val upperHeap = java.util.PriorityQueue<Double>()
+
+    private val deltaQueue = ArrayDeque<Double>() // MAX_QUEUE_SIZE
+
+    private fun addDelta(value: Double) {
+        if (lowerHeap.isEmpty() || value <= lowerHeap.peek()) {
+            lowerHeap.add(value)
+        } else {
+            upperHeap.add(value)
+        }
+        rebalanceHeaps()
+    }
+
+    private fun removeDelta(value: Double) {
+        if (!lowerHeap.remove(value)) {
+            upperHeap.remove(value)
+        }
+        rebalanceHeaps()
+    }
+
+    private fun rebalanceHeaps() {
+        when {
+            lowerHeap.size > upperHeap.size + 1 ->
+                upperHeap.add(lowerHeap.poll())
+
+            upperHeap.size > lowerHeap.size ->
+                lowerHeap.add(upperHeap.poll())
+        }
+    }
+
+    private fun currentMedian(): Double {
+        return if (lowerHeap.size == upperHeap.size) {
+            (lowerHeap.peek() + upperHeap.peek()) / 2.0
+        } else {
+            lowerHeap.peek()
+        }
+    }
+
     // add setter for MaxAngle
     fun setMaxAngle(angle: Int) {
         maxAngle = angle.coerceIn(0, 90)
@@ -681,42 +721,40 @@ class Detector (
      * Handles updating the queue of string points and the mean string box height (delta)
      * Returns the stringBox with locked top values if outside of threshold
      */
-    fun updateStringPoints(stringBox: MutableList<Point>): MutableList<Detector.Point> {
+    fun updateStringPoints(stringBox: MutableList<Point>): MutableList<Point> {
         val sortedString = sortStringPoints(stringBox)
 
-        // Get top left & bot left points y values for delta
+        // Height of string box
         val delta_y = kotlin.math.abs(sortedString[0].y - sortedString[3].y)
-        val top_y = stringBox[0].y
 
-        // Update string box delta queue and avg y
-        yDeltaTotal += delta_y
-        stringBoxQueue.add(delta_y)
-        stringBoxCounter += 1
-
-        // Handle locking the points
-        if (stringBoxCounter == 1) {
-            // First point, just set string box
-            stringPoints = sortedString
-        } else {
-            // Check if we need to dequeue old stringBox
-            if (stringBoxCounter > MAX_QUEUE_SIZE) {
-                yDeltaTotal -= stringBoxQueue.removeFirst()
-                stringBoxCounter -= 1
-            }
-            // Check if newest element is within threshold
-            val mean_y_delta = (yDeltaTotal / stringBoxCounter)
-            Log.d("String Box Lock", "Delta_Y: $delta_y")
-            Log.d("String Box Lock", "Avg Delta_Y: $mean_y_delta")
-
-            // Need to lock points if delta is too different than previous
-            if (kotlin.math.abs(mean_y_delta - delta_y) > MAX_Y_DELTA_THRESHOLD) {
-                // Use avg delta y above bottom point
-                sortedString[0].y = sortedString[2].y - mean_y_delta
-                sortedString[1].y = sortedString[3].y - mean_y_delta
-                Log.d("String Box Lock", "Locked box to avg_delta")
-            }
-
+        deltaQueue.add(delta_y)
+        addDelta(delta_y)
+        
+        // Enforce sliding window
+        if (deltaQueue.size > MAX_QUEUE_SIZE) {
+            val old = deltaQueue.removeFirst()
+            removeDelta(old)
         }
+
+        // First frame: no locking
+        if (deltaQueue.size == 1) {
+            stringPoints = sortedString
+            return sortedString
+        }
+
+        val medianDelta = currentMedian()
+
+        Log.d("String Box Lock", "Delta_Y: $delta_y")
+        Log.d("String Box Lock", "Median Delta_Y: $medianDelta")
+
+        // Lock if deviation too large
+        if (kotlin.math.abs(medianDelta - delta_y) > MAX_Y_DELTA_THRESHOLD) {
+            // Lock top points using median height
+            sortedString[0].y = sortedString[2].y - medianDelta
+            sortedString[1].y = sortedString[3].y - medianDelta
+            Log.d("String Box Lock", "Locked box to median_delta")
+        }
+
         return sortedString
     }
     //
