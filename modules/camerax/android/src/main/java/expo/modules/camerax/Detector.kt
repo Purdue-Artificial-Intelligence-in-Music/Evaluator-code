@@ -750,8 +750,8 @@ class Detector (
         // Lock if deviation too large
         if (kotlin.math.abs(medianDelta - delta_y) > MAX_Y_DELTA_THRESHOLD) {
             // Lock top points using median height
-            sortedString[0].y = sortedString[2].y - medianDelta
-            sortedString[1].y = sortedString[3].y - medianDelta
+            sortedString[0].y = sortedString[3].y - medianDelta
+            sortedString[1].y = sortedString[2].y - medianDelta
             Log.d("String Box Lock", "Locked box to median_delta")
         }
 
