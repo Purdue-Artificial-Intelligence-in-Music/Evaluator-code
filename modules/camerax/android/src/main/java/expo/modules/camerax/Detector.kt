@@ -49,9 +49,12 @@ class Detector (
     private var stringRepeat = 0
     private var bowPoints: List<Point>? = null
     private var stringPoints: List<Point>? = null
-    private var yLocked = false
-    private var yAvg: MutableList<Double>? = null
-    private var frameCounter = 0
+    // Queue deltaY for each stringBox
+    private var stringBoxQueue: ArrayDeque<Double> = ArrayDeque< Double>()
+    private var stringBoxCounter: Int = 0
+    private var yDeltaTotal: Double = 0.0
+    private val MAX_QUEUE_SIZE = 120
+    private val MAX_Y_DELTA_THRESHOLD = 3
     private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
     private val numWaitFrames = 5
     private var ogWidth: Int = 0
@@ -62,6 +65,46 @@ class Detector (
     // flexibility of angle relative to 90 degrees
     // use 15 as default, and receive input (range 0-90) from the frontend
     private var maxAngle: Int = 18
+
+    //Heaps for yDelta calculation
+    private val lowerHeap = java.util.PriorityQueue<Double>(compareByDescending { it })
+    private val upperHeap = java.util.PriorityQueue<Double>()
+
+    private val deltaQueue = ArrayDeque<Double>() // MAX_QUEUE_SIZE
+
+    private fun addDelta(value: Double) {
+        if (lowerHeap.isEmpty() || value <= lowerHeap.peek()) {
+            lowerHeap.add(value)
+        } else {
+            upperHeap.add(value)
+        }
+        rebalanceHeaps()
+    }
+
+    private fun removeDelta(value: Double) {
+        if (!lowerHeap.remove(value)) {
+            upperHeap.remove(value)
+        }
+        rebalanceHeaps()
+    }
+
+    private fun rebalanceHeaps() {
+        when {
+            lowerHeap.size > upperHeap.size + 1 ->
+                upperHeap.add(lowerHeap.poll())
+
+            upperHeap.size > lowerHeap.size ->
+                lowerHeap.add(upperHeap.poll())
+        }
+    }
+
+    private fun currentMedian(): Double {
+        return if (lowerHeap.size == upperHeap.size) {
+            (lowerHeap.peek() + upperHeap.peek()) / 2.0
+        } else {
+            lowerHeap.peek()
+        }
+    }
 
     // add setter for MaxAngle
     fun setMaxAngle(angle: Int) {
@@ -168,7 +211,7 @@ class Detector (
         }
 
         // 2) GPU attempt
-        try {
+       try {
             val gpuOptions = org.tensorflow.lite.Interpreter.Options()
             val cl = org.tensorflow.lite.gpu.CompatibilityList()
 
@@ -377,11 +420,14 @@ class Detector (
         //println("bow conf, string conf: $bowConf, $stringConf")
 
         if (results.bowResults == null && results.stringResults == null) {
+            // No Detections Found
             listener?.noDetect()
             Log.d("BOW RESULTS", "NO DETECTIONS")
         } else {
+            // Detected Correctly!
             Log.d("BOXES123", "SOMETHING DETECTED")
             //println(results)
+            // Update y-box averages
             listener?.detected(results, frame.width, frame.height)
             //print(results)
         }
@@ -666,29 +712,50 @@ class Detector (
         stringBox: MutableList<Point>,
         bowBox: MutableList<Point>
     ) {
-
         bowPoints = bowBox //change bow points to mutable list
-        stringPoints = sortStringPoints(stringBox)
+        val stringPoints = updateStringPoints(stringBox)
         Log.d("sorted points", stringPoints.toString())
-        /*
-        if (!yLocked) {
-            //just assign class variable string points to this
-            stringPoints = stringBox
-        } else if (yAvg != null) {
-            //first sort strings if y is locked
-            val sortedString = sortStringPoints(stringBox)
-            stringPoints = sortedString
-            Log.d("sorted points", stringPoints.toString())
+    }
 
-            //stringPoints!![0].y = yAvg!![0]
-            //stringPoints!![1].y = yAvg!![1]
+    /*
+     * Handles updating the queue of string points and the mean string box height (delta)
+     * Returns the stringBox with locked top values if outside of threshold
+     */
+    fun updateStringPoints(stringBox: MutableList<Point>): MutableList<Point> {
+        val sortedString = sortStringPoints(stringBox)
 
-            //println("y_avg: $yAvg")
-            //println("string_points: $stringPoints")
+        // Height of string box
+        val delta_y = kotlin.math.abs(sortedString[0].y - sortedString[3].y)
+
+        deltaQueue.add(delta_y)
+        addDelta(delta_y)
+        
+        // Enforce sliding window
+        if (deltaQueue.size > MAX_QUEUE_SIZE) {
+            val old = deltaQueue.removeFirst()
+            removeDelta(old)
         }
 
-         */
+        // First frame: no locking
+        if (deltaQueue.size == 1) {
+            stringPoints = sortedString
+            return sortedString
+        }
 
+        val medianDelta = currentMedian()
+
+        Log.d("String Box Lock", "Delta_Y: $delta_y")
+        Log.d("String Box Lock", "Median Delta_Y: $medianDelta")
+
+        // Lock if deviation too large
+        if (kotlin.math.abs(medianDelta - delta_y) > MAX_Y_DELTA_THRESHOLD) {
+            // Lock top points using median height
+            sortedString[0].y = sortedString[3].y - medianDelta
+            sortedString[1].y = sortedString[2].y - medianDelta
+            Log.d("String Box Lock", "Locked box to median_delta")
+        }
+
+        return sortedString
     }
     //
     fun sortStringPoints(pts: MutableList<Point>): MutableList<Point> {
@@ -918,7 +985,7 @@ class Detector (
         return 0
     }
 
-    private fun averageYCoordinate(stringBoxCoords: MutableList<Point>) {
+    /*private fun averageYCoordinate(stringBoxCoords: MutableList<Point>) {
         /*
         Recalculate and updates new string Y coordinate heights for every
         n frames.
@@ -947,11 +1014,11 @@ class Detector (
             stringPoints!![1].y = topRightAvg
             stringPoints!![2].y = botRightAvg
             stringPoints!![3].y = botLeftAvg
-            yAvg = mutableListOf(topLeftAvg, topRightAvg)
-            yLocked = true
+            //yAvg = mutableListOf(topLeftAvg, topRightAvg)
+            //yLocked = true
             stringYCoordHeights = mutableListOf()
         }
-    }
+    }*/
 
     /*
         Returns median item of a list
