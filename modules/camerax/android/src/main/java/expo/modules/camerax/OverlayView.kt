@@ -446,6 +446,20 @@ class OverlayView @JvmOverloads constructor(
             filteredHands?.let { list ->
                 val landmarks = list[0]
 
+                // Parse hand classification
+                val handClassRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
+                val handMatch = handClassRegex.find(handDetect)
+                val handClass = handMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
+
+                // Set line color based on hand classification
+                // 0 = correct (blue), 1-2 = incorrect (orange)
+                val handLineColor = if (handClass in 1..2) {
+                    Color.rgb(255, 140, 0)  // Orange for incorrect
+                } else {
+                    Color.BLUE  // Correct hand position
+                }
+                linePaint.color = handLineColor
+
                 // Draw hand connections
                 HandLandmarker.HAND_CONNECTIONS.forEach { c ->
                     val s = landmarks[c!!.start()]

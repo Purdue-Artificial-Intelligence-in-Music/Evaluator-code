@@ -143,14 +143,6 @@ const CameraComponent = ({ startDelay, onClose }) => {
       // load history session
       const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
       
-      console.log('=== LOADED SESSIONS ===');
-      console.log('Number of sessions:', sessions.length);
-      if (sessions.length > 0) {
-        console.log('First session:', JSON.stringify(sessions[0], null, 2));
-        console.log('First session timestamp:', sessions[0].timestamp);
-        console.log('First session userId:', sessions[0].userId);
-      }
-      
       if (sessions && sessions.length > 0) {
         setHistorySessions(sessions as SummaryData[]);
         setHistoryVisible(true);
