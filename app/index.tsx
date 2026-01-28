@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import * as VideoAnalyzer from '../modules/expo-video-analyzer/src/ExpoVideoAnalyzer';
 import CameraComponent from './CameraComponent';
 
@@ -21,11 +21,6 @@ import * as ImagePickerExpo from 'expo-image-picker';
 import { Camera } from 'react-native-vision-camera';
 
 import * as FileSystem from 'expo-file-system';
-
-type Point = {
-  x: number;
-  y: number;
-};
 
 const width = Dimensions.get('window').width;
 const height = Dimensions.get('window').height;
@@ -93,6 +88,7 @@ export default function HomePage() {
   const returnBack = async () => {
     setIsCameraOpen(false);
     setVideoUri(null);
+    setVideoDimensions(null);
     setsendButton(false);
     setIsAnalyzing(false);
   };
@@ -342,7 +338,14 @@ export default function HomePage() {
           />
         </ScrollView>
       ) : (
-        !sendVideo && <Text style={styles.placeholderText}>No video selected</Text>
+        <View style={{ alignItems: 'center', paddingHorizontal: 24 }}>
+          {!sendVideo && (
+            <Text style={styles.placeholderText}>No video selected</Text>
+          )}
+          <Text style={styles.noticeText}>
+            This app is a supplementary tool for checking overall posture. Posture standards may vary by school, so always follow your instructor's advice first.
+          </Text>
+        </View>
       )}
 
 
@@ -416,28 +419,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     width: '100%',
   },
-  button: {
-    width: '90%',
-    height: 60,
-    marginVertical: 10,
-  },
-  point: {
-    flex: 1,
-    position: 'absolute',
-    width:5,
-    height: 5,
-  },
-  camera: {
-    flex: 1,
-    width: width * factorTwo,
-    height: height,
-    borderRadius: 10,
-  },
   placeholderText: {
-    color: 'red',
+    color: '#000',
     fontSize: 16,
     fontWeight: 'bold',
     marginTop: 10,
+  },
+  noticeText: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 8,
   },
 
   videoDimensionsText: {
