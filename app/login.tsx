@@ -16,12 +16,12 @@ export default function Login() {
     if (!isValidEmail(email)) return;
     await AsyncStorage.setItem('userEmail', email.trim());
     console.log("received user email: ", email, " and stored");
-    setShowModal(true); // 显示弹窗而不是直接跳转
+    setShowModal(true); // show popup window with confirmation message
   }
 
   function onConfirm() {
     setShowModal(false);
-    router.replace('/'); // 确认后跳转到主页
+    router.replace('/'); // go to home screen
   }
 
   const showError = touched && email.length > 0 && !isValidEmail(email);

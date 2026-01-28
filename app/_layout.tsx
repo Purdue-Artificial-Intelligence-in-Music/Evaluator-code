@@ -8,7 +8,7 @@ export default function RootLayout() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // maek as mounted
+    // mark as mounted
     setMounted(true);
   }, []);
 
@@ -33,5 +33,16 @@ export default function RootLayout() {
     checkAuth();
   }, [mounted]);
 
-  return <Stack screenOptions={{}} />;
+  return (
+    <Stack>
+      <Stack.Screen 
+        name="index" 
+        options={{ title: 'Home' }} 
+      />
+      <Stack.Screen 
+        name="login" 
+        options={{ title: 'Login' }} 
+      />
+    </Stack>
+  );
 }
