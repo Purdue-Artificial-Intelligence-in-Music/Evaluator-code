@@ -1,0 +1,4 @@
+${PODS_ROOT}/Target Support Files/Pods-Evaluator-Video-Test/Pods-Evaluator-Video-Test-resources.sh
+${PODS_CONFIGURATION_BUILD_DIR}/TensorFlowLiteC/TensorFlowLiteC.bundle
+${PODS_CONFIGURATION_BUILD_DIR}/TensorFlowLiteC/TensorFlowLiteCMetal.bundle
+${PODS_CONFIGURATION_BUILD_DIR}/TensorFlowLiteSwift/TensorFlowLite.bundle

@@ -1,0 +1,9 @@
+platform :ios, '13.0'
+
+target 'Evaluator-Video-Test' do
+  use_frameworks!
+
+  pod 'TensorFlowLiteSwift'
+  pod 'TensorFlowLiteSwift/Metal'
+
+end
