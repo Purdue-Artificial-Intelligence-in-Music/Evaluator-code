@@ -573,9 +573,7 @@ class HandLandmarkerHelper(
     private fun runTFLitePoseInference(inputData: FloatArray): String {
         try {
             if (poseTFLite == null) {
-                if (isClosed) {
-                    return "Error: Helper is closed."
-                }
+                if (isClosed) return "Error: Helper is closed."
                 Log.d(TAG, "Initializing pose TFLite interpreter.")
                 val model = loadModelFile("keypoint_classifier (1).tflite")
                 poseTFLite = Interpreter(model)
@@ -586,11 +584,51 @@ class HandLandmarkerHelper(
             poseTFLite!!.run(inputArray, output)
 
             val results = output[0]
-            val maxIndex = results.indices.maxByOrNull { results[it] } ?: -1
-            val confidence = results.getOrNull(maxIndex) ?: 0f
 
-            Log.d("TFLITE", "Predicted pose class: $maxIndex with confidence: $confidence")
-            return "Prediction: $maxIndex (Confidence: %.2f)".format(confidence)
+            // --- thresholds ---
+            val thresholdClass2 = 0.80f  
+            val thresholdGeneral = 0.00f  
+
+            // Find top-1 and top-2 indices
+            var top1 = -1
+            var top2 = -1
+            var top1Score = Float.NEGATIVE_INFINITY
+            var top2Score = Float.NEGATIVE_INFINITY
+
+            for (i in results.indices) {
+                val s = results[i]
+                if (s > top1Score) {
+                    top2Score = top1Score
+                    top2 = top1
+                    top1Score = s
+                    top1 = i
+                } else if (s > top2Score) {
+                    top2Score = s
+                    top2 = i
+                }
+            }
+
+            var finalIndex = top1
+            var finalScore = top1Score
+
+            // Optional general minimum
+            if (finalScore < thresholdGeneral) {
+                finalIndex = 0
+                finalScore = results[0]
+            }
+
+            // If class 2 is predicted but not confident enough, fall back
+            if (top1 == 2 && top1Score < thresholdClass2) {
+                
+                finalIndex = if (top2 != -1) top2 else 0
+                finalScore = if (top2 != -1) top2Score else results[0]
+
+            }
+
+            Log.d("TFLITE", "Pose raw scores: ${results.joinToString(", ")}")
+            Log.d("TFLITE", "Predicted pose class: $finalIndex with confidence: $finalScore")
+
+            return "Prediction: $finalIndex (Confidence: %.2f)".format(finalScore)
         } catch (e: Exception) {
             Log.e("TFLITE", "Error during pose inference", e)
             return "Error: ${e.message}"
@@ -604,7 +642,7 @@ class HandLandmarkerHelper(
                     return "Error: Helper is closed."
                 }
                 Log.d(TAG, "Initializing hand TFLite interpreter.")
-                val model = loadModelFile("model_tf213.tflite")
+                val model = loadModelFile("model_tf213_1_26_v2.tflite")
                 handTFLite = Interpreter(model)
             }
 
