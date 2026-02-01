@@ -52,11 +52,8 @@ class Detector (
     private val MAX_QUEUE_SIZE = 60
     private val MAX_Y_DELTA_THRESHOLD = 3
     private val MAX_BOW_DIST_THRESHOLD = 5
-    private val numWaitFrames = 5
     private var ogWidth: Int = 0
     private var ogHeight: Int = 0
-    //private var ogWidth: Int = 1
-    //private var ogHeight: Int = 1
 
     // flexibility of angle relative to 90 degrees
     // use 15 as default, and receive input (range 0-90) from the frontend
@@ -241,50 +238,6 @@ class Detector (
         return org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, cpuOptions)
     }
 
-//    private fun createInterpreterWithFallbacks(context: Context): Interpreter {
-//        val model = FileUtil.loadMappedFile(context, MODEL_ASSET)
-//        val options = Interpreter.Options()
-//
-//        // 1) Qualcomm NPU (QNN/HTP)
-//        val skelDir = tryLoadQnnAndPickSkelDir()
-//        if (skelDir != null) {
-//            try {
-//                val qOpts = QnnDelegate.Options().apply {
-//                    setBackendType(BackendType.HTP_BACKEND)
-//                    setSkelLibraryDir(skelDir)
-//                }
-//                qnnDelegate = QnnDelegate(qOpts)
-//                options.addDelegate(qnnDelegate)
-//                Log.i(TAG, "Using Qualcomm QNN delegate (HTP/NPU)")
-//                Log.i("Time Comparing", "Using Qualcomm QNN delegate (HTP/NPU)")
-//
-//                return Interpreter(model, options)
-//            } catch (t: Throwable) {
-//                Log.w(TAG, "QNN delegate unavailable: ${t.message}")
-//            }
-//        }
-//
-//        // 2) GPU
-//        try {
-//            val cl = CompatibilityList()
-//            // if (cl.isDelegateSupportedOnThisDevice) {
-//                tfliteGpu = GpuDelegate(cl.bestOptionsForThisDevice)
-//                options.addDelegate(tfliteGpu)
-//                Log.i(TAG, "Using TFLite GPU delegate")
-//                return Interpreter(model, options)
-//            // }
-//        } catch (t: Throwable) {
-//            Log.w(TAG, "GPU delegate unavailable: ${t.message}")
-//        }
-//
-//        // 3) CPU/XNNPACK
-//        Log.i("Time Comparing", "Using CPU/XNNPACK")
-//        Log.i(TAG, "Falling back to CPU/XNNPACK")
-//        try { options.setUseXNNPACK(true) } catch (_: Throwable) {}
-//        options.setNumThreads(4)
-//        return Interpreter(model, options)
-//    }
-
     fun close() {
         try { interpreter.close() } catch (_: Throwable) {}
         try { tfliteGpu?.close() } catch (_: Throwable) {}
@@ -299,14 +252,6 @@ class Detector (
         var x: Double,
         var y: Double
     )
-    /*
-    fun setDimensions(dims: Pair<Int, Int>) {
-        ogWidth = dims.first
-        ogHeight = dims.second
-        println("dims: $dims")
-    }
-
-     */
 
 
     fun detect(frame: Bitmap, sourceWidth: Int = 1, sourceHeight: Int = 1): YoloResults {
@@ -387,30 +332,11 @@ class Detector (
                 Log.d("BOX INITAL BOW", box.toString())
                 results.bowResults = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList()
                 bowConf = box.conf
-//                var newBowResults = results.bowResults
-//                for (i in 1..4) {
-//                    //newBowResults!![i].x = newBowResults!![i].x * ogWidth
-//                    newBowResults!![i].y = newBowResults!![i].y * ogHeight/ogWidth
-//                }
-//                results.bowResults = newBowResults
                 Log.d("BOX BOW", results.bowResults.toString())
 
             } else if (box.cls == 1 && box.conf > stringConf) {
                 Log.d("BOX INITAL STRING", box.toString())
                 results.stringResults = sortStringPoints(rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList())
-                /*
-                if (box.width > box.height) {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle + Math.PI.toFloat() / 2).toMutableList())
-                } else {
-                    results.stringResults = sortStringPoints(rotatedRectToPoints(box.x * ogWidth, box.y * ogHeight, box.width * ogWidth, box.height * ogHeight, box.angle).toMutableList())
-                }
-                 */
-//                var newBowResults = results.stringResults
-//                for (i in 1..4) {
-//                    //newBowResults!![i].x = newBowResults!![i].x * ogWidth
-//                    newBowResults!![i].y = newBowResults!![i].y * ogHeight/ogWidth
-//                }
-//                results.stringResults = newBowResults
                 stringConf = box.conf
                 Log.d("BOX STRING", results.stringResults.toString())
             }
@@ -449,6 +375,7 @@ class Detector (
         }
         return dst
     }
+
     fun drawPointsOnBitmap(
         bitmap: Bitmap,
         points: YoloResults,
@@ -1018,41 +945,6 @@ class Detector (
 
         return 0
     }
-
-    /*private fun averageYCoordinate(stringBoxCoords: MutableList<Point>) {
-        /*
-        Recalculate and updates new string Y coordinate heights for every
-        n frames.
-         */
-
-        // sort coordinate points so points in consistent order
-        val sortedCoords: MutableList<Point> = stringBoxCoords
-
-        // increase frame counter. create and add y coord list of each frame to one list
-        frameCounter += 1
-        val yCoords = sortedCoords.map { it.y.toInt() } // get Y values from each point
-        stringYCoordHeights.add(yCoords)
-
-
-        // recalculate new y coordinate heights when certain number of frames past
-        if (frameCounter % numWaitFrames == 0) {
-
-            // get median of coordinates
-            val topLeftAvg: Double = median(stringYCoordHeights.map { it[0] })
-            val topRightAvg: Double = median(stringYCoordHeights.map { it[1] })
-            val botRightAvg: Double = median(stringYCoordHeights.map { it[2] })
-            val botLeftAvg: Double = median(stringYCoordHeights.map { it[3] })
-
-            // map them to string points
-            stringPoints!![0].y = topLeftAvg
-            stringPoints!![1].y = topRightAvg
-            stringPoints!![2].y = botRightAvg
-            stringPoints!![3].y = botLeftAvg
-            //yAvg = mutableListOf(topLeftAvg, topRightAvg)
-            //yLocked = true
-            stringYCoordHeights = mutableListOf()
-        }
-    }*/
 
     /*
         Returns median item of a list
