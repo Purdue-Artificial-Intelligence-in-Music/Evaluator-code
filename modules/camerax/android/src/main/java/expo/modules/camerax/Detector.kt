@@ -49,13 +49,9 @@ class Detector (
     private var stringRepeat = 0
     private var bowPoints: List<Point>? = null
     private var stringPoints: List<Point>? = null
-    // Queue deltaY for each stringBox
-    private var stringBoxQueue: ArrayDeque<Double> = ArrayDeque< Double>()
-    private var stringBoxCounter: Int = 0
-    private var yDeltaTotal: Double = 0.0
-    private val MAX_QUEUE_SIZE = 120
+    private val MAX_QUEUE_SIZE = 60
     private val MAX_Y_DELTA_THRESHOLD = 3
-    private var stringYCoordHeights: MutableList<List<Int>> = mutableListOf()
+    private val MAX_BOW_DIST_THRESHOLD = 5
     private val numWaitFrames = 5
     private var ogWidth: Int = 0
     private var ogHeight: Int = 0
@@ -67,11 +63,15 @@ class Detector (
     private var maxAngle: Int = 18
 
     //Heaps for yDelta calculation
-    private val lowerHeap = java.util.PriorityQueue<Double>(compareByDescending { it })
-    private val upperHeap = java.util.PriorityQueue<Double>()
+    private var lowerHeap = java.util.PriorityQueue<Double>(compareByDescending { it })
+    private var upperHeap = java.util.PriorityQueue<Double>()
 
     private val deltaQueue = ArrayDeque<Double>() // MAX_QUEUE_SIZE
 
+    public fun resetHeaps() {
+        lowerHeap = java.util.PriorityQueue<Double>(compareByDescending { it })
+        upperHeap = java.util.PriorityQueue<Double>()
+    }
     private fun addDelta(value: Double) {
         if (lowerHeap.isEmpty() || value <= lowerHeap.peek()) {
             lowerHeap.add(value)
@@ -722,6 +722,7 @@ class Detector (
      * Returns the stringBox with locked top values if outside of threshold
      */
     fun updateStringPoints(stringBox: MutableList<Point>): MutableList<Point> {
+        Log.d("String Box Lock", "New Detection")
         val sortedString = sortStringPoints(stringBox)
 
         // Height of string box
@@ -744,15 +745,37 @@ class Detector (
 
         val medianDelta = currentMedian()
 
-        Log.d("String Box Lock", "Delta_Y: $delta_y")
-        Log.d("String Box Lock", "Median Delta_Y: $medianDelta")
+        //Log.d("String Box Lock", "Delta_Y: $delta_y")
+        //Log.d("String Box Lock", "Median Delta_Y: $medianDelta")
 
         // Lock if deviation too large
         if (kotlin.math.abs(medianDelta - delta_y) > MAX_Y_DELTA_THRESHOLD) {
             // Lock top points using median height
             sortedString[0].y = sortedString[3].y - medianDelta
             sortedString[1].y = sortedString[2].y - medianDelta
-            Log.d("String Box Lock", "Locked box to median_delta")
+            Log.d("String Box Lock", "Deviation too large. Locked box to median_delta")
+        }
+
+        // Lock if bow is covering top of string box
+        // Need bow box avg top to be above top of string box and within x bounds
+
+        if (bowPoints != null) {
+            val sortedBow = sortBowPoints(bowPoints!!.toMutableList())
+            val top_avg_bow_y = (sortedBow[0].y + sortedBow[1].y) / 2
+            val top_avg_str_y = (sortedString[0].y + sortedString[1].y) / 2
+            val bot_avg_bow_y = (sortedBow[2].y + sortedBow[3].y) / 2
+            //Log.d("String Box Lock", "y-vals Bow: (" + top_avg_bow_y.toString() + "," +  bot_avg_bow_y.toString() + ") String: " + top_avg_str_y.toString())
+            //Log.d("String Box Lock", "x-vals Bow: (" + sortedBow[0].x.toString() + "," + sortedBow[1].x.toString() + ") String: (" + sortedString[0].x.toString() + "," + sortedString[1].x.toString() + ")")
+            // Top of image is lower y value, bottom is higher
+            if ((top_avg_bow_y <= top_avg_str_y) &&
+                (bot_avg_bow_y >= (top_avg_str_y - MAX_BOW_DIST_THRESHOLD))) { // bow y-level on string box y-level
+                if ((sortedBow[0].x < sortedString[0].x) and (sortedBow[1].x > sortedString[1].x)) { // within x range
+                    // Lock top points using median height
+                    sortedString[0].y = sortedString[3].y - medianDelta
+                    sortedString[1].y = sortedString[2].y - medianDelta
+                    Log.d("String Box Lock", "Bow Covering. Locked box to median_delta")
+                }
+            }
         }
 
         return sortedString
@@ -767,6 +790,17 @@ class Detector (
         val bottomPoints = sortedPoints.drop(2).sortedByDescending { it.x } // Sort by X descending
 
         return (topPoints + bottomPoints).toMutableList()
+    }
+
+    fun sortBowPoints(pts: MutableList<Point>): MutableList<Point> {
+        // Sort points by x
+        val sortedPoints = pts.sortedBy {it.x}
+
+        // Sort points by y
+        val leftPoints = sortedPoints.take(2).sortedBy {it.y} // Sort by Y ascending
+        val rightPoints = sortedPoints.drop(2).sortedBy {it.y} // Sort by Y ascending
+
+        return mutableListOf(leftPoints[0], rightPoints[0], rightPoints[1], leftPoints[1])
     }
 
     fun getMidline(): MutableList<Double> {

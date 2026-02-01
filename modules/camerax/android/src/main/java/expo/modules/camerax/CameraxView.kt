@@ -166,6 +166,7 @@ class CameraxView(
             latestPosePoints = emptyList()
             latestHandDetection = ""
             latestPoseDetection = ""
+            detector?.resetHeaps()
             activity.runOnUiThread { overlayView.clear() }
         }
 
