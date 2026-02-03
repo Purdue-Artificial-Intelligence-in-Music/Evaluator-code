@@ -77,6 +77,18 @@ const CameraComponent = ({ startDelay, onClose }) => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [currentPage, setCurrentPage] = useState(0); // current page on "Session Summary History"
 
+    // Toolbar state
+  const [toolbarExpanded, setToolbarExpanded] = useState(false);
+
+  // Mirror toggle (pass to native view if supported)
+  const [isMirrored, setIsMirrored] = useState(false);
+
+  // Learn Postures modal
+  const [learnVisible, setLearnVisible] = useState(false);
+
+  // Exit confirmation modal
+  const [exitConfirmVisible, setExitConfirmVisible] = useState(false);
+
   // Detail modal state
   const [selectedDetailSection, setSelectedDetailSection] = useState<string | null>(null);
 
@@ -759,6 +771,60 @@ const CameraComponent = ({ startDelay, onClose }) => {
         </View>
       </Modal>
 
+      {/* Exit Confirmation Modal */}
+      <Modal visible={exitConfirmVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.exitModalContent}>
+            <Text style={styles.exitModalTitle}>Exit without saving the session?</Text>
+
+            <View style={styles.exitModalButtons}>
+              <TouchableOpacity
+                style={styles.exitModalYesButton}
+                onPress={() => {
+                  // stop detection safely
+                  setIsDetectionEnabled(false);
+                  setShowSetupOverlay(false);
+
+                  // close warning modal
+                  setExitConfirmVisible(false);
+
+                  // exit camera screen
+                  onClose();
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.exitModalYesText}>Yes</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.exitModalNoButton}
+                onPress={() => setExitConfirmVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.exitModalNoText}>No</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Learn Postures Modal */}
+      <Modal visible={learnVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <ScrollView>
+              <Text style={styles.title}>Learn Postures</Text>
+
+              <Text style={styles.detailText}>
+                Add posture education content here (images / tips / examples).
+              </Text>
+
+              <Button title="Close" onPress={() => setLearnVisible(false)} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Detail Modal for "View more" */}
       <Modal
         visible={!!selectedDetailSection}
@@ -842,15 +908,96 @@ const CameraComponent = ({ startDelay, onClose }) => {
         skipCalibration={!showSetupOverlay}
         maxBowAngle={maxAngle}
       />
+
+      {/* Top-left menu + dropdown */}
+      <View style={styles.topLeftMenuArea}>
+        <TouchableOpacity
+          style={styles.menuFab}
+          onPress={() => setToolbarExpanded(v => !v)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.menuFabIcon}>{toolbarExpanded ? '✕' : '⠿'}</Text>
+        </TouchableOpacity>
+
+        {toolbarExpanded && (
+          <View style={styles.menuPanel}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                toggleCamera();
+                setToolbarExpanded(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.menuItemIcon}>📷</Text>
+              <Text style={styles.menuItemText}>Flip camera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => setIsMirrored(v => !v)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.menuItemIcon}>🪞</Text>
+              <Text style={styles.menuItemText}>
+                Mirror the view {isMirrored ? '(On)' : '(Off)'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                openSettings();
+                setToolbarExpanded(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.menuItemIcon}>🎚️</Text>
+              <Text style={styles.menuItemText}>Threshold adjust</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                loadSessionHistory();
+                setToolbarExpanded(false);
+              }}
+              disabled={isLoadingHistory}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.menuItemIcon}>📈</Text>
+              <Text style={styles.menuItemText}>
+                {isLoadingHistory ? 'Loading…' : 'Session history'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setLearnVisible(true);
+                setToolbarExpanded(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.menuItemIcon}>📖</Text>
+              <Text style={styles.menuItemText}>Learn postures</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
       
       <TouchableOpacity
         style={styles.closeButton}
-        onPress={onClose}
+        onPress={() => {
+          if (isDetectionEnabled) setExitConfirmVisible(true);
+          else onClose();
+        }}
         activeOpacity={0.7}
       >
         <Text style={styles.closeButtonText}>✕</Text>
       </TouchableOpacity>
 
+      {/*
       <TouchableOpacity
         style={styles.flipButton}
         onPress={toggleCamera}
@@ -858,7 +1005,9 @@ const CameraComponent = ({ startDelay, onClose }) => {
       >
         <Text style={styles.flipButtonText}>🔄</Text>
       </TouchableOpacity>
+      */}
 
+      {/*
       <TouchableOpacity
         style={styles.settingsButton}
         onPress={openSettings}
@@ -866,8 +1015,10 @@ const CameraComponent = ({ startDelay, onClose }) => {
       >
         <Text style={styles.settingsButtonText}>⚙️</Text>
       </TouchableOpacity>
+      */}
 
       {/* History Button */}
+      {/*
       <TouchableOpacity
         style={styles.historyButton}
         onPress={loadSessionHistory}
@@ -878,6 +1029,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
           {isLoadingHistory ? '...' : '📋'}
         </Text>
       </TouchableOpacity>
+      */}
       
       <TouchableOpacity
         style={styles.detectionButton}
