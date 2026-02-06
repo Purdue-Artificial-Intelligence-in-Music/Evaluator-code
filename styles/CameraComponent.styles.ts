@@ -471,4 +471,102 @@ export const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 16,
   },
+
+  // ===== Collapsible Toolbar (Top-Left) =====
+  topLeftMenuArea: {
+    position: 'absolute',
+    top: 50,      // matches your closeButton top
+    left: 20,
+    zIndex: 3000,
+    alignItems: 'flex-start',
+  },
+
+  menuFab: {
+    width: 40,   // match your other round buttons
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  menuFabIcon: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+
+  menuPanel: {
+    marginTop: 10,
+    width: 210,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    overflow: 'hidden',
+  },
+
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+  },
+
+  menuItemIcon: {
+    width: 22,
+    fontSize: 16,
+    color: 'white',
+    textAlign: 'center',
+    marginRight: 10,
+  },
+
+  menuItemText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // ===== Exit Confirmation Modal =====
+  exitModalContent: {
+    width: '85%',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+  },
+  exitModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  exitModalButtons: {
+    flexDirection: 'row',
+    gap: 14,
+  },
+  exitModalYesButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    backgroundColor: '#e6e6e6',
+  },
+  exitModalNoButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 10,
+    backgroundColor: '#4a4a4a',
+  },
+  exitModalYesText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#333',
+  },
+  exitModalNoText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: 'white',
+  },
 });
