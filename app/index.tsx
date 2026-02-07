@@ -46,6 +46,9 @@ export default function HomePage() {
   const [videofile, setvideofile] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+  // Session History flag
+  const [openHistoryOnCamera, setOpenHistoryOnCamera] = useState(false);
+
   const requestCameraPermission = async () => {
     const status = await Camera.requestCameraPermission();
     if (status === 'granted') {
@@ -54,10 +57,6 @@ export default function HomePage() {
       setHasPermission(false);
     }
     // console.log("camera permission status: ", status);
-  };
-
-  type CameraComponentProps = {
-    startDelay: number;
   };
 
   // Function to handle video selection
@@ -241,6 +240,10 @@ export default function HomePage() {
     setVideoUri(null);
     setVideoDimensions(null);
     setsendButton(false);
+
+    // reset Session History flag
+    setOpenHistoryOnCamera(false);
+
   };
   return (
     <SafeAreaView style={styles.container}>
@@ -259,20 +262,21 @@ export default function HomePage() {
         }}
         activeOpacity={0.7}
       >
-      <Image
-        source={ChooseVideoIcon}
-        style={{ width: '100%', height: '100%' }}
-        resizeMode="cover"
-      />
-    </TouchableOpacity>
+        <Image
+          source={ChooseVideoIcon}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
+      </TouchableOpacity>
 
+      {/* Open Camera now explicitly clears history flag */}
       <TouchableOpacity
         onPress={() => { 
           console.log("Opening camera");
           if (!isCameraOpen) {
+            setOpenHistoryOnCamera(false); // normal camera mode
             openCamera();
           }
-         
         }}
         activeOpacity={0.7}
         style={{
@@ -287,25 +291,64 @@ export default function HomePage() {
           resizeMode="cover"
         />
       </TouchableOpacity>
-      
+
+      {/* Session History button styled like the others (no extra image) */}
       <TouchableOpacity
-      onPress={returnBack}
-      disabled={loading}
-      style={{
-        width:320,
-        height: 60,
-        marginVertical: 5,
-      }}
-      activeOpacity={0.7}
-    >
-      <Image
-        source={Back}
-        style={{
-          width: '100%',
-          height: '100%',
+        onPress={() => {
+          console.log("Opening camera for session history");
+          if (!isCameraOpen) {
+            setOpenHistoryOnCamera(true); // tell CameraComponent to open history modal
+            openCamera();
+          }
         }}
-        resizeMode="cover" // or 'contain' if you want to keep aspect ratio
-      />
+        activeOpacity={0.7}
+        style={{
+          width: 320,
+          height: 60,
+          marginVertical: 5,
+          borderRadius: 8,
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: '#0072FF', // blue like other buttons
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <Text
+            style={{
+              color: '#FFFFFF',
+              fontWeight: 'bold',
+              fontSize: 18,
+              letterSpacing: 1,
+            }}
+          >
+            SESSION HISTORY
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={returnBack}
+        disabled={loading}
+        style={{
+          width:320,
+          height: 60,
+          marginVertical: 5,
+        }}
+        activeOpacity={0.7}
+      >
+        <Image
+          source={Back}
+          style={{
+            width: '100%',
+            height: '100%',
+          }}
+          resizeMode="cover" // or 'contain' if you want to keep aspect ratio
+        />
       </TouchableOpacity>
 
       </View>
@@ -313,9 +356,12 @@ export default function HomePage() {
       
       {(isCameraOpen) ? (
         <View style={styles.cameraOverlay}>
-          <CameraComponent startDelay={0} onClose={closeCamera} />
-
-
+          {/* tell CameraComponent whether to auto-open Session History */}
+          <CameraComponent
+            startDelay={0}
+            onClose={closeCamera}
+            initialHistoryOpen={openHistoryOnCamera}
+          />
         </View>
       ) : null}
 
