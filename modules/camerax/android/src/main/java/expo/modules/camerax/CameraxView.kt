@@ -78,6 +78,7 @@ class CameraxView(
     private var isDetectionEnabled = false
     private var isCameraActive = false
     private var lensType = CameraSelector.LENS_FACING_BACK
+    private var flip: Boolean = false
 
     private lateinit var overlayView: OverlayView
 
@@ -279,6 +280,12 @@ class CameraxView(
             .requireLensFacing(lensType)
             .build()
 
+        if (lensType == CameraSelector.LENS_FACING_FRONT && flip){
+            viewFinder.scaleX = -1f
+        } else {
+            viewFinder.scaleX = 1f
+        }
+
         val aspectRatioStrategy = AspectRatioStrategy(
             AspectRatio.RATIO_16_9,
             AspectRatioStrategy.FALLBACK_RULE_NONE
@@ -359,7 +366,7 @@ class CameraxView(
                 // Rotate + mirror if needed
                 val matrix = Matrix().apply {
                     postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                    if (lensType == CameraSelector.LENS_FACING_FRONT) {
+                    if (lensType == CameraSelector.LENS_FACING_FRONT && !flip) {
                         postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
                     }
                 }
@@ -376,7 +383,7 @@ class CameraxView(
 
                 // Perform YOLO detection
                 performDetection(rotatedBitmap)
-                handLandmarkerHelper.detectBitmap(rotatedBitmap, lensType == CameraSelector.LENS_FACING_FRONT)
+                handLandmarkerHelper.detectBitmap(rotatedBitmap, (lensType == CameraSelector.LENS_FACING_FRONT && !flip))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Analyzer failure", e)
