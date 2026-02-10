@@ -493,7 +493,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       <>
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Bow Height</Text>
+            <Text style={styles.sectionTitle}>Bow Contact Point</Text>
             <TouchableOpacity
               style={styles.viewMoreButton}
               onPress={() => openDetail('bowHeight')}
@@ -504,17 +504,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           
           <View style={styles.metricRow}>
             <View style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Top</Text>
+            <Text style={styles.metricLabel}>Too close to fingerboard</Text>
             <Text style={styles.metricPercent}>{heightTopPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
             <View style={styles.metricDotGood} />
-            <Text style={styles.metricLabel}>Middle (ideal)</Text>
+            <Text style={styles.metricLabel}>Good</Text>
             <Text style={styles.metricPercent}>{heightMiddlePct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
             <View style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Bottom</Text>
+            <Text style={styles.metricLabel}>Too close to the bridge</Text>
             <Text style={styles.metricPercent}>{heightBottomPct.toFixed(0)}%</Text>
           </View>
         </View>
@@ -532,19 +532,19 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
           <View style={styles.metricRow}>
             <View style={styles.metricDotGood} />
-            <Text style={styles.metricLabel}>Parallel with bridge</Text>
+            <Text style={styles.metricLabel}>Straight bow</Text>
             <Text style={styles.metricPercent}>{angleCorrectPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
             <View style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Tilted</Text>
+            <Text style={styles.metricLabel}>Crooked bow</Text>
             <Text style={styles.metricPercent}>{angleWrongPct.toFixed(0)}%</Text>
           </View>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Hand Posture</Text>
+            <Text style={styles.sectionTitle}>Bow hand position</Text>
             <TouchableOpacity
               style={styles.viewMoreButton}
               onPress={() => openDetail('handPosture')}
@@ -555,7 +555,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
           <View style={styles.metricRow}>
             <View style={styles.metricDotGood} />
-            <Text style={styles.metricLabel}>Natural pronation</Text>
+            <Text style={styles.metricLabel}>Optimal pronation</Text>
             <Text style={styles.metricPercent}>{handCorrectPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
@@ -565,7 +565,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
           <View style={styles.metricRow}>
             <View style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Too much pronation</Text>
+            <Text style={styles.metricLabel}>Over pronate</Text>
             <Text style={styles.metricPercent}>{handTooMuchPct.toFixed(0)}%</Text>
           </View>
         </View>
@@ -583,17 +583,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
           <View style={styles.metricRow}>
             <View style={styles.metricDotGood} />
-            <Text style={styles.metricLabel}>Natural</Text>
+            <Text style={styles.metricLabel}>Good</Text>
             <Text style={styles.metricPercent}>{elbowCorrectPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
             <View style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Elbow too low</Text>
+            <Text style={styles.metricLabel}>Too low</Text>
             <Text style={styles.metricPercent}>{elbowLowPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
             <View style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Elbow too high</Text>
+            <Text style={styles.metricLabel}>Too high</Text>
             <Text style={styles.metricPercent}>{elbowHighPct.toFixed(0)}%</Text>
           </View>
         </View>
@@ -1044,7 +1044,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           <View style={styles.instructionsCard}>
             <Text style={styles.cardTitle}>Set up your camera & cello</Text>
             <View style={{ height: 6 }} />
-            <Bullet>Hold phone upright (portrait), ~1-2 ft (30-60 cm) away</Bullet>
+            <Bullet>Place phone upright (portrait), ~1-2 ft (30-60 cm) away</Bullet>
             <Bullet>Center yourself and the cello inside the outline</Bullet>
             <Bullet>Keep the bridge near the dotted line</Bullet>
             <Bullet>Point your cello towards the camera</Bullet>
