@@ -1,14 +1,11 @@
 import React, { useState, useEffect } from 'react';
-
 import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert, Image } from 'react-native';
-
 import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from '../styles/CameraComponent.styles';
 
 const CameraxView = requireNativeViewManager('Camerax');
-const CameraxModule = requireNativeModule('Camerax')
-
+const CameraxModule = requireNativeModule('Camerax');
 
 interface SummaryData {
   heightBreakdown?: {
@@ -48,14 +45,27 @@ interface SummaryData {
 }
 
 interface CategorizedImages {
-  bowHeight: string[];  // bow_too_high, correct_bow, (bow_outside_zone)
-  bowAngle: string[];   // correct_angle, incorrect_angle
-  handPosture: string[]; // good_pronation, supination
-  elbowPosture: string[]; // good_elbow, high_elbow, low_elbow
+  bowHeight: string[];
+  bowAngle: string[];
+  handPosture: string[];
+  elbowPosture: string[];
   all: string[];
 }
 
-const CameraComponent = ({ startDelay, onClose }) => {
+interface CameraComponentProps {
+  startDelay?: number;
+  onClose: () => void;
+  initialHistoryOpen?: boolean;
+}
+
+const SESSIONS_PER_PAGE = 5;
+const TOTAL_SESSIONS = 15;
+
+const CameraComponent: React.FC<CameraComponentProps> = ({
+  startDelay,
+  onClose,
+  initialHistoryOpen,
+}) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
   const [lensType, setLensType] = useState('back'); // use front or back camera
@@ -77,7 +87,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [currentPage, setCurrentPage] = useState(0); // current page on "Session Summary History"
 
-    // Toolbar state
+  // Toolbar state
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
 
   // Mirror toggle (pass to native view if supported)
@@ -92,9 +102,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
   // Detail modal state
   const [selectedDetailSection, setSelectedDetailSection] = useState<string | null>(null);
 
-  const SESSIONS_PER_PAGE = 5;
-  const TOTAL_SESSIONS = 15;
-
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [sessionImages, setSessionImages] = useState<CategorizedImages>({
     bowHeight: [],
     bowAngle: [],
@@ -104,8 +112,17 @@ const CameraComponent = ({ startDelay, onClose }) => {
   });
   const [isLoadingImages, setIsLoadingImages] = useState(false);
 
-  // Total playing time
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  useEffect(() => {
+    if (initialHistoryOpen && userId !== 'default_user') {
+      loadSessionHistory();
+    }
+  }, [initialHistoryOpen, userId]);
+
+  useEffect(() => {
+    if (initialHistoryOpen) {
+      setHistoryVisible(true);
+    }
+  }, [initialHistoryOpen]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -113,23 +130,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
     }, startDelay || 100);
 
     return () => clearTimeout(timer);
-  }, []);
-
-  const toggleCamera = () => {
-    setLensType(prev => prev === 'back' ? 'front' : 'back');
-  };
-
-  const handleCalibrated = async (event: any) => {
-      console.log("Calibration", "Calibration successful")
-      setShowSetupOverlay(false)
-      setSessionStartTime(new Date())
-  };
-
-  const skipCalibration = () => {
-    console.log("Calibration", "Skipping Calibration")
-    setShowSetupOverlay(false)
-    setSessionStartTime(new Date());
-  };
+  }, [startDelay]);
 
   useEffect(() => {
     const loadUserId = async () => {
@@ -147,6 +148,22 @@ const CameraComponent = ({ startDelay, onClose }) => {
     };
     loadUserId();
   }, []);
+
+  const toggleCamera = () => {
+    setLensType(prev => prev === 'back' ? 'front' : 'back');
+  };
+
+  const handleCalibrated = async (event: any) => {
+    console.log("Calibration", "Calibration successful");
+    setShowSetupOverlay(false);
+    setSessionStartTime(new Date());
+  };
+
+  const skipCalibration = () => {
+    console.log("Calibration", "Skipping Calibration");
+    setShowSetupOverlay(false);
+    setSessionStartTime(new Date());
+  };
 
   const loadSessionHistory = async () => {
     setIsLoadingHistory(true);
@@ -186,7 +203,6 @@ const CameraComponent = ({ startDelay, onClose }) => {
       console.log(`Image ${index}: ${path.split('/').pop()}`);
       
       // Bow Height: bow_too_high, correct_bow
-      // TODO: bow_outside_zone
       if (fileName.includes('bow_too_high') || fileName.includes('correct_bow')) {
         categorized.bowHeight.push(path);
         console.log(`  -> Categorized as bowHeight`);
@@ -261,7 +277,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
       console.log('Number of images:', images.length);
       if (images.length > 0) {
         console.log('First 3 image paths:');
-        images.slice(0, 3).forEach((img, idx) => {
+        images.slice(0, 3).forEach((img: string, idx: number) => {
           console.log(`  ${idx + 1}. ${img}`);
         });
         
@@ -996,50 +1012,16 @@ const CameraComponent = ({ startDelay, onClose }) => {
       >
         <Text style={styles.closeButtonText}>✕</Text>
       </TouchableOpacity>
-
-      {/*
-      <TouchableOpacity
-        style={styles.flipButton}
-        onPress={toggleCamera}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.flipButtonText}>🔄</Text>
-      </TouchableOpacity>
-      */}
-
-      {/*
-      <TouchableOpacity
-        style={styles.settingsButton}
-        onPress={openSettings}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.settingsButtonText}>⚙️</Text>
-      </TouchableOpacity>
-      */}
-
-      {/* History Button */}
-      {/*
-      <TouchableOpacity
-        style={styles.historyButton}
-        onPress={loadSessionHistory}
-        activeOpacity={0.7}
-        disabled={isLoadingHistory}
-      >
-        <Text style={styles.historyButtonText}>
-          {isLoadingHistory ? '...' : '📋'}
-        </Text>
-      </TouchableOpacity>
-      */}
       
       <TouchableOpacity
         style={styles.detectionButton}
-          onPress={() => {
-            if (!isDetectionEnabled) {
-             setShowSetupOverlay(true);
-            }
-            setIsDetectionEnabled(!isDetectionEnabled);
-            console.log("DetectionEnabled: ", !isDetectionEnabled)
-          }}
+        onPress={() => {
+          if (!isDetectionEnabled) {
+            setShowSetupOverlay(true);
+          }
+          setIsDetectionEnabled(!isDetectionEnabled);
+          console.log("DetectionEnabled: ", !isDetectionEnabled);
+        }}
       >
         <Text style={styles.buttonText}>
           {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
@@ -1077,7 +1059,7 @@ const CameraComponent = ({ startDelay, onClose }) => {
   );
 };
 
-function Bullet({ children }) {
+function Bullet({ children }: { children: React.ReactNode }) {
   return (
     <View style={styles.bulletRow}>
       <View style={styles.bulletDot} />
