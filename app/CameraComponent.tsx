@@ -658,6 +658,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     
                     {getCurrentPageSessions().map((session, index) => {
                       const actualIndex = currentPage * SESSIONS_PER_PAGE + index;
+                      const displayNumber = historySessions.length - actualIndex;
                       return (
                         <TouchableOpacity
                           key={actualIndex}
@@ -671,7 +672,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                           }}
                         >
                           <Text style={styles.historyItemTitle}>
-                            Session {actualIndex + 1}
+                            Session {displayNumber}
                           </Text>
                           <Text style={styles.historyItemDate}>
                             {session.timestamp}
@@ -727,7 +728,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     </TouchableOpacity>
                     
                     <Text style={styles.detailTitle}>
-                      Session {selectedHistoryIndex + 1}
+                      Session {historySessions.length - selectedHistoryIndex}
                     </Text>
                     
                     {renderSummaryContent(historySessions[selectedHistoryIndex])}
