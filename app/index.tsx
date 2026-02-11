@@ -7,6 +7,7 @@ import LogoutButton from '../components/LogoutButton';
 import { TouchableOpacity} from 'react-native';
 import ChooseVideoIcon from '../assets/images/ChooseVideo.png';
 import OpenCamera from '../assets/images/OpenCamera.png';
+import SessionHistory from '../assets/images/SessionHistory.png';
 import Back from '../assets/images/Back.png';
 import SendVideo from '../assets/images/SendVideo.png';
 import { Platform } from 'react-native';
@@ -310,25 +311,11 @@ export default function HomePage() {
           overflow: 'hidden',
         }}
       >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: '#0072FF', // blue like other buttons
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          <Text
-            style={{
-              color: '#FFFFFF',
-              fontWeight: 'bold',
-              fontSize: 18,
-              letterSpacing: 1,
-            }}
-          >
-            SESSION HISTORY
-          </Text>
-        </View>
+        <Image
+          source={SessionHistory}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
       </TouchableOpacity>
 
       <TouchableOpacity
