@@ -77,7 +77,7 @@ export default function Login() {
         <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>Continue</Text>
       </Pressable>
 
-      {/* 确认弹窗 */}
+      {/* Pop-up window for confirmation */}
       <Modal
         visible={showModal}
         transparent={true}

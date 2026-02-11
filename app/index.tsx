@@ -27,12 +27,6 @@ const width = Dimensions.get('window').width;
 const height = Dimensions.get('window').height;
 console.log(width)
 console.log(height)
-let factor = 0.9;
-let factorTwo = 1;
-if (Platform.OS === 'web') {
-  factor = 0.5;
-  factorTwo = 0.7;
-}
 
 
 export default function HomePage() {
@@ -57,7 +51,6 @@ export default function HomePage() {
     } else {
       setHasPermission(false);
     }
-    // console.log("camera permission status: ", status);
   };
 
   // Function to handle video selection
@@ -517,9 +510,9 @@ const styles = StyleSheet.create({
   },
   logoutContainer: {
     width: '100%',
-    alignItems: 'flex-end',  // 右对齐
+    alignItems: 'flex-end',
     paddingRight: 30,
     paddingTop: 5,
-    marginBottom: 5,  // 与下方按钮保持间距
+    marginBottom: 5,
   },
 });
