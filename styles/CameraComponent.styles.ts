@@ -5,6 +5,11 @@ const BODY_W = W - 32;
 const BODY_H = Math.min(H * 0.78, (W - 32) * 1.9);
 const BODY_TOP = H * 0.08;
 
+export const ICONS = {
+  tick_square: require('../assets/icons-2.5/Tick_Square.png'),
+  wrong: require('../assets/icons-2.5/wrong.png'),
+};
+
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -370,9 +375,10 @@ export const styles = StyleSheet.create({
   metricDotGood: {
     width: 10,
     height: 10,
-    borderRadius: 5,
     marginRight: 8,
-    backgroundColor: '#2ecc71', // green
+    //backgroundColor: '#2ecc71', // green
+    resizeMode: 'contain',
+
   },
   metricDotWarning: {
     width: 10,
@@ -389,6 +395,11 @@ export const styles = StyleSheet.create({
   metricPercent: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  wrongMetricPercent: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D3D3D3'
   },
   sectionHeaderRow: {
     flexDirection: 'row',

@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Ale
 import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from '../styles/CameraComponent.styles';
+import { ICONS } from '../styles/CameraComponent.styles';
 
 const CameraxView = requireNativeViewManager('Camerax');
 const CameraxModule = requireNativeModule('Camerax');
@@ -345,7 +346,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       timestamp,
       sessionDuration: finalDuration,
     };
-
+    //navigation.navigate('SessionSummary', { summaryData: newSummaryData });
     setSummaryData(newSummaryData);
     setSummaryVisible(true);
   };
@@ -503,19 +504,19 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
           
           <View style={styles.metricRow}>
-            <View style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Too close to fingerboard</Text>
-            <Text style={styles.metricPercent}>{heightTopPct.toFixed(0)}%</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <View style={styles.metricDotGood} />
+            <Image source={ICONS.tick_square} style={styles.metricDotGood} />
             <Text style={styles.metricLabel}>Good</Text>
             <Text style={styles.metricPercent}>{heightMiddlePct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
-            <View style={styles.metricDotWarning} />
+            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
+            <Text style={styles.metricLabel}>Too close to fingerboard</Text>
+            <Text style={styles.wrongMetricPercent}>{heightTopPct.toFixed(0)}%</Text>
+          </View>
+          <View style={styles.metricRow}>
+            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
             <Text style={styles.metricLabel}>Too close to the bridge</Text>
-            <Text style={styles.metricPercent}>{heightBottomPct.toFixed(0)}%</Text>
+            <Text style={styles.wrongMetricPercent}>{heightBottomPct.toFixed(0)}%</Text>
           </View>
         </View>
 
@@ -531,14 +532,14 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
 
           <View style={styles.metricRow}>
-            <View style={styles.metricDotGood} />
+            <Image source={ICONS.tick_square} style={styles.metricDotGood} />
             <Text style={styles.metricLabel}>Straight bow</Text>
             <Text style={styles.metricPercent}>{angleCorrectPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
-            <View style={styles.metricDotWarning} />
+            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
             <Text style={styles.metricLabel}>Crooked bow</Text>
-            <Text style={styles.metricPercent}>{angleWrongPct.toFixed(0)}%</Text>
+            <Text style={styles.wrongMetricPercent}>{angleWrongPct.toFixed(0)}%</Text>
           </View>
         </View>
 
@@ -554,19 +555,19 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
 
           <View style={styles.metricRow}>
-            <View style={styles.metricDotGood} />
+            <Image source={ICONS.tick_square} style={styles.metricDotGood} />
             <Text style={styles.metricLabel}>Optimal pronation</Text>
             <Text style={styles.metricPercent}>{handCorrectPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
-            <View style={styles.metricDotWarning} />
+            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
             <Text style={styles.metricLabel}>Supination</Text>
-            <Text style={styles.metricPercent}>{handSupinationPct.toFixed(0)}%</Text>
+            <Text style={styles.wrongMetricPercent}>{handSupinationPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
-            <View style={styles.metricDotWarning} />
+            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
             <Text style={styles.metricLabel}>Over pronate</Text>
-            <Text style={styles.metricPercent}>{handTooMuchPct.toFixed(0)}%</Text>
+            <Text style={styles.wrongMetricPercent}>{handTooMuchPct.toFixed(0)}%</Text>
           </View>
         </View>
 
@@ -582,19 +583,19 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
 
           <View style={styles.metricRow}>
-            <View style={styles.metricDotGood} />
+            <Image source={ICONS.tick_square} style={styles.metricDotGood} />
             <Text style={styles.metricLabel}>Good</Text>
             <Text style={styles.metricPercent}>{elbowCorrectPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
-            <View style={styles.metricDotWarning} />
+            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
             <Text style={styles.metricLabel}>Too low</Text>
-            <Text style={styles.metricPercent}>{elbowLowPct.toFixed(0)}%</Text>
+            <Text style={styles.wrongMetricPercent}>{elbowLowPct.toFixed(0)}%</Text>
           </View>
           <View style={styles.metricRow}>
-            <View style={styles.metricDotWarning} />
+            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
             <Text style={styles.metricLabel}>Too high</Text>
-            <Text style={styles.metricPercent}>{elbowHighPct.toFixed(0)}%</Text>
+            <Text style={styles.wrongMetricPercent}>{elbowHighPct.toFixed(0)}%</Text>
           </View>
         </View>
 
