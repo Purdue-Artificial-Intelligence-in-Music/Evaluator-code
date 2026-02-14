@@ -934,7 +934,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           onPress={() => setToolbarExpanded(v => !v)}
           activeOpacity={0.8}
         >
-          <Text style={styles.menuFabIcon}>{toolbarExpanded ? '✕' : '⠿'}</Text>
+          <Image
+          source={toolbarExpanded ? ICONS.exit : ICONS.tools}
+          style={styles.menuFabIconImg}
+        />
         </TouchableOpacity>
 
         {toolbarExpanded && (
@@ -947,7 +950,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               }}
               activeOpacity={0.8}
             >
-              <Text style={styles.menuItemIcon}>📷</Text>
+              <Image source={ICONS.flip_camera} style={styles.menuItemIconImg} />
               <Text style={styles.menuItemText}>Flip camera</Text>
             </TouchableOpacity>
 
@@ -956,7 +959,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               onPress={() => setIsMirrored(v => !v)}
               activeOpacity={0.8}
             >
-              <Text style={styles.menuItemIcon}>🪞</Text>
+              <Image source={ICONS.mirror} style={styles.menuItemIconImg} />
               <Text style={styles.menuItemText}>
                 Mirror the view {isMirrored ? '(On)' : '(Off)'}
               </Text>
@@ -970,7 +973,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               }}
               activeOpacity={0.8}
             >
-              <Text style={styles.menuItemIcon}>🎚️</Text>
+              <Image source={ICONS.adjust_threshold} style={styles.menuItemIconImg} />
               <Text style={styles.menuItemText}>Threshold adjust</Text>
             </TouchableOpacity>
 
@@ -983,7 +986,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               disabled={isLoadingHistory}
               activeOpacity={0.8}
             >
-              <Text style={styles.menuItemIcon}>📈</Text>
+              <Image source={ICONS.session_summary} style={styles.menuItemIconImg} />
               <Text style={styles.menuItemText}>
                 {isLoadingHistory ? 'Loading…' : 'Session history'}
               </Text>
@@ -997,7 +1000,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               }}
               activeOpacity={0.8}
             >
-              <Text style={styles.menuItemIcon}>📖</Text>
+              <Image source={ICONS.instructions} style={styles.menuItemIconImg} />
               <Text style={styles.menuItemText}>Learn postures</Text>
             </TouchableOpacity>
           </View>
@@ -1012,7 +1015,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         }}
         activeOpacity={0.7}
       >
-        <Text style={styles.closeButtonText}>✕</Text>
+        <Image source={ICONS.exit} style={styles.closeButtonIconImg} />
       </TouchableOpacity>
       
       <TouchableOpacity
