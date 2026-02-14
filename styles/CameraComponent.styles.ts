@@ -6,6 +6,15 @@ const BODY_H = Math.min(H * 0.78, (W - 32) * 1.9);
 const BODY_TOP = H * 0.08;
 
 export const ICONS = {
+    tools: require('../assets/icons-2.5/tools.png'),
+  exit: require('../assets/icons-2.5/exit.png'),
+  flip_camera: require('../assets/icons-2.5/flip camera.png'),
+  mirror: require('../assets/icons-2.5/mirror the view.png'),
+  adjust_threshold: require('../assets/icons-2.5/adjust threshold.png'),
+  session_summary: require('../assets/icons-2.5/session summary.png'),
+  instructions: require('../assets/icons-2.5/instructions.png'),
+
+  // dots in summary
   tick_square: require('../assets/icons-2.5/Tick_Square.png'),
   wrong: require('../assets/icons-2.5/wrong.png'),
 };
@@ -373,19 +382,16 @@ export const styles = StyleSheet.create({
     marginTop: 4,
   },
   metricDotGood: {
-    width: 10,
-    height: 10,
+    width: 12,
+    height: 12,
     marginRight: 8,
-    //backgroundColor: '#2ecc71', // green
     resizeMode: 'contain',
-
   },
   metricDotWarning: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
     marginRight: 8,
-    backgroundColor: '#e74c3c', // red
+    resizeMode: 'contain',
   },
   metricLabel: {
     flex: 1,
@@ -579,5 +585,23 @@ export const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: 'white',
+  },
+  menuFabIconImg: {
+  width: 22,
+  height: 22,
+  resizeMode: 'contain',
+  },
+
+  menuItemIconImg: {
+    width: 18,
+    height: 18,
+    resizeMode: 'contain',
+    marginRight: 10,
+  },
+
+  closeButtonIconImg: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
   },
 });
