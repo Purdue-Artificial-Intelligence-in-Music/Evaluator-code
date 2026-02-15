@@ -18,7 +18,7 @@ class ViewController: UIViewController {
         super.viewDidLoad()
 
         setupUI()
-        processVideo(named: "test_video")
+        processVideo(named: "test video")
     }
 
     // MARK: - UI Setup
@@ -45,6 +45,7 @@ class ViewController: UIViewController {
                 }
 
                 let reader = try AVAssetReader(asset: asset)
+            
 
                 let outputSettings: [String: Any] = [
                     kCVPixelBufferPixelFormatTypeKey as String:
@@ -53,13 +54,15 @@ class ViewController: UIViewController {
 
                 let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
                 reader.add(output)
+                
                 reader.startReading()
 
                 while reader.status == .reading,
                       let sampleBuffer = output.copyNextSampleBuffer(),
                       let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-
-                    let frame = pixelBufferToUIImage(pixelBuffer)
+                    
+                    var frame = pixelBufferToUIImage(pixelBuffer)
+                    
                     let annotated = self.detector.processFrame(bitmap: frame)
 
                     await MainActor.run {
@@ -75,3 +78,4 @@ class ViewController: UIViewController {
         }
     }
 }
+

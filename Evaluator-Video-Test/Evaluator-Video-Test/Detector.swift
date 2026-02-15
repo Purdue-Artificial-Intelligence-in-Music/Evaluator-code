@@ -68,7 +68,7 @@ class Detector {
 
         // Load model path FIRST
         guard let modelPath = Bundle.main.path(
-            forResource: "best_nano_float16",
+            forResource: "try",
             ofType: "tflite"
         ) else {
             throw NSError(
@@ -117,18 +117,43 @@ class Detector {
     }
     
     func detect(frame: UIImage) -> YoloResults {
-        let inferenceStartTime = Date()
         var results = YoloResults(bowResults: nil, stringResults: nil)
-
+        
         if(tensorWidth == 0 || tensorHeight == 0 || numChannel == 0 || numElements == 0) {
-            print("MODEL ERROR")
+            print("MODEL ERROR\n")
             return results
         }
         
-        // Resize image
-        guard let resizedImage = frame.resize(to: CGSize(width: tensorWidth, height: tensorHeight)),
-              let pixelBuffer = resizedImage.pixelBuffer() else {
-            print("Failed to Resize Image")
+        print("Tensor Size: \(tensorWidth)x\(tensorHeight)x\(numChannel)x\(numElements)")
+        
+        // Create resized image with 1:2 aspect ratio
+        guard let resizedNew = frame.resize(to: CGSize(width: tensorWidth / 2, height: tensorHeight)) else {
+            print("Failed to Resize Image\n")
+            return results
+        }
+        
+        let size = CGSize(width: tensorWidth, height: tensorHeight)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        
+        // Create image to draw the resized image onto (640x640)
+        let baseImage = renderer.image { context in
+                // Set the fill color to white
+                UIColor.white.setFill()
+                
+                // Fill the entire rectangle with white
+                context.fill(CGRect(origin: .zero, size: size))
+            }
+        // Draw resized image onto base
+        let resizedImage = renderer.image { context in
+            // Draw the base image first
+            baseImage.draw(at: .zero)
+            
+            // Draw the overlay image at a specific point (top-left corner of the overlay)
+            resizedNew.draw(at: CGPoint(x:0, y:0))
+            
+        }
+        guard let pixelBuffer = resizedImage.pixelBuffer() else {
+            print("Failed to Resize Image\n")
             return results
         }
         
@@ -151,42 +176,47 @@ class Detector {
             var stringConf: Float = 0
             let ogWidth = Float(frame.size.width)
             let ogHeight = Float(frame.size.height)
+            let newWidth = Float(resizedImage.size.width)
+            let newHeight = Float(resizedImage.size.height)
+            print("ogW: " + String(ogWidth) + " ogH: " + String(ogHeight))
+            print("newW: " + String(newWidth) + " newH: " + String(newHeight))
             
             for box in bestBoxes {
                 if box.cls == 0 && box.conf > bowConf {
                     results.bowResults = rotatedRectToPoints(
-                        cx: box.x * ogWidth,
-                        cy: box.y * ogHeight,
-                        w: box.width * ogWidth,
-                        h: box.height * ogHeight,
-                        angleRad: box.angle
+                        cx: box.x * (ogWidth / newWidth) * 2,
+                        cy: box.y * (ogHeight / newHeight),
+                        w: box.width * (ogWidth / newWidth) * 2,
+                        h: box.height * (ogHeight / newHeight),
+                        angleRad: (box.angle - Float.pi / 2.0)
                     )
                     bowConf = box.conf
                 } else if box.cls == 1 && box.conf > stringConf {
                     let angle = box.width > box.height ? box.angle + Float.pi / 2 : box.angle
                     let points = rotatedRectToPoints(
-                        cx: box.x * ogWidth,
-                        cy: box.y * ogHeight,
-                        w: box.width * ogWidth,
-                        h: box.height * ogHeight,
-                        angleRad: angle
+                        cx: box.x * (ogWidth / newWidth) * 2,
+                        cy: box.y * (ogHeight / newHeight),
+                        w: box.width * (ogWidth / newWidth) * 2,
+                        h: box.height * (ogHeight / newHeight),
+                        angleRad: (box.angle - Float.pi / 2.0)
                     )
                     results.stringResults = sortStringPoints(pts: points)
                     stringConf = box.conf
                 }
             }
             
-            let inferenceTime = Date().timeIntervalSince(inferenceStartTime)
+            //let inferenceTime = Date().timeIntervalSince(inferenceStartTime)
             
             if results.bowResults == nil && results.stringResults == nil {
                 listener?.noDetect()
             } else {
                 listener?.detected(results: results, sourceWidth: Int(frame.size.width), sourceHeight: Int(frame.size.height))
                 print(results)
+                print("\n")
             }
             
         } catch {
-            print("Inference error: \(error)")
+            print("Inference error: \(error)\n")
         }
         
         return results
@@ -338,9 +368,9 @@ class Detector {
     private func rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float) -> [Point] {
         let halfW = w / 2
         let halfH = h / 2
-        print("ANGLE \(angleRad)")
-        let cosA = cos(angleRad - Float.pi / 2)
-        let sinA = sin(angleRad - Float.pi / 2)
+        print("ANGLE \(angleRad)\n")
+        let cosA = cos(angleRad)
+        let sinA = sin(angleRad)
         
         let corners: [(Float, Float)] = [
             (-halfW, -halfH),
