@@ -66,17 +66,21 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   startDelay,
   onClose,
   initialHistoryOpen,
+  initialSetupOpen
 }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
   const [lensType, setLensType] = useState('back'); // use front or back camera
   const [userId, setUserId] = useState('default_user');
-  const [showSetupOverlay, setShowSetupOverlay] = useState(false);
+  const [showSetupOverlay, setShowSetupOverlay] = useState(initialSetupOpen);
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [countdownVal, setCountdownVal] = useState(3)
+  const [countdownLength] = useState(3)
 
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
   const [maxAngle, setMaxAngle] = useState(18);
-  
+
   // Settings modal state
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tempMaxAngle, setTempMaxAngle] = useState(18);
@@ -150,6 +154,21 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     loadUserId();
   }, []);
 
+  // Countdown timer code
+  useEffect(() => {
+      let interval = setInterval(() => {
+          setCountdownVal(lastTimerCount => {
+              if (lastTimerCount == 0) {
+                  //move onto start detection proper
+              } else {
+                  lastTimerCount <= 1 && clearInterval(interval)
+                      return lastTimerCount - 1
+              }
+          })
+      }, 1000)
+  return () => clearInterval(interval)
+  }, []);
+
   const toggleCamera = () => {
     setLensType(prev => prev === 'back' ? 'front' : 'back');
   };
@@ -172,7 +191,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     try {
       // load history session
       const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
-      
+
       if (sessions && sessions.length > 0) {
         setHistorySessions(sessions as SummaryData[]);
         setHistoryVisible(true);
@@ -202,25 +221,25 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     imagePaths.forEach((path, index) => {
       const fileName = path.toLowerCase();
       console.log(`Image ${index}: ${path.split('/').pop()}`);
-      
+
       // Bow Height: bow_too_high, correct_bow
       if (fileName.includes('bow_too_high') || fileName.includes('correct_bow')) {
         categorized.bowHeight.push(path);
         console.log(`  -> Categorized as bowHeight`);
       }
-      
+
       // Bow Angle: correct_angle, incorrect_angle
       if (fileName.includes('correct_angle') || fileName.includes('incorrect_angle')) {
         categorized.bowAngle.push(path);
         console.log(`  -> Categorized as bowAngle`);
       }
-      
+
       // Hand Posture: good_pronation, supination
       if (fileName.includes('good_pronation') || fileName.includes('supination')) {
         categorized.handPosture.push(path);
         console.log(`  -> Categorized as handPosture`);
       }
-      
+
       // Elbow Posture: good_elbow, high_elbow, low_elbow
       if (fileName.includes('good_elbow') || fileName.includes('high_elbow') || fileName.includes('low_elbow')) {
         categorized.elbowPosture.push(path);
@@ -273,7 +292,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         session.userId,
         session.timestamp
       );
-      
+
       console.log('=== RAW IMAGES LOADED ===');
       console.log('Number of images:', images.length);
       if (images.length > 0) {
@@ -281,7 +300,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         images.slice(0, 3).forEach((img: string, idx: number) => {
           console.log(`  ${idx + 1}. ${img}`);
         });
-        
+
         const categorized = categorizeImages(images);
         setSessionImages(categorized);
       } else {
@@ -381,7 +400,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     console.log('=== OPENING DETAIL ===');
     console.log('Section:', sectionKey);
     setSelectedDetailSection(sectionKey);
-    
+
     // load image
     if (summaryData) {
       console.log('Loading images for current summary data');
@@ -502,7 +521,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               <Text style={styles.viewMoreButtonText}>View more</Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.metricRow}>
             <Image source={ICONS.tick_square} style={styles.metricDotGood} />
             <Text style={styles.metricLabel}>Good</Text>
@@ -643,7 +662,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.title}>Session History</Text>
-            
+
             {isLoadingHistory ? (
               <Text style={styles.loadingText}>Loading history...</Text>
             ) : historySessions.length === 0 ? (
@@ -656,7 +675,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     <Text style={styles.historySubtitle}>
                       Showing {currentPage * SESSIONS_PER_PAGE + 1}-{Math.min((currentPage + 1) * SESSIONS_PER_PAGE, historySessions.length)} of {historySessions.length} Sessions
                     </Text>
-                    
+
                     {getCurrentPageSessions().map((session, index) => {
                       const actualIndex = currentPage * SESSIONS_PER_PAGE + index;
                       const displayNumber = historySessions.length - actualIndex;
@@ -698,11 +717,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                             ‹
                           </Text>
                         </TouchableOpacity>
-                        
+
                         <Text style={styles.paginationText}>
                           Page {currentPage + 1} of {totalPages}
                         </Text>
-                        
+
                         <TouchableOpacity
                           onPress={goToNextPage}
                           disabled={currentPage === totalPages - 1}
@@ -727,17 +746,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     >
                       <Text style={styles.backButtonText}>← Back to List</Text>
                     </TouchableOpacity>
-                    
+
                     <Text style={styles.detailTitle}>
                       Session {historySessions.length - selectedHistoryIndex}
                     </Text>
-                    
+
                     {renderSummaryContent(historySessions[selectedHistoryIndex])}
                   </>
                 )}
               </ScrollView>
             )}
-            
+
             <View style={{ marginTop: 16 }}>
               <Button title="Close" onPress={closeHistory} />
             </View>
@@ -750,7 +769,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <View style={styles.modalContainer}>
           <View style={styles.settingsModalContent}>
             <Text style={styles.title}>Settings</Text>
-            
+
             <View style={styles.settingsSection}>
               <Text style={styles.settingsLabel}>Maximum Bow Angle Tolerance (0-90°)</Text>
               <TextInput
@@ -771,15 +790,15 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             </View>
 
             <View style={styles.settingsFooter}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
+              <TouchableOpacity
+                style={styles.cancelButton}
                 onPress={closeSettings}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.saveButton} 
+
+              <TouchableOpacity
+                style={styles.saveButton}
                 onPress={saveSettings}
               >
                 <Text style={styles.saveButtonText}>Save</Text>
@@ -1003,7 +1022,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
         )}
       </View>
-      
+
       <TouchableOpacity
         style={styles.closeButton}
         onPress={() => {
@@ -1014,15 +1033,30 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       >
         <Text style={styles.closeButtonText}>✕</Text>
       </TouchableOpacity>
-      
+
       <TouchableOpacity
         style={styles.detectionButton}
         onPress={() => {
           if (!isDetectionEnabled) {
-            setShowSetupOverlay(true);
+              setShowCountdown(true);
+              let count = countdownLength;
+              setCountdownVal(countdownLength);
+
+              let interval = setInterval(() => {
+                  count--;
+                  setCountdownVal(count)
+                  if (count <= 0) {
+                    clearInterval(interval);
+                    setIsDetectionEnabled(!isDetectionEnabled);
+                    setShowCountdown(false);
+                    console.log("DetectionEnabled: ", !isDetectionEnabled);
+                  }
+              }, 1000);
+          } else {
+            setIsDetectionEnabled(!isDetectionEnabled);
+            console.log("DetectionEnabled: ", !isDetectionEnabled);
           }
-          setIsDetectionEnabled(!isDetectionEnabled);
-          console.log("DetectionEnabled: ", !isDetectionEnabled);
+
         }}
       >
         <Text style={styles.buttonText}>
@@ -1057,6 +1091,27 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
         </>
       )}
+
+      {showCountdown && (
+        <>
+        {/* dark overlay */}
+        <View pointerEvents="none" style={styles.vignette} />
+
+        {/* cello silhouette */}
+        <View pointerEvents="none" style={styles.silhouetteWrap}>
+          <View style={styles.celloBody} />
+          <View style={styles.bridgeGuide} />
+          <View style={styles.endpinGuide} />
+        </View>
+
+        {/* Countdown Circle */}
+        <View style={styles.countdownCircle}>
+            <Text style={styles.countdownText}>{countdownVal.toString()}</Text>
+        </View>
+
+        </>
+        )}
+
     </View>
   );
 };
