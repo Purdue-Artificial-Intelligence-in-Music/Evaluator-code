@@ -1,7 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-
+apply plugin: 'com.google.gms.google-services'
+apply plugin: 'com.google.firebase.appdistribution'
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
 /**
@@ -173,4 +174,11 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+}
+
+firebaseAppDistribution {
+    serviceCredentialsFile = file("$projectDir/firebase-appdist-service-account.json")
+    appId = "1:78505815305:android:d6b9652566476aab2777d8"
+    releaseNotes = "EvalCV release build"
+    groups = "Test1"
 }

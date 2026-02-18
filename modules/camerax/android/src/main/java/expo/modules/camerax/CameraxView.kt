@@ -308,10 +308,21 @@ class CameraxView(
 
         // --- Add analyzer if enabled ---
         if (isDetectionEnabled) {
+            // Create a higher resolution selector for better screenshot quality
+            val highQualityResolutionSelector = ResolutionSelector.Builder()
+                .setAspectRatioStrategy(aspectRatioStrategy)
+                .setResolutionFilter { supportedResolutions, rotationDegrees ->
+                    // Filter to prefer resolutions of greater or equal 1080p for better quality
+                    supportedResolutions.filter { size ->
+                        (size.width >= 1080 || size.height >= 1080)
+                    }.sortedByDescending { it.width * it.height }
+                }
+                .build()
+
             imageAnalyzer = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
-                .setResolutionSelector(resolutionSelector)
+                .setResolutionSelector(highQualityResolutionSelector)
                 .setTargetRotation(rotation)
                 .build()
 

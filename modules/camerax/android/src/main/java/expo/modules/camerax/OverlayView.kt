@@ -89,6 +89,9 @@ class OverlayView @JvmOverloads constructor(
 
     private val MAX_LINES = 2 // max instructions displayed
 
+    // Temporary flag to disable screenshots
+    private val ENABLE_SCREENSHOTS = false
+
     // Helper function to count frequency of issues during session
     private fun recordIssue(message: String) {
         if (message.isEmpty()) return
@@ -693,8 +696,10 @@ class OverlayView @JvmOverloads constructor(
             }
         }
 
-        file_list.forEach { fName ->
-            saveImageForSession(fName)
+        if (ENABLE_SCREENSHOTS) {
+            file_list.forEach { fName ->
+                saveImageForSession(fName)
+            }
         }
     }
 
@@ -802,7 +807,8 @@ class OverlayView @JvmOverloads constructor(
         // Write to the file
         try {
             FileOutputStream(outFile).use { fos ->
-                overlayBitmap?.compress(Bitmap.CompressFormat.PNG, 100, fos)
+                // Use PNG format - more efficient for screenshots with sharp edges
+                overlayBitmap?.compress(Bitmap.CompressFormat.PNG, 95, fos)
             }
             Log.d("SaveOverlay", "Saved overlay to: ${outFile.absolutePath}")
         } catch (e: Exception) {
