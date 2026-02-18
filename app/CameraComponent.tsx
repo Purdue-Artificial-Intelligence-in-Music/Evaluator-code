@@ -155,21 +155,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     loadUserId();
   }, []);
 
-  // Countdown timer code
-  useEffect(() => {
-      let interval = setInterval(() => {
-          setCountdownVal(lastTimerCount => {
-              if (lastTimerCount == 0) {
-                  //move onto start detection proper
-              } else {
-                  lastTimerCount <= 1 && clearInterval(interval)
-                      return lastTimerCount - 1
-              }
-          })
-      }, 1000)
-  return () => clearInterval(interval)
-  }, []);
-
   const toggleCamera = () => {
     setLensType(prev => {
       if (prev === 'front') setIsMirrored(false); // reset mirroring option after switching to back cam
@@ -1050,7 +1035,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <Text style={styles.closeButtonText}>✕</Text>
       </TouchableOpacity>
       
-      <TouchableOpacity
+      {/* Show start/stop button when setup overlay is off. Setup overlay has its own start button */}
+      {!showSetupOverlay && (<TouchableOpacity
         style={styles.detectionButton}
         onPress={() => {
           if (!isDetectionEnabled) {
@@ -1073,14 +1059,12 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             setIsDetectionEnabled(!isDetectionEnabled);
             console.log("DetectionEnabled: ", !isDetectionEnabled);
           }
-          // setIsDetectionEnabled(!isDetectionEnabled);
-          // console.log("DetectionEnabled: ", !isDetectionEnabled);
         }}
       >
         <Text style={styles.buttonText}>
           {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
         </Text>
-      </TouchableOpacity>
+      </TouchableOpacity>)}
 
       {showSetupOverlay && (
         <>
@@ -1103,8 +1087,28 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             <Bullet>Keep the bridge near the dotted line</Bullet>
             <Bullet>Point your cello towards the camera</Bullet>
 
-            <TouchableOpacity style={styles.readyBtn} onPress={skipCalibration} activeOpacity={0.9}>
-              <Text style={styles.readyText}>Skip</Text>
+            {/* Start detection button inside setup overlay section */}
+            <TouchableOpacity
+              style={[styles.readyBtn, { position: 'relative', bottom: 0, marginTop: 16 }]}
+              onPress={() => {
+                setShowSetupOverlay(false);
+                setSessionStartTime(new Date());
+                setShowCountdown(true);
+                let count = countdownLength;
+                setCountdownVal(countdownLength);
+                let interval = setInterval(() => {
+                  count--;
+                  setCountdownVal(count);
+                  if (count <= 0) {
+                    clearInterval(interval);
+                    setIsDetectionEnabled(true);
+                    setShowCountdown(false);
+                  }
+                }, 1000);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.buttonText}>Start Detection</Text>
             </TouchableOpacity>
           </View>
         </>

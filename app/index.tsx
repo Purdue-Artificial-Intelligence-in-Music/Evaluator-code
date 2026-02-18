@@ -229,7 +229,6 @@ export default function HomePage() {
   };
 
   const closeCamera = () => {
-    console.log("Closing camera");
     setIsCameraOpen(false);
     setVideoUri(null);
     setVideoDimensions(null);
@@ -266,7 +265,6 @@ export default function HomePage() {
       {/* Open Camera now explicitly clears history flag */}
       <TouchableOpacity
         onPress={() => { 
-          console.log("Opening camera");
           if (!isCameraOpen) {
             setOpenHistoryOnCamera(false); // normal camera mode
             openCamera();
