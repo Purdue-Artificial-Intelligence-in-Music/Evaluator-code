@@ -66,12 +66,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   startDelay,
   onClose,
   initialHistoryOpen,
+  initialSetupOpen
 }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
   const [lensType, setLensType] = useState('back'); // use front or back camera
   const [userId, setUserId] = useState('default_user');
-  const [showSetupOverlay, setShowSetupOverlay] = useState(false);
+  // const [showSetupOverlay, setShowSetupOverlay] = useState(false);
+  const [showSetupOverlay, setShowSetupOverlay] = useState(initialSetupOpen);
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [countdownVal, setCountdownVal] = useState(3)
+  const [countdownLength] = useState(3)
 
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
@@ -148,6 +153,21 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       }
     };
     loadUserId();
+  }, []);
+
+  // Countdown timer code
+  useEffect(() => {
+      let interval = setInterval(() => {
+          setCountdownVal(lastTimerCount => {
+              if (lastTimerCount == 0) {
+                  //move onto start detection proper
+              } else {
+                  lastTimerCount <= 1 && clearInterval(interval)
+                      return lastTimerCount - 1
+              }
+          })
+      }, 1000)
+  return () => clearInterval(interval)
   }, []);
 
   const toggleCamera = () => {
@@ -1034,10 +1054,27 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         style={styles.detectionButton}
         onPress={() => {
           if (!isDetectionEnabled) {
-            setShowSetupOverlay(true);
+            // setShowSetupOverlay(true);
+            setShowCountdown(true);
+              let count = countdownLength;
+              setCountdownVal(countdownLength);
+
+              let interval = setInterval(() => {
+                  count--;
+                  setCountdownVal(count)
+                  if (count <= 0) {
+                    clearInterval(interval);
+                    setIsDetectionEnabled(!isDetectionEnabled);
+                    setShowCountdown(false);
+                    console.log("DetectionEnabled: ", !isDetectionEnabled);
+                  }
+              }, 1000);
+          } else {
+            setIsDetectionEnabled(!isDetectionEnabled);
+            console.log("DetectionEnabled: ", !isDetectionEnabled);
           }
-          setIsDetectionEnabled(!isDetectionEnabled);
-          console.log("DetectionEnabled: ", !isDetectionEnabled);
+          // setIsDetectionEnabled(!isDetectionEnabled);
+          // console.log("DetectionEnabled: ", !isDetectionEnabled);
         }}
       >
         <Text style={styles.buttonText}>
@@ -1072,6 +1109,25 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
         </>
       )}
+      {showCountdown && (
+        <>
+        {/* dark overlay */}
+        <View pointerEvents="none" style={styles.vignette} />
+
+        {/* cello silhouette */}
+        <View pointerEvents="none" style={styles.silhouetteWrap}>
+          <View style={styles.celloBody} />
+          <View style={styles.bridgeGuide} />
+          <View style={styles.endpinGuide} />
+        </View>
+
+        {/* Countdown Circle */}
+        <View style={styles.countdownCircle}>
+            <Text style={styles.countdownText}>{countdownVal.toString()}</Text>
+        </View>
+
+        </>
+        )}
     </View>
   );
 };
