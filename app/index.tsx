@@ -220,8 +220,10 @@ export default function HomePage() {
 
  
   
-  const openCamera = () => {
-    requestCameraPermission()
+  const openCamera = async (requestPerm: boolean = true) => {
+    if (requestPerm) {
+      await requestCameraPermission();
+    }
     setIsCameraOpen(true);
     setVideoUri(null);
     setVideoDimensions(null);
@@ -269,7 +271,7 @@ export default function HomePage() {
           console.log("Opening camera");
           if (!isCameraOpen) {
             setOpenHistoryOnCamera(false); // normal camera mode
-            openCamera();
+            openCamera(true);
           }
         }}
         activeOpacity={0.7}
@@ -289,10 +291,10 @@ export default function HomePage() {
       {/* Session History button styled like the others (no extra image) */}
       <TouchableOpacity
         onPress={() => {
-          console.log("Opening camera for session history");
+          console.log("Opening session history (no camera)");
           if (!isCameraOpen) {
-            setOpenHistoryOnCamera(true); // tell CameraComponent to open history modal
-            openCamera();
+            setOpenHistoryOnCamera(true);
+            openCamera(false);
           }
         }}
         activeOpacity={0.7}
