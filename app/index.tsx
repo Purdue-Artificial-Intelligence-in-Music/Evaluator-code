@@ -343,6 +343,7 @@ export default function HomePage() {
             startDelay={0}
             onClose={closeCamera}
             initialHistoryOpen={openHistoryOnCamera}
+            initialSetupOpen={true}
           />
         </View>
       ) : null}
