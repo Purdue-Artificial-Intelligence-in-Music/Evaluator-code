@@ -108,6 +108,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   // Detail modal state
   const [selectedDetailSection, setSelectedDetailSection] = useState<string | null>(null);
 
+  // Timer
+  const [elapsedTime, setElapsedTime] = useState<string>('00:00');
+
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [sessionImages, setSessionImages] = useState<CategorizedImages>({
     bowHeight: [],
@@ -154,6 +157,26 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     };
     loadUserId();
   }, []);
+
+  // Timer
+  useEffect(() => {
+    if (!isDetectionEnabled || !sessionStartTime) {
+      setElapsedTime('00:00');
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const diffMs = new Date().getTime() - sessionStartTime.getTime();
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      setElapsedTime(
+        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      );
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isDetectionEnabled, sessionStartTime]);
 
   const toggleCamera = () => {
     setLensType(prev => {
@@ -1036,12 +1059,19 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       </TouchableOpacity>
       
       {/* Show start/stop button when setup overlay is off. Setup overlay has its own start button */}
-      {!showSetupOverlay && (<TouchableOpacity
-        style={styles.detectionButton}
-        onPress={() => {
-          if (!isDetectionEnabled) {
-            // setShowSetupOverlay(true);
-            setShowCountdown(true);
+      {!showSetupOverlay && (
+        <>
+        {isDetectionEnabled && (
+          <View style={styles.timerDisplay}>
+            <Text style={styles.timerText}>{elapsedTime}</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          style={styles.detectionButton}
+          onPress={() => {
+            if (!isDetectionEnabled) {
+              // setShowSetupOverlay(true);
+              setShowCountdown(true);
               let count = countdownLength;
               setCountdownVal(countdownLength);
 
@@ -1051,20 +1081,23 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   if (count <= 0) {
                     clearInterval(interval);
                     setIsDetectionEnabled(!isDetectionEnabled);
+                    setSessionStartTime(new Date());
                     setShowCountdown(false);
                     console.log("DetectionEnabled: ", !isDetectionEnabled);
                   }
               }, 1000);
-          } else {
-            setIsDetectionEnabled(!isDetectionEnabled);
-            console.log("DetectionEnabled: ", !isDetectionEnabled);
-          }
-        }}
-      >
-        <Text style={styles.buttonText}>
-          {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
-        </Text>
-      </TouchableOpacity>)}
+            } else {
+              setIsDetectionEnabled(!isDetectionEnabled);
+              console.log("DetectionEnabled: ", !isDetectionEnabled);
+            }
+          }}
+        >
+          <Text style={styles.buttonText}>
+            {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
+          </Text>
+        </TouchableOpacity>
+      </>
+      )}
 
       {showSetupOverlay && (
         <>
@@ -1092,7 +1125,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               style={[styles.readyBtn, { position: 'relative', bottom: 0, marginTop: 16 }]}
               onPress={() => {
                 setShowSetupOverlay(false);
-                setSessionStartTime(new Date());
+                // setSessionStartTime(new Date());
                 setShowCountdown(true);
                 let count = countdownLength;
                 setCountdownVal(countdownLength);
@@ -1102,6 +1135,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   if (count <= 0) {
                     clearInterval(interval);
                     setIsDetectionEnabled(true);
+                    setSessionStartTime(new Date());
                     setShowCountdown(false);
                   }
                 }, 1000);

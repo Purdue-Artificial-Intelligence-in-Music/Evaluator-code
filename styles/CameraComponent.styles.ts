@@ -606,4 +606,19 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'white',
   },
+  timerDisplay: {
+    position: 'absolute',
+    bottom: 120,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  timerText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
+  },
 });
