@@ -30,6 +30,12 @@ import kotlin.math.max
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 
+import androidx.media3.effect.MatrixTransformation
+import androidx.camera.core.CameraEffect.PREVIEW
+import androidx.camera.core.CameraEffect.VIDEO_CAPTURE
+import androidx.camera.core.CameraEffect.IMAGE_CAPTURE
+import androidx.camera.media3.effect.Media3Effect
+
 
 // MediaPipe
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -207,6 +213,26 @@ class CameraxView(
         }
     }
 
+    fun createHorizontalFlipEffect(): MatrixTransformation {
+        return MatrixTransformation {
+            val transformationMatrix = Matrix()
+            transformationMatrix.postScale(-1f,1f) // Flip horizontally
+            transformationMatrix
+        }
+    }
+
+    // flip: true when "mirror" option is on, false when it's off
+    fun setFlip(shouldFlip: Boolean) {
+        if (flip != shouldFlip) {
+            flip = shouldFlip
+            overlayView.setFlipState(shouldFlip)
+            Log.d("Flip", "Flip set to: $shouldFlip")
+            if (cameraProvider != null && isCameraActive) {
+                bindCameraUseCases()
+            }
+        }
+    }
+
     fun setCameraActive(active: Boolean) {
         if (isCameraActive == active) return
         isCameraActive = active
@@ -280,11 +306,7 @@ class CameraxView(
             .requireLensFacing(lensType)
             .build()
 
-        if (lensType == CameraSelector.LENS_FACING_FRONT && flip){
-            viewFinder.scaleX = -1f
-        } else {
-            viewFinder.scaleX = 1f
-        }
+        viewFinder.scaleType = PreviewView.ScaleType.FIT_CENTER
 
         val aspectRatioStrategy = AspectRatioStrategy(
             AspectRatio.RATIO_16_9,
@@ -320,6 +342,18 @@ class CameraxView(
             }
 
             useCaseGroupBuilder.addUseCase(imageAnalyzer!!)
+        }
+
+        // Mirror the image if front camera is used + flip option is on
+        if (lensType == CameraSelector.LENS_FACING_FRONT && flip) {
+            val media3Effect = Media3Effect(
+                context,
+                PREVIEW or VIDEO_CAPTURE or IMAGE_CAPTURE,
+                ContextCompat.getMainExecutor(context),
+            ) {}
+
+            media3Effect.setEffects(listOf(createHorizontalFlipEffect()))
+            useCaseGroupBuilder.addEffect(media3Effect)
         }
 
         val useCaseGroup = useCaseGroupBuilder.build()
@@ -364,9 +398,10 @@ class CameraxView(
 
 
                 // Rotate + mirror if needed
+                // Do not change anything based on the flip variable
                 val matrix = Matrix().apply {
                     postRotate(imageProxy.imageInfo.rotationDegrees.toFloat())
-                    if (lensType == CameraSelector.LENS_FACING_FRONT && !flip) {
+                    if (lensType == CameraSelector.LENS_FACING_FRONT) {
                         postScale(-1f, 1f, imageProxy.width.toFloat(), imageProxy.height.toFloat())
                     }
                 }
@@ -383,7 +418,7 @@ class CameraxView(
 
                 // Perform YOLO detection
                 performDetection(rotatedBitmap)
-                handLandmarkerHelper.detectBitmap(rotatedBitmap, (lensType == CameraSelector.LENS_FACING_FRONT && !flip))
+                handLandmarkerHelper.detectBitmap(rotatedBitmap, (lensType == CameraSelector.LENS_FACING_FRONT))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Analyzer failure", e)

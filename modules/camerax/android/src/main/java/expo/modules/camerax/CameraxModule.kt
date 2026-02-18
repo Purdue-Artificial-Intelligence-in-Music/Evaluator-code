@@ -24,6 +24,10 @@ class CameraxModule : Module() {
                 view.setLensType(lensType)
             }
 
+            Prop("flip") { view: CameraxView, flip: Boolean ->
+                view.setFlip(flip)
+            }
+
             Prop("cameraActive") { view: CameraxView, active: Boolean ->
                 view.setCameraActive(active)
             }

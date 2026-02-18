@@ -96,9 +96,15 @@ class OverlayView @JvmOverloads constructor(
     }
 
     private var isFrontCameraActive: Boolean = false
+    private var shouldFlipDisplay: Boolean = false
 
     fun setFrontCameraState(isFront: Boolean) {
         isFrontCameraActive = isFront
+    }
+
+    fun setFlipState(flip: Boolean) {
+        shouldFlipDisplay = flip
+        invalidate()
     }
 
     companion object {
@@ -199,6 +205,13 @@ class OverlayView @JvmOverloads constructor(
         if (results == null && handLandmarkerResult == null && handDetect.isEmpty() && poseDetect.isEmpty()) {
             // detection stopped, do not draw anything
             return
+        }
+
+        // Mirror all visual annotations if using fron camera and "mirror" option is on
+        val shouldMirror = isFrontCameraActive && shouldFlipDisplay
+        if (shouldMirror) {
+            canvas.save()
+            canvas.scale(-1f, 1f, width / 2f, height / 2f)
         }
 
         //overlayBitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
@@ -523,6 +536,11 @@ class OverlayView @JvmOverloads constructor(
         }
         */
 
+        // Restore canvas before writing instructions. Don't mirror the text.
+        if (shouldMirror) {
+            canvas.restore()
+        }
+
         // Parse hand classification
         val handClassRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
         val handMatch = handClassRegex.find(handDetect)
@@ -675,6 +693,9 @@ class OverlayView @JvmOverloads constructor(
             val fm = textPaint.fontMetrics
             val lineHeight = fm.bottom - fm.top
 
+            // Make sure Y coordinates haven't been influenced by mirroring canvas
+            var textY = 120f
+
             // sort by how often the issue has occurred, descending
             val sortedIssues = activeIssues.sortedByDescending { issueFrequency[it] ?: 0 }
 
@@ -682,14 +703,14 @@ class OverlayView @JvmOverloads constructor(
                 val textWidth = textPaint.measureText(message)
 
                 val left = centerX - textWidth / 2 - padding
-                val top = currentY + fm.top - padding
+                val top = textY + fm.top - padding
                 val right = centerX + textWidth / 2 + padding
-                val bottom = currentY + fm.bottom + padding
+                val bottom = textY + fm.bottom + padding
 
                 canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
-                canvas.drawText(message, centerX, currentY, textPaint)
+                canvas.drawText(message, centerX, textY, textPaint)
 
-                currentY += lineHeight + lineSpacing
+                textY += lineHeight + lineSpacing
             }
         }
 

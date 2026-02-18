@@ -151,7 +151,18 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   }, []);
 
   const toggleCamera = () => {
-    setLensType(prev => prev === 'back' ? 'front' : 'back');
+    setLensType(prev => {
+      if (prev === 'front') setIsMirrored(false); // reset mirroring option after switching to back cam
+      return prev === 'back' ? 'front' : 'back';
+    });
+  };
+
+  const handleMirrorToggle = () => {
+    if (lensType !== 'front') {
+      Alert.alert('', 'Mirroring option only available for front camera');
+      return;
+    }
+    setIsMirrored(v => !v);
   };
 
   const handleCalibrated = async (event: any) => {
@@ -925,6 +936,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         onCalibrated={handleCalibrated}
         skipCalibration={!showSetupOverlay}
         maxBowAngle={maxAngle}
+        flip={isMirrored}
       />
 
       {/* Top-left menu + dropdown */}
@@ -952,8 +964,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => setIsMirrored(v => !v)}
+              style={[
+                styles.menuItem,
+                lensType !== 'front' && { opacity: 0.4 }  // Display grey text to indicate "not available"
+              ]}
+              onPress={handleMirrorToggle}
               activeOpacity={0.8}
             >
               <Text style={styles.menuItemIcon}>🪞</Text>
