@@ -5,8 +5,6 @@ const BODY_W = W - 32;
 const BODY_H = Math.min(H * 0.78, (W - 32) * 1.9);
 const BODY_TOP = H * 0.08;
 
-const COUNTDOWN_WIDTH = W / 5;
-
 export const ICONS = {
   tick_square: require('../assets/icons-2.5/Tick_Square.png'),
   wrong: require('../assets/icons-2.5/wrong.png'),
@@ -240,30 +238,6 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
-  },
-  countdownCircle: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [
-      { translateX: -COUNTDOWN_WIDTH / 2 },
-      { translateY: -COUNTDOWN_WIDTH / 2 }
-    ],
-    width: COUNTDOWN_WIDTH,
-    height: COUNTDOWN_WIDTH,
-    borderRadius: COUNTDOWN_WIDTH / 2,
-    backgroundColor: 'rgba(255,255,255,1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  countdownText: {
-    color: 'black',
-    fontWeight: '700',
-    fontSize: COUNTDOWN_WIDTH / 2,
-    letterSpacing: 0.2,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
   },
   cardTitle: {
     color: 'white',
