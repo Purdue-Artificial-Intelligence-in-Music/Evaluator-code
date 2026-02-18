@@ -83,7 +83,7 @@ class CameraxView(
 
     private var isDetectionEnabled = false
     private var isCameraActive = false
-    private var lensType = CameraSelector.LENS_FACING_BACK
+    private var lensType = CameraSelector.LENS_FACING_FRONT
     private var flip: Boolean = false
 
     private lateinit var overlayView: OverlayView
