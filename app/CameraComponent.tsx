@@ -87,11 +87,12 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   const [tempMaxAngle, setTempMaxAngle] = useState(18);
 
   // History modal state
-  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyVisible, setHistoryVisible] = useState(!!initialHistoryOpen);
   const [historySessions, setHistorySessions] = useState<SummaryData[]>([]);
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [currentPage, setCurrentPage] = useState(0); // current page on "Session Summary History"
+  const historyMode = !!initialHistoryOpen || historyVisible;
 
   // Toolbar state
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
@@ -129,17 +130,24 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
   useEffect(() => {
     if (initialHistoryOpen) {
+      setIsCameraActive(false);
+      setIsDetectionEnabled(false);
       setHistoryVisible(true);
     }
   }, [initialHistoryOpen]);
 
   useEffect(() => {
+     if (initialHistoryOpen) {
+      setIsCameraActive(false);
+      return;
+    }
+
     const timer = setTimeout(() => {
       setIsCameraActive(true);
     }, startDelay || 100);
 
     return () => clearTimeout(timer);
-  }, [startDelay]);
+  }, [startDelay, initialHistoryOpen]);
 
   useEffect(() => {
     const loadUserId = async () => {
@@ -399,6 +407,12 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     setHistoryVisible(false);
     setSelectedHistoryIndex(null);
     setCurrentPage(0);
+
+    // If CameraComponent was opened ONLY to show history from HomeScreen,
+    // close the whole CameraComponent overlay so HomeScreen is clickable again.
+    if (initialHistoryOpen) {
+      onClose();
+    }
   };
 
   const openSettings = () => {
@@ -954,112 +968,122 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         </View>
       </Modal>
 
-      <CameraxView
-        style={styles.camera}
-        userId={userId}
-        cameraActive={isCameraActive}
-        detectionEnabled={isDetectionEnabled}
-        lensType={lensType}
-        onSessionEnd={handleSessionEnd}
-        onCalibrated={handleCalibrated}
-        skipCalibration={!showSetupOverlay}
-        maxBowAngle={maxAngle}
-        flip={isMirrored}
-      />
+      {!initialHistoryOpen && (
+        <CameraxView
+          style={styles.camera}
+          userId={userId}
+          cameraActive={isCameraActive}
+          detectionEnabled={isDetectionEnabled}
+          lensType={lensType}
+          onSessionEnd={handleSessionEnd}
+          onCalibrated={handleCalibrated}
+          skipCalibration={!showSetupOverlay}
+          maxBowAngle={maxAngle}
+          flip={isMirrored}
+        />
+      )}
+      {!initialHistoryOpen && (
+        <>
+        {/* Top-left menu + dropdown */}
+        <View style={styles.topLeftMenuArea}>
+          <TouchableOpacity
+            style={styles.menuFab}
+            onPress={() => setToolbarExpanded(v => !v)}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={toolbarExpanded ? ICONS.exit : ICONS.tools}
+              style={styles.menuFabIconImg}
+            />
+          </TouchableOpacity>
 
-      {/* Top-left menu + dropdown */}
-      <View style={styles.topLeftMenuArea}>
+          {toolbarExpanded && (
+            <View style={styles.menuPanel}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  toggleCamera();
+                  setToolbarExpanded(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Image source={ICONS.flip_camera} style={styles.menuItemIconImg} />
+                <Text style={styles.menuItemText}>Flip camera</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.menuItem,
+                  lensType !== 'front' && { opacity: 0.4 }  // Display grey text to indicate "not available"
+                ]}
+                onPress={handleMirrorToggle}
+                activeOpacity={0.8}
+              >
+                <Image source={ICONS.mirror} style={styles.menuItemIconImg} />
+                <Text style={styles.menuItemText}>
+                  Mirror the view {isMirrored ? '(On)' : '(Off)'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  openSettings();
+                  setToolbarExpanded(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Image source={ICONS.adjust_threshold} style={styles.menuItemIconImg} />
+                <Text style={styles.menuItemText}>Threshold adjust</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  loadSessionHistory();
+                  setToolbarExpanded(false);
+                }}
+                disabled={isLoadingHistory}
+                activeOpacity={0.8}
+              >
+                <Image source={ICONS.session_summary} style={styles.menuItemIconImg} />
+                <Text style={styles.menuItemText}>
+                  {isLoadingHistory ? 'Loading…' : 'Session history'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setLearnVisible(true);
+                  setToolbarExpanded(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Image source={ICONS.instructions} style={styles.menuItemIconImg} />
+                <Text style={styles.menuItemText}>Learn postures</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+        </>
+      )}
+
+      {!historyMode && (
         <TouchableOpacity
-          style={styles.menuFab}
-          onPress={() => setToolbarExpanded(v => !v)}
-          activeOpacity={0.8}
+          style={styles.closeButton}
+          onPress={() => {
+            if (isDetectionEnabled) setExitConfirmVisible(true);
+            else onClose();
+          }}
+          activeOpacity={0.7}
         >
-          <Text style={styles.menuFabIcon}>{toolbarExpanded ? '✕' : '⠿'}</Text>
+          <Image source={ICONS.exit} style={styles.closeButtonIconImg} />
         </TouchableOpacity>
-
-        {toolbarExpanded && (
-          <View style={styles.menuPanel}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                toggleCamera();
-                setToolbarExpanded(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.menuItemIcon}>📷</Text>
-              <Text style={styles.menuItemText}>Flip camera</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.menuItem,
-                lensType !== 'front' && { opacity: 0.4 }  // Display grey text to indicate "not available"
-              ]}
-              onPress={handleMirrorToggle}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.menuItemIcon}>🪞</Text>
-              <Text style={styles.menuItemText}>
-                Mirror the view {isMirrored ? '(On)' : '(Off)'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                openSettings();
-                setToolbarExpanded(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.menuItemIcon}>🎚️</Text>
-              <Text style={styles.menuItemText}>Threshold adjust</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                loadSessionHistory();
-                setToolbarExpanded(false);
-              }}
-              disabled={isLoadingHistory}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.menuItemIcon}>📈</Text>
-              <Text style={styles.menuItemText}>
-                {isLoadingHistory ? 'Loading…' : 'Session history'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setLearnVisible(true);
-                setToolbarExpanded(false);
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.menuItemIcon}>📖</Text>
-              <Text style={styles.menuItemText}>Learn postures</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-      
-      <TouchableOpacity
-        style={styles.closeButton}
-        onPress={() => {
-          if (isDetectionEnabled) setExitConfirmVisible(true);
-          else onClose();
-        }}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.closeButtonText}>✕</Text>
-      </TouchableOpacity>
+      )}
       
       {/* Show start/stop button when setup overlay is off. Setup overlay has its own start button */}
-      {!showSetupOverlay && (
+      {!initialHistoryOpen && !showSetupOverlay && (
         <>
         {isDetectionEnabled && (
           <View style={styles.timerDisplay}>
@@ -1099,7 +1123,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       </>
       )}
 
-      {showSetupOverlay && (
+      {!historyMode && showSetupOverlay && (
         <>
           {/* dark overlay */}
           <View pointerEvents="none" style={styles.vignette} />
@@ -1147,7 +1171,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
         </>
       )}
-      {showCountdown && (
+      {!historyMode && showCountdown && (
         <>
         {/* dark overlay */}
         <View pointerEvents="none" style={styles.vignette} />
