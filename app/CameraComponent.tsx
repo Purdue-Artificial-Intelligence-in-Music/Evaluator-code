@@ -4,6 +4,7 @@ import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from '../styles/CameraComponent.styles';
 import { ICONS } from '../styles/CameraComponent.styles';
+import LearnPosture from './LearnPosture'; // adjust path as needed
 
 const CameraxView = requireNativeViewManager('Camerax');
 const CameraxModule = requireNativeModule('Camerax');
@@ -81,7 +82,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
   const [maxAngle, setMaxAngle] = useState(18);
-  
+
   // Settings modal state
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tempMaxAngle, setTempMaxAngle] = useState(18);
@@ -101,15 +102,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
   // Learn Postures modal
   const [learnVisible, setLearnVisible] = useState(false);
+  const [learnActiveTab, setLearnActiveTab] = useState('overall');
 
   // Exit confirmation modal
   const [exitConfirmVisible, setExitConfirmVisible] = useState(false);
 
   // Detail modal state
   const [selectedDetailSection, setSelectedDetailSection] = useState<string | null>(null);
-
-  // Timer
-  const [elapsedTime, setElapsedTime] = useState<string>('00:00');
 
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [sessionImages, setSessionImages] = useState<CategorizedImages>({
@@ -158,26 +157,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     loadUserId();
   }, []);
 
-  // Timer
-  useEffect(() => {
-    if (!isDetectionEnabled || !sessionStartTime) {
-      setElapsedTime('00:00');
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const diffMs = new Date().getTime() - sessionStartTime.getTime();
-      const totalSeconds = Math.floor(diffMs / 1000);
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      setElapsedTime(
-        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-      );
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isDetectionEnabled, sessionStartTime]);
-
   const toggleCamera = () => {
     setLensType(prev => {
       if (prev === 'front') setIsMirrored(false); // reset mirroring option after switching to back cam
@@ -211,7 +190,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     try {
       // load history session
       const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
-      
+
       if (sessions && sessions.length > 0) {
         setHistorySessions(sessions as SummaryData[]);
         setHistoryVisible(true);
@@ -241,25 +220,25 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     imagePaths.forEach((path, index) => {
       const fileName = path.toLowerCase();
       console.log(`Image ${index}: ${path.split('/').pop()}`);
-      
+
       // Bow Height: bow_too_high, correct_bow
       if (fileName.includes('bow_too_high') || fileName.includes('correct_bow')) {
         categorized.bowHeight.push(path);
         console.log(`  -> Categorized as bowHeight`);
       }
-      
+
       // Bow Angle: correct_angle, incorrect_angle
       if (fileName.includes('correct_angle') || fileName.includes('incorrect_angle')) {
         categorized.bowAngle.push(path);
         console.log(`  -> Categorized as bowAngle`);
       }
-      
+
       // Hand Posture: good_pronation, supination
       if (fileName.includes('good_pronation') || fileName.includes('supination')) {
         categorized.handPosture.push(path);
         console.log(`  -> Categorized as handPosture`);
       }
-      
+
       // Elbow Posture: good_elbow, high_elbow, low_elbow
       if (fileName.includes('good_elbow') || fileName.includes('high_elbow') || fileName.includes('low_elbow')) {
         categorized.elbowPosture.push(path);
@@ -312,7 +291,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         session.userId,
         session.timestamp
       );
-      
+
       console.log('=== RAW IMAGES LOADED ===');
       console.log('Number of images:', images.length);
       if (images.length > 0) {
@@ -320,7 +299,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         images.slice(0, 3).forEach((img: string, idx: number) => {
           console.log(`  ${idx + 1}. ${img}`);
         });
-        
+
         const categorized = categorizeImages(images);
         setSessionImages(categorized);
       } else {
@@ -420,7 +399,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     console.log('=== OPENING DETAIL ===');
     console.log('Section:', sectionKey);
     setSelectedDetailSection(sectionKey);
-    
+
     // load image
     if (summaryData) {
       console.log('Loading images for current summary data');
@@ -541,7 +520,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               <Text style={styles.viewMoreButtonText}>View more</Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.metricRow}>
             <Image source={ICONS.tick_square} style={styles.metricDotGood} />
             <Text style={styles.metricLabel}>Good</Text>
@@ -682,7 +661,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.title}>Session History</Text>
-            
+
             {isLoadingHistory ? (
               <Text style={styles.loadingText}>Loading history...</Text>
             ) : historySessions.length === 0 ? (
@@ -695,7 +674,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     <Text style={styles.historySubtitle}>
                       Showing {currentPage * SESSIONS_PER_PAGE + 1}-{Math.min((currentPage + 1) * SESSIONS_PER_PAGE, historySessions.length)} of {historySessions.length} Sessions
                     </Text>
-                    
+
                     {getCurrentPageSessions().map((session, index) => {
                       const actualIndex = currentPage * SESSIONS_PER_PAGE + index;
                       const displayNumber = historySessions.length - actualIndex;
@@ -737,11 +716,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                             ‹
                           </Text>
                         </TouchableOpacity>
-                        
+
                         <Text style={styles.paginationText}>
                           Page {currentPage + 1} of {totalPages}
                         </Text>
-                        
+
                         <TouchableOpacity
                           onPress={goToNextPage}
                           disabled={currentPage === totalPages - 1}
@@ -766,17 +745,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     >
                       <Text style={styles.backButtonText}>← Back to List</Text>
                     </TouchableOpacity>
-                    
+
                     <Text style={styles.detailTitle}>
                       Session {historySessions.length - selectedHistoryIndex}
                     </Text>
-                    
+
                     {renderSummaryContent(historySessions[selectedHistoryIndex])}
                   </>
                 )}
               </ScrollView>
             )}
-            
+
             <View style={{ marginTop: 16 }}>
               <Button title="Close" onPress={closeHistory} />
             </View>
@@ -789,7 +768,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <View style={styles.modalContainer}>
           <View style={styles.settingsModalContent}>
             <Text style={styles.title}>Settings</Text>
-            
+
             <View style={styles.settingsSection}>
               <Text style={styles.settingsLabel}>Maximum Bow Angle Tolerance (0-90°)</Text>
               <TextInput
@@ -810,15 +789,15 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             </View>
 
             <View style={styles.settingsFooter}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
+              <TouchableOpacity
+                style={styles.cancelButton}
                 onPress={closeSettings}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.saveButton} 
+
+              <TouchableOpacity
+                style={styles.saveButton}
                 onPress={saveSettings}
               >
                 <Text style={styles.saveButtonText}>Save</Text>
@@ -866,21 +845,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       </Modal>
 
       {/* Learn Postures Modal */}
-      <Modal visible={learnVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <ScrollView>
-              <Text style={styles.title}>Learn Postures</Text>
+       <LearnPosture
+         visible={learnVisible}
+         onClose={() => setLearnVisible(false)}
+       />
 
-              <Text style={styles.detailText}>
-                Add posture education content here (images / tips / examples).
-              </Text>
-
-              <Button title="Close" onPress={() => setLearnVisible(false)} />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       {/* Detail Modal for "View more" */}
       <Modal
@@ -1035,6 +1004,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
+                  setLearnActiveTab('overall');
                 setLearnVisible(true);
                 setToolbarExpanded(false);
               }}
@@ -1046,7 +1016,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
         )}
       </View>
-      
+
       <TouchableOpacity
         style={styles.closeButton}
         onPress={() => {
@@ -1057,21 +1027,14 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       >
         <Text style={styles.closeButtonText}>✕</Text>
       </TouchableOpacity>
-      
+
       {/* Show start/stop button when setup overlay is off. Setup overlay has its own start button */}
-      {!showSetupOverlay && (
-        <>
-        {isDetectionEnabled && (
-          <View style={styles.timerDisplay}>
-            <Text style={styles.timerText}>{elapsedTime}</Text>
-          </View>
-        )}
-        <TouchableOpacity
-          style={styles.detectionButton}
-          onPress={() => {
-            if (!isDetectionEnabled) {
-              // setShowSetupOverlay(true);
-              setShowCountdown(true);
+      {!showSetupOverlay && (<TouchableOpacity
+        style={styles.detectionButton}
+        onPress={() => {
+          if (!isDetectionEnabled) {
+            // setShowSetupOverlay(true);
+            setShowCountdown(true);
               let count = countdownLength;
               setCountdownVal(countdownLength);
 
@@ -1081,23 +1044,20 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   if (count <= 0) {
                     clearInterval(interval);
                     setIsDetectionEnabled(!isDetectionEnabled);
-                    setSessionStartTime(new Date());
                     setShowCountdown(false);
                     console.log("DetectionEnabled: ", !isDetectionEnabled);
                   }
               }, 1000);
-            } else {
-              setIsDetectionEnabled(!isDetectionEnabled);
-              console.log("DetectionEnabled: ", !isDetectionEnabled);
-            }
-          }}
-        >
-          <Text style={styles.buttonText}>
-            {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
-          </Text>
-        </TouchableOpacity>
-      </>
-      )}
+          } else {
+            setIsDetectionEnabled(!isDetectionEnabled);
+            console.log("DetectionEnabled: ", !isDetectionEnabled);
+          }
+        }}
+      >
+        <Text style={styles.buttonText}>
+          {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
+        </Text>
+      </TouchableOpacity>)}
 
       {showSetupOverlay && (
         <>
@@ -1125,7 +1085,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               style={[styles.readyBtn, { position: 'relative', bottom: 0, marginTop: 16 }]}
               onPress={() => {
                 setShowSetupOverlay(false);
-                // setSessionStartTime(new Date());
+                setSessionStartTime(new Date());
                 setShowCountdown(true);
                 let count = countdownLength;
                 setCountdownVal(countdownLength);
@@ -1135,7 +1095,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   if (count <= 0) {
                     clearInterval(interval);
                     setIsDetectionEnabled(true);
-                    setSessionStartTime(new Date());
                     setShowCountdown(false);
                   }
                 }, 1000);
