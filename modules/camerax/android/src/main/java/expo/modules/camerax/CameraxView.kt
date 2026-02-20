@@ -192,7 +192,9 @@ class CameraxView(
                 "posePresenceBreakdown" to summary.posePresenceBreakdown,
                 "elbowPostureBreakdown" to summary.elbowPostureBreakdown,
                 "userId" to userId,
-                "timestamp" to summary.timestamp
+                "timestamp" to summary.timestamp,
+                "durationSeconds" to summary.durationSeconds,
+                "durationFormatted" to summary.durationFormatted
             )
             onSessionEnd(summaryMap)
         } catch (e: Exception) {
