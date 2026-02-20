@@ -312,10 +312,21 @@ class CameraxView(
             val highQualityResolutionSelector = ResolutionSelector.Builder()
                 .setAspectRatioStrategy(aspectRatioStrategy)
                 .setResolutionFilter { supportedResolutions, rotationDegrees ->
-                    // Filter to prefer resolutions of greater or equal 1080p for better quality
-                    supportedResolutions.filter { size ->
-                        (size.width >= 1080 || size.height >= 1080)
-                    }.sortedByDescending { it.width * it.height }
+                    // Prefer resolutions whose long edge is at least 1080px for better quality.
+                    // Fall back to the original list if none meet the threshold so binding doesn't fail.
+                    val filtered = supportedResolutions
+                        .filter { size ->
+                            val longEdge = max(size.width, size.height)
+                            longEdge >= 1080
+                        }
+                        .sortedByDescending { it.width * it.height }
+
+                    if (filtered.isNotEmpty()) {
+                        filtered
+                    } else {
+                        // If no resolution meets the 1080p-like requirement, return all supported resolutions.
+                        supportedResolutions.sortedByDescending { it.width * it.height }
+                    }
                 }
                 .build()
 
