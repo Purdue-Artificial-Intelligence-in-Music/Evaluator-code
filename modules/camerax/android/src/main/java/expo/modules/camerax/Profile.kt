@@ -36,7 +36,9 @@ class Profile {
         val handPostureBreakdown: Map<String, Double>,
         val posePresenceBreakdown: Map<String, Double>,
         val elbowPostureBreakdown: Map<String, Double>,
-        val timestamp: String
+        val timestamp: String,
+        val durationSeconds: Long = 0L,
+        val durationFormatted: String = "0s"
     )
 
     private val sessionDict: MutableMap<String, MutableList<Any>> = mutableMapOf()
@@ -44,6 +46,7 @@ class Profile {
     private val outputFiles: MutableMap<String, File> = mutableMapOf()
     private val sessionTimestamps: MutableMap<String, String> = mutableMapOf() // store timestamp when session began
     private val sessionTimestampsFormatted: MutableMap<String, String> = mutableMapOf()
+    private val sessionStartTimes: MutableMap<String, Long> = mutableMapOf() // store session start time in milliseconds
 
     // Accumulation counter used for session summary
     private val accumulatedHeightCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
@@ -74,6 +77,7 @@ class Profile {
 
             sessionTimestamps[userId] = timestamp
             sessionTimestampsFormatted[userId] = timestampFormatted
+            sessionStartTimes[userId] = now.time // Store start time in milliseconds
 
             // initialize counters
             accumulatedHeightCounts[userId] = mutableMapOf("Top" to 0, "Middle" to 0, "Bottom" to 0, "Outside" to 0, "Unknown" to 0)
@@ -140,11 +144,18 @@ class Profile {
             }
         }
 
-        // Create session summary file
+        // Create session summary file with duration
         val sessionStartTimestamp = sessionTimestampsFormatted[userId]
             ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        
+        // Calculate session duration
+        val startTimeMs = sessionStartTimes[userId] ?: System.currentTimeMillis()
+        val endTimeMs = System.currentTimeMillis()
+        val durationMs = endTimeMs - startTimeMs
+        val durationSeconds = durationMs / 1000
+        val durationFormatted = formatDuration(durationMs)
 
-        val totalSummary = generateTotalSummary(userId, sessionStartTimestamp)
+        val totalSummary = generateTotalSummary(userId, sessionStartTimestamp, durationSeconds, durationFormatted)
 
         saveSummaryFile(userId, totalSummary)
 
@@ -153,6 +164,7 @@ class Profile {
         outputFiles.remove(userId)
         sessionTimestamps.remove(userId)
         sessionTimestampsFormatted.remove(userId)
+        sessionStartTimes.remove(userId)
         accumulatedHeightCounts.remove(userId)
         accumulatedAngleCounts.remove(userId)
         accumulatedHandCounts.remove(userId)
@@ -313,11 +325,13 @@ class Profile {
             handPostureBreakdown,
             posePresenceBreakdown,
             elbowPostureBreakdown,
-            timestamp
+            timestamp,
+            0L, // duration not applicable for window summaries
+            "0s" // duration not applicable for window summaries
         )
     }
 
-    private fun generateTotalSummary(userId: String, timestamp: String): SessionSummary {
+    private fun generateTotalSummary(userId: String, timestamp: String, durationSeconds: Long = 0L, durationFormatted: String = "0s"): SessionSummary {
         val heightCounts = accumulatedHeightCounts[userId] ?: mutableMapOf()
         val angleCounts = accumulatedAngleCounts[userId] ?: mutableMapOf()
         val handCounts = accumulatedHandCounts[userId] ?: mutableMapOf()
@@ -374,8 +388,23 @@ class Profile {
             handPostureBreakdown,
             posePresenceBreakdown,
             elbowPostureBreakdown,
-            timestamp
+            timestamp,
+            durationSeconds,
+            durationFormatted
         )
+    }
+
+    private fun formatDuration(durationMs: Long): String {
+        val totalSeconds = durationMs / 1000
+        val hours = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        
+        return when {
+            hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
+            minutes > 0 -> "${minutes}m ${seconds}s"
+            else -> "${seconds}s"
+        }
     }
 
     private fun formatSummaryAsJson(summary: SessionSummary, userId: String): String {
@@ -383,6 +412,8 @@ class Profile {
             append("{")
             append("\"user_id\":\"$userId\",")
             append("\"timestamp\":\"${summary.timestamp}\",")
+            append("\"durationSeconds\":${summary.durationSeconds},")
+            append("\"durationFormatted\":\"${summary.durationFormatted}\",")
             append("\"heightBreakdown\":${mapToJson(summary.heightBreakdown)},")
             append("\"angleBreakdown\":${mapToJson(summary.angleBreakdown)},")
             append("\"handPresenceBreakdown\":${mapToJson(summary.handPresenceBreakdown)},")
@@ -401,6 +432,6 @@ class Profile {
     }
 
     private fun emptySummary(timestamp: String): SessionSummary {
-        return SessionSummary(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), timestamp)
+        return SessionSummary(emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), emptyMap(), timestamp, 0L, "0s")
     }
 }

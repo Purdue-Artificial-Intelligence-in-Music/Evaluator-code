@@ -30,6 +30,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
+import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
@@ -39,6 +40,7 @@ import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import kotlin.math.abs
 import kotlin.math.acos
+import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.sqrt
 import org.tensorflow.lite.Interpreter
@@ -79,6 +81,50 @@ class HandLandmarkerHelper(
         setupHandLandmarker()
         setupPoseLandmarker()
     }
+
+    // --- Translated Posture Classification Functions ---
+
+    /**
+     * Translates classify_straight_back from Python.
+     * Calculates the angle between shoulder nodes relative to the horizontal.
+     */
+    private fun classifyStraightBack(landmarks: List<NormalizedLandmark>): Int {
+        val angleThreshold = 15.0
+
+        val rightShoulder = landmarks[11]
+        val leftShoulder = landmarks[12]
+
+        val dx = rightShoulder.x() - leftShoulder.x()
+        val dy = rightShoulder.y() - leftShoulder.y()
+
+        val angleRad = atan2(dy.toDouble(), dx.toDouble())
+        val angleDeg = Math.toDegrees(angleRad)
+        val angleDegAbs = abs(angleDeg)
+
+        return if (angleDegAbs > angleThreshold) 0 else 1
+    }
+
+    /**
+     * Translates classify_straight_neck from Python.
+     * Calculates the angle between face side nodes (ears) relative to the horizontal.
+     */
+    private fun classifyStraightNeck(landmarks: List<NormalizedLandmark>): Int {
+        val angleThreshold = 15.0
+
+        val rightSideFace = landmarks[7] // Right Ear
+        val leftSideFace = landmarks[8]  // Left Ear
+
+        val dx = rightSideFace.x() - leftSideFace.x()
+        val dy = rightSideFace.y() - leftSideFace.y()
+
+        val angleRad = atan2(dy.toDouble(), dx.toDouble())
+        val angleDeg = Math.toDegrees(angleRad)
+        val angleDegAbs = abs(angleDeg)
+
+        return if (angleDegAbs > angleThreshold) 0 else 1
+    }
+
+    // ---------------------------------------------------
 
     fun clearLandmarkers() {
         synchronized(tfliteLock) {
@@ -586,8 +632,8 @@ class HandLandmarkerHelper(
             val results = output[0]
 
             // --- thresholds ---
-            val thresholdClass2 = 0.80f  
-            val thresholdGeneral = 0.00f  
+            val thresholdClass2 = 0.975f
+            val thresholdGeneral = 0.00f
 
             // Find top-1 and top-2 indices
             var top1 = -1
@@ -619,7 +665,7 @@ class HandLandmarkerHelper(
 
             // If class 2 is predicted but not confident enough, fall back
             if (top1 == 2 && top1Score < thresholdClass2) {
-                
+
                 finalIndex = if (top2 != -1) top2 else 0
                 finalScore = if (top2 != -1) top2Score else results[0]
 
@@ -638,37 +684,73 @@ class HandLandmarkerHelper(
     private fun runTFLiteInference(inputData: FloatArray): String {
         try {
             if (handTFLite == null) {
-                if (isClosed) {
-                    return "Error: Helper is closed."
-                }
+                if (isClosed) return "Error: Helper is closed."
                 Log.d(TAG, "Initializing hand TFLite interpreter.")
-                val model = loadModelFile("model_tf213_1_26_v2.tflite")
+                val model = loadModelFile("2_19_hands.tflite")
                 handTFLite = Interpreter(model)
             }
 
-            val output = Array(1) { FloatArray(3) }
-            val inputArray = arrayOf(inputData)
-            handTFLite!!.run(inputArray, output)
+            val tflite = handTFLite ?: return "Error: TFLite not initialized."
+
+            // ---- 1) Check input tensor shape ----
+            val inTensor = tflite.getInputTensor(0)
+            val inShape = inTensor.shape()          // e.g. [1, 42] or [1, 43]
+            val expectedFeat = inShape.last()       // last dim = feature length
+            val batchDim = if (inShape.isNotEmpty()) inShape[0] else 1
+
+            // We only support batch=1 here
+            if (batchDim != 1) {
+                Log.w(TAG, "Unexpected input batch dim: ${inShape.contentToString()}")
+            }
+
+            val input = Array(1) { FloatArray(expectedFeat) }
+            val copyLen = minOf(expectedFeat, inputData.size)
+            System.arraycopy(inputData, 0, input[0], 0, copyLen)
+
+            if (inputData.size != expectedFeat) {
+                Log.w(TAG, "Hand input feature size mismatch: got=${inputData.size}, expected=$expectedFeat")
+            }
+
+            val outTensor = tflite.getOutputTensor(0)
+            val outShape = outTensor.shape()
+            if (outShape.size < 2) {
+                return "Error: Bad output shape ${outShape.contentToString()}"
+            }
+
+            val outRows = outShape[0]
+            val outCols = outShape[1]
+
+            // If model returns [0,3], skip frame
+            if (outRows == 0) {
+                Log.w(TAG, "Hand model returned empty output ${outShape.contentToString()} (skipping frame)")
+                return "No hand output"
+            }
+
+            val output = Array(outRows) { FloatArray(outCols) }
+
+            tflite.run(input, output)
 
             val results = output[0]
+
+            // Your existing post-processing
             val supinationIndex = 1
-            Log.d("HAND CONFIDENCE", "${results[0]}, " + "${results[1]}, " + "${results[2]}")
+            Log.d("HAND CONFIDENCE", "${results[0]}, ${results[1]}, ${results[2]}")
             results[supinationIndex] *= 0.7f
 
             val maxIndex = results.indices.maxByOrNull { results[it] } ?: -1
-            val confidence = results[maxIndex]
+            val confidence = results.getOrNull(maxIndex) ?: 0f
 
             if (maxIndex == supinationIndex && confidence < 0.60f) {
                 return "Prediction: 0 (Confidence: %.2f)".format(confidence)
             }
 
-            Log.d("TFLITE", "Predicted hand class: $maxIndex with confidence: $confidence")
             return "Prediction: $maxIndex (Confidence: %.2f)".format(confidence)
         } catch (e: Exception) {
             Log.e("TFLITE", "Error during hand inference", e)
             return "Error: ${e.message}"
         }
     }
+
 
     private fun returnLivestreamError(error: RuntimeException) {
         combinedLandmarkerHelperListener?.onError(error.message ?: "An unknown error has occurred")
@@ -718,86 +800,7 @@ class HandLandmarkerHelper(
         val imageWidth = bitmap.width
         val imageHeight = bitmap.height
 
-        val classRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
-        val handMatch = classRegex.find(result.handDetection)
-        val handClass = handMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
-
-        val poseMatch = classRegex.find(result.poseDetection)
-        val poseClass = poseMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
-
-        val handHasIssue = handClass in 1..2
-        val poseHasIssue = poseClass in 1..2
-
-        // Draw only the selected hand (targetHandIndex) from the first HandLandmarkerResult
-        if (result.handResults.isNotEmpty() && result.targetHandIndex != -1) {
-            val handResult = result.handResults[0]
-            val landmarksList = handResult.landmarks()
-            val handednessList = handResult.handedness()
-
-            if (result.targetHandIndex < landmarksList.size) {
-                val targetLandmarks = landmarksList[result.targetHandIndex]
-
-                if (targetLandmarks.isNotEmpty()) {
-                    val handColor =
-                        if (handHasIssue) Color.rgb(255, 140, 0) else Color.BLUE
-
-                    val linePaint = Paint().apply {
-                        color = handColor
-                        strokeWidth = 10f
-                        style = Paint.Style.STROKE
-                    }
-
-                    val pointPaint = Paint().apply {
-                        color = if (handHasIssue) Color.rgb(255, 180, 50) else Color.CYAN
-                        strokeWidth = 10f
-                        style = Paint.Style.FILL
-                    }
-
-                    HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
-                        val startLandmark = targetLandmarks[connection!!.start()]
-                        val endLandmark = targetLandmarks[connection.end()]
-
-                        canvas.drawLine(
-                            startLandmark.x() * imageWidth,
-                            startLandmark.y() * imageHeight,
-                            endLandmark.x() * imageWidth,
-                            endLandmark.y() * imageHeight,
-                            linePaint
-                        )
-                    }
-
-                    for (landmark in targetLandmarks) {
-                        canvas.drawPoint(
-                            landmark.x() * imageWidth,
-                            landmark.y() * imageHeight,
-                            pointPaint
-                        )
-                    }
-
-                    val wrist = targetLandmarks[0]
-                    val handName =
-                        handednessList.getOrNull(result.targetHandIndex)?.firstOrNull()?.displayName()
-                            ?: "Unknown"
-
-                    val labelPaint = Paint().apply {
-                        color = Color.WHITE
-                        textSize = 40f
-                        style = Paint.Style.FILL
-                        isAntiAlias = true
-                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        setShadowLayer(4f, 2f, 2f, Color.BLACK)
-                    }
-
-                    canvas.drawText(
-                        "Bow Hand ($handName)",
-                        wrist.x() * imageWidth + 20f,
-                        wrist.y() * imageHeight - 20f,
-                        labelPaint
-                    )
-                }
-            }
-        }
-
+        // --- 1. SET UP PAINTS ---
         val textPaint = Paint().apply {
             color = Color.BLACK
             style = Paint.Style.FILL
@@ -813,12 +816,55 @@ class HandLandmarkerHelper(
             isAntiAlias = true
         }
 
+        val alertPaint = Paint().apply {
+            color = Color.RED
+            textSize = 60f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            setShadowLayer(5f, 2f, 2f, Color.BLACK)
+        }
+
+        // Layout variables for the text overlay
         val topMargin = 120f
         var currentY = topMargin
         val lineSpacing = 60f
         val centerX = imageWidth / 2f
         val padding = 16f
 
+        Log.d(TAG, "testtest")
+
+        //CLASSIFY BACK & NECK POSTURE
+        if (result.poseResults.isNotEmpty() && result.poseResults[0].landmarks().isNotEmpty()) {
+            val poseLandmarks = result.poseResults[0].landmarks()[0]
+
+            val backStatus = classifyStraightBack(poseLandmarks)
+            val neckStatus = classifyStraightNeck(poseLandmarks)
+
+            // Format: "Posture Check -> Back: GOOD (1) | Neck: BAD (0)"
+            Log.d(TAG, "Posture Check -> Back: ${if (backStatus == 1) "GOOD" else "BAD"} ($backStatus) | Neck: ${if (neckStatus == 1) "GOOD" else "BAD"} ($neckStatus)")
+
+            if (backStatus == 0) {
+                canvas.drawText("⚠️ STRAIGHTEN YOUR BACK", 50f, currentY, alertPaint.apply { textAlign = Paint.Align.LEFT })
+                currentY += 80f
+            }
+
+            if (neckStatus == 0) {
+                canvas.drawText("⚠️ CHECK NECK POSITION", 50f, currentY, alertPaint.apply { textAlign = Paint.Align.LEFT })
+                currentY += 80f
+            }
+        }
+
+        // --- 3. EXISTING TFLITE INFERENCE MESSAGES ---
+        val classRegex = """Prediction: (\d+) \(Confidence: ([\d.]+)\)""".toRegex()
+        val handMatch = classRegex.find(result.handDetection)
+        val handClass = handMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
+
+        val poseMatch = classRegex.find(result.poseDetection)
+        val poseClass = poseMatch?.groupValues?.get(1)?.toIntOrNull() ?: -1
+
+        val handHasIssue = handClass in 1..2
+        val poseHasIssue = poseClass in 1..2
+
+        // Display Hand Correction Messages
         if (handHasIssue) {
             val handMessage = when (handClass) {
                 1 -> "Pronate your wrist more"
@@ -828,18 +874,13 @@ class HandLandmarkerHelper(
             if (handMessage.isNotEmpty()) {
                 val textWidth = textPaint.measureText(handMessage)
                 val fm = textPaint.fontMetrics
-
-                val left = centerX - textWidth / 2 - padding
-                val top = currentY + fm.top - padding
-                val right = centerX + textWidth / 2 + padding
-                val bottom = currentY + fm.bottom + padding
-
-                canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+                canvas.drawRect(centerX - textWidth / 2 - padding, currentY + fm.top - padding, centerX + textWidth / 2 + padding, currentY + fm.bottom + padding, labelBackgroundPaint)
                 canvas.drawText(handMessage, centerX, currentY, textPaint)
                 currentY += (fm.bottom - fm.top) + lineSpacing
             }
         }
 
+        // Display Pose/Elbow Correction Messages
         if (poseHasIssue) {
             val poseMessage = when (poseClass) {
                 1 -> "Raise your elbow a bit"
@@ -849,14 +890,47 @@ class HandLandmarkerHelper(
             if (poseMessage.isNotEmpty()) {
                 val textWidth = textPaint.measureText(poseMessage)
                 val fm = textPaint.fontMetrics
-
-                val left = centerX - textWidth / 2 - padding
-                val top = currentY + fm.top - padding
-                val right = centerX + textWidth / 2 + padding
-                val bottom = currentY + fm.bottom + padding
-
-                canvas.drawRect(left, top, right, bottom, labelBackgroundPaint)
+                canvas.drawRect(centerX - textWidth / 2 - padding, currentY + fm.top - padding, centerX + textWidth / 2 + padding, currentY + fm.bottom + padding, labelBackgroundPaint)
                 canvas.drawText(poseMessage, centerX, currentY, textPaint)
+            }
+        }
+
+        // --- 4. DRAW SKELETON (HAND LANDMARKS) ---
+        if (result.handResults.isNotEmpty() && result.targetHandIndex != -1) {
+            val handResult = result.handResults[0]
+            val landmarksList = handResult.landmarks()
+            val handednessList = handResult.handedness()
+
+            if (result.targetHandIndex < landmarksList.size) {
+                val targetLandmarks = landmarksList[result.targetHandIndex]
+
+                if (targetLandmarks.isNotEmpty()) {
+                    val handColor = if (handHasIssue) Color.rgb(255, 140, 0) else Color.BLUE
+
+                    val linePaint = Paint().apply {
+                        color = handColor
+                        strokeWidth = 10f
+                        style = Paint.Style.STROKE
+                    }
+
+                    val pointPaint = Paint().apply {
+                        color = if (handHasIssue) Color.rgb(255, 180, 50) else Color.CYAN
+                        strokeWidth = 10f
+                        style = Paint.Style.FILL
+                    }
+
+                    // Draw connections
+                    HandLandmarker.HAND_CONNECTIONS.forEach { connection ->
+                        val start = targetLandmarks[connection!!.start()]
+                        val end = targetLandmarks[connection.end()]
+                        canvas.drawLine(start.x() * imageWidth, start.y() * imageHeight, end.x() * imageWidth, end.y() * imageHeight, linePaint)
+                    }
+
+                    // Draw dots
+                    for (landmark in targetLandmarks) {
+                        canvas.drawPoint(landmark.x() * imageWidth, landmark.y() * imageHeight, pointPaint)
+                    }
+                }
             }
         }
 
