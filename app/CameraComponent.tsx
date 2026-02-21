@@ -111,6 +111,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   // Detail modal state
   const [selectedDetailSection, setSelectedDetailSection] = useState<string | null>(null);
 
+  // Timer
+  const [elapsedTime, setElapsedTime] = useState<string>('00:00');
+
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [sessionImages, setSessionImages] = useState<CategorizedImages>({
     bowHeight: [],
@@ -164,6 +167,26 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     };
     loadUserId();
   }, []);
+
+  // Timer
+  useEffect(() => {
+    if (!isDetectionEnabled || !sessionStartTime) {
+      setElapsedTime('00:00');
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const diffMs = new Date().getTime() - sessionStartTime.getTime();
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      setElapsedTime(
+        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      );
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isDetectionEnabled, sessionStartTime]);
 
   const toggleCamera = () => {
     setLensType(prev => {
@@ -1075,6 +1098,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   if (count <= 0) {
                     clearInterval(interval);
                     setIsDetectionEnabled(!isDetectionEnabled);
+                    setSessionStartTime(new Date());
                     setShowCountdown(false);
                     console.log("DetectionEnabled: ", !isDetectionEnabled);
                   }
@@ -1118,7 +1142,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               style={[styles.readyBtn, { position: 'relative', bottom: 0, marginTop: 16 }]}
               onPress={() => {
                 setShowSetupOverlay(false);
-                setSessionStartTime(new Date());
                 setShowCountdown(true);
                 let count = countdownLength;
                 setCountdownVal(countdownLength);
@@ -1128,6 +1151,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   if (count <= 0) {
                     clearInterval(interval);
                     setIsDetectionEnabled(true);
+                    setSessionStartTime(new Date());
                     setShowCountdown(false);
                   }
                 }, 1000);
