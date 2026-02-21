@@ -549,6 +549,7 @@ class Detector (
             classificationResult.angle
         )
         return annotatedBitmap
+        //return new bitmapAndClassifications(annotatedBitmap, classificationResult.classification, classificationResult.angle)
     }
 
 
@@ -982,16 +983,23 @@ class Detector (
         val angle_one: Double = abs(degrees(atan(abs(m_bow - m2) / (1 + m_bow * m2))))
         val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
 
-        val min_angle: Double = abs(90 - min(angle_one, angle_two))
+        val min_angle: Double = min(abs(90 - min(angle_one, angle_two)), min(angle_one, angle_two))
         Log.d("angle1", min_angle.toString())
         //println("ANGLE: $min_angle")
         return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
     }
 
     data class returnBow(
+
         var classification: Int?,
         var bow: List<Point>?,
         var string: List<Point>?,
+        var angle: Int?
+    )
+
+    data class bitmapAndClassifications(
+        var bitmap: Bitmap,
+        var height: Int?,
         var angle: Int?
     )
 
