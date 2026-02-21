@@ -203,7 +203,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     setIsMirrored(v => !v);
   };
 
-  const handleCalibrated = async (event: any) => {
+  // Commented out Calibration code as we are using a timer, can be deleted.
+  /*const handleCalibrated = async (event: any) => {
     console.log("Calibration", "Calibration successful");
     setShowSetupOverlay(false);
     setSessionStartTime(new Date());
@@ -213,7 +214,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     console.log("Calibration", "Skipping Calibration");
     setShowSetupOverlay(false);
     setSessionStartTime(new Date());
-  };
+  };*/
 
   const loadSessionHistory = async () => {
     setIsLoadingHistory(true);
@@ -968,8 +969,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           detectionEnabled={isDetectionEnabled}
           lensType={lensType}
           onSessionEnd={handleSessionEnd}
-          onCalibrated={handleCalibrated}
-          skipCalibration={!showSetupOverlay}
+          /*onCalibrated={handleCalibrated} // Caulibration code, Can be deleted.
+          skipCalibration={!showSetupOverlay}*/
           maxBowAngle={maxAngle}
           flip={isMirrored}
         />
