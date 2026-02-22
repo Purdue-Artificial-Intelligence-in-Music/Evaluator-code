@@ -552,6 +552,20 @@ class Detector (
         //return new bitmapAndClassifications(annotatedBitmap, classificationResult.classification, classificationResult.angle)
     }
 
+    fun analyzeFrame(bitmap:Bitmap): bitmapAndClassifications {
+        val classificationResult = classify(detect(bitmap))
+        val annotatedBitmap = drawPointsOnBitmap(
+            bitmap,
+            YoloResults(
+                bowResults = classificationResult.bow?.toMutableList(),
+                stringResults = classificationResult.string?.toMutableList()
+            ),
+            classificationResult.classification,
+            classificationResult.angle
+        )
+        return bitmapAndClassifications(annotatedBitmap, classificationResult.classification, classificationResult.angle)
+    }
+
 
 
     private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float, frameWidth: Float, frameHeight: Float): List<Point> {

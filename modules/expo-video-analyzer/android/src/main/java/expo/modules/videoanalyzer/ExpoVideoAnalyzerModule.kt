@@ -1,5 +1,6 @@
 package expo.modules.videoanalyzer
 import expo.modules.camerax.Detector
+import expo.modules.camerax.Profile
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,6 +44,8 @@ class ExpoVideoAnalyzerModule : Module() {
     var inputMutexes: Array<Mutex>? = null
     val outputMutex = Mutex()
     val readingBitmapsMutex = Mutex()
+    private val profile = Profile()
+    private var userId: String = "default_user"
 
     override fun definition() = ModuleDefinition {
         Name("ExpoVideoAnalyzer")
@@ -158,6 +161,42 @@ class ExpoVideoAnalyzerModule : Module() {
                     withContext(Dispatchers.Main) {
                         promise.reject("RESET_ERROR", "Failed to reset detector: ${e.message}", e)
                     }
+                }
+            }
+        }
+
+        AsyncFunction("analyzeVideo") { videoUri: String, userId: String, promise: Promise ->
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    var processedFrameCount = 0
+                    if (detector == null) {
+                        withContext(Dispatchers.Main) {
+                            promise.reject("NOT_INITIALIZED", "Detector not initialized", null)
+                        }
+                        return@launch
+                    }
+                    setUserId(userId)
+                    Log.d("AnalyzeVideo", "Starting video analysis for: $videoUri")
+                    val worked = classifyVideoStream(videoUri, 10)
+                    profile.endSessionAndGetSummary(userId)
+                    withContext(Dispatchers.Main) {
+                        if (worked) {
+                            promise.resolve(worked)
+                        } else {
+                            promise.reject("PROCESSING_ERROR", "Failed to process video frames", null)
+                        }
+                    }
+
+                }  catch (e: CancellationException) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("CANCELLED", e.message, e)
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        promise.reject("PROCESS_ERROR", "Video processing failed: ${e.message}", e)
+                    }
+                } finally {
+                    isCancelled = false // reset flag
                 }
             }
         }
@@ -291,6 +330,11 @@ class ExpoVideoAnalyzerModule : Module() {
                 }
             }
         }
+    }
+
+    fun setUserId(newUserId: String) {
+        userId = newUserId
+        Log.d("Data Collection", "User ID set to: $userId")
     }
     
 
@@ -619,6 +663,94 @@ class ExpoVideoAnalyzerModule : Module() {
 //
 //        return results
 //    }
+
+    private fun classifyVideoStream(
+        videoURI: String,
+        targetFPS: Int = 10
+    ): Boolean {
+        val retriever = MediaMetadataRetriever()
+        var landmarkerHelper: HandLandmarkerHelper? = null
+
+        try {
+            retriever.setDataSource(appContext.reactContext, Uri.parse(videoURI))
+            val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+
+            val videoWidth = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toInt() ?: 1920
+            val videoHeight = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toInt() ?: 1080
+
+            val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toInt() ?: 0
+
+            // Adjust width and height by rotating
+            val (outputWidth, outputHeight) = if (rotation == 90 || rotation == 270) {
+                Pair(videoHeight, videoWidth)
+            } else {
+                Pair(videoWidth, videoHeight)
+            }
+
+            Log.d("Encode", "Original video: ${videoWidth}x${videoHeight}, rotation: $rotation")
+            Log.d("Encode", "Output video: ${outputWidth}x${outputHeight}")
+
+            val timeDelta = 1_000_000L / targetFPS // microsecond，30fps = 33,333 microseconds
+            val totalFrames = (duration * 1000L / timeDelta).toInt()
+
+            landmarkerHelper = HandLandmarkerHelper(
+                context = appContext.reactContext!!,
+                runningMode = RunningMode.VIDEO,
+                combinedLandmarkerHelperListener = null,
+                maxNumHands = 2
+            )
+            profile.createNewID(userId) //starts a new session
+
+            var timeUs = 0L
+            var frameCount = 0
+
+            while (timeUs < duration * 1000) {
+                if (isCancelled) {
+                    throw CancellationException("Analysis cancelled by user")
+                }
+                var frame: Bitmap? = null
+
+                try {
+                    frame = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+
+                    if (frame != null) {
+                        val processingFrame = if (frame.config != Bitmap.Config.ARGB_8888) {
+                            val converted = frame.copy(Bitmap.Config.ARGB_8888, false)
+                            frame.recycle()
+                            converted
+                        } else {
+                            frame
+                        }
+                        val bowResults = detector!!.classify(detector!!.detect(processingFrame))
+
+                        val handResults = landmarkerHelper.detectVideoFrame(processingFrame, timeUs/1000)
+                        if (bowResults != null) {
+                            profile.addSessionData(userId, bowResults)
+                        }
+                        if (handResults != null) {
+                            profile.addSessionData(userId, handResults)
+                        }
+                        if (processingFrame != frame) processingFrame.recycle()
+                    }
+                } catch (e: Exception) {
+                    Log.e("AnalyzeVideo", "Error frame $frameCount: ${e.message}")
+                    return false
+                } finally {
+                    frame?.recycle()
+                }
+                timeUs += timeDelta
+                frameCount++
+            }
+        } catch (e: Exception) {
+            Log.e("VideoProcess", "Failed to process video: ${e.message}")
+            return false
+        } finally {
+            retriever.release()
+            landmarkerHelper?.clearLandmarkers()
+        }
+
+        return true
+    }
 
     // Helper function. It loops through the video, extracts frames into bitmap format, calls
     // detect() and drawPointsOnBitmap() from detector to get annotated frames.
