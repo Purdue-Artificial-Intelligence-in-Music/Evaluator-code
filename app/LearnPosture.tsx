@@ -162,7 +162,11 @@ const LearnPosture: React.FC<LearnPosturesModalProps> = ({
 
         {/* ── Tab bar ── */}
         <View style={styles.tabBarWrapper}>
-           <View style={styles.tabRow}>
+           <ScrollView
+           horizontal
+           showsHorizontalScrollIndicator={false}
+           contentContainerStyle={styles.tabRow}
+           >
             {TABS.map(tab => {
               const isActive = tab.key === activeTab;
               return (
@@ -178,7 +182,7 @@ const LearnPosture: React.FC<LearnPosturesModalProps> = ({
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
           {/* bottom border line */}
           <View style={styles.tabBarBorder} />
         </View>
@@ -257,17 +261,17 @@ const styles = StyleSheet.create({
   },
   tabRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between', // evenly spread all 5 tabs
+    //justifyContent: 'space-between', // evenly spread all 5 tabs
   },
   tabItem: {
-    /*
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 0,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    */
 
+      paddingHorizontal: 14,
+      alignItems: 'center',
+      paddingVertical: 10,
+      borderBottomColor: 'transparent',
+      borderBottomWidth: 3,
+
+    /*
     paddingHorizontal: 10,
     alignItems: 'center',
     paddingVertical: 10,
@@ -275,6 +279,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
     marginBottom: 0,
     borderBottomWidth: 3,
+    */
   },
   tabItemActive: {
     borderBottomColor: BLUE,
