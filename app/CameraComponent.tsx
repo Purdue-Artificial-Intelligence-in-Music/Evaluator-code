@@ -74,6 +74,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   const [userId, setUserId] = useState('default_user');
   const [showSetupOverlay, setShowSetupOverlay] = useState(initialSetupOpen);
   const [showCountdown, setShowCountdown] = useState(false);
+  const [isStartDetectionVisible, setStartDetectionVisible] = useState(true);
   const [countdownVal, setCountdownVal] = useState(3)
   const [countdownLength] = useState(3)
 
@@ -1034,9 +1035,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <Text style={styles.closeButtonText}>✕</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
+      { isStartDetectionVisible && <TouchableOpacity
         style={styles.detectionButton}
         onPress={() => {
+          setStartDetectionVisible(false);
           if (!isDetectionEnabled) {
               setShowCountdown(true);
               let count = countdownLength;
@@ -1047,6 +1049,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   setCountdownVal(count)
                   if (count <= 0) {
                     clearInterval(interval);
+                    setStartDetectionVisible(true);
                     setIsDetectionEnabled(!isDetectionEnabled);
                     setShowCountdown(false);
                     console.log("DetectionEnabled: ", !isDetectionEnabled);
@@ -1062,7 +1065,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <Text style={styles.buttonText}>
           {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
         </Text>
-      </TouchableOpacity>
+      </TouchableOpacity>}
 
       {showSetupOverlay && (
         <>
