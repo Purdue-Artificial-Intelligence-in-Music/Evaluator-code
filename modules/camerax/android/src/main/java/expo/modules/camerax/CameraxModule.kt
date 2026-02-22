@@ -175,6 +175,13 @@ class CameraxModule : Module() {
             result["userId"] = userId
             result["timestamp"] = timestamp
 
+            // Duration fields
+            val durationSeconds = jsonObject.optLong("durationSeconds", 0L)
+            val durationFormatted = jsonObject.optString("durationFormatted", "0s")
+            result["durationSeconds"] = durationSeconds
+            result["durationFormatted"] = durationFormatted
+            Log.d("SessionHistory", "Duration: ${durationFormatted} (${durationSeconds}s)")
+
             // Height Breakdown
             val heightBreakdown = parseBreakdown(jsonObject.optJSONObject("heightBreakdown"))
             if (heightBreakdown.isNotEmpty()) {

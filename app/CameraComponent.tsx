@@ -44,6 +44,8 @@ interface SummaryData {
   userId?: string;
   timestamp?: string;
   sessionDuration?: string;
+  durationSeconds?: number;
+  durationFormatted?: string;
 }
 
 interface CategorizedImages {
@@ -370,13 +372,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       posePresenceBreakdown,
       elbowPostureBreakdown,
       userId: eventUserId,
-      timestamp
+      timestamp,
+      durationSeconds,
+      durationFormatted
     } = event.nativeEvent;
 
     console.log('=== SESSION END EVENT ===');
     console.log('Event userId:', eventUserId);
     console.log('Event timestamp:', timestamp);
     console.log('Event timestamp type:', typeof timestamp);
+    console.log('Event durationFormatted:', durationFormatted);
+    console.log('Event durationSeconds:', durationSeconds);
 
     let finalDuration = "0s";
     if (sessionStartTime) {
@@ -395,6 +401,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       userId: eventUserId,
       timestamp,
       sessionDuration: finalDuration,
+      durationSeconds: durationSeconds || 0,
+      durationFormatted: durationFormatted || finalDuration,
     };
     //navigation.navigate('SessionSummary', { summaryData: newSummaryData });
     setSummaryData(newSummaryData);
@@ -658,7 +666,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <View style={styles.section}>
           <Text style={styles.timestamp}>
             <Text style={styles.subTitle}>Total Playing Time: </Text>
-            {data?.sessionDuration || "0s"}
+            {data?.durationFormatted || data?.sessionDuration || "0s"}
           </Text>
         </View>
 
