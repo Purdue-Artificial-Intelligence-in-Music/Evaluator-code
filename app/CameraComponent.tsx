@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert, Image } from 'react-native';
+import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert, Image, Dimensions } from 'react-native';
 import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from '../styles/CameraComponent.styles';
@@ -44,6 +44,8 @@ interface SummaryData {
   userId?: string;
   timestamp?: string;
   sessionDuration?: string;
+  durationSeconds?: number;
+  durationFormatted?: string;
 }
 
 interface CategorizedImages {
@@ -78,6 +80,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   const [showCountdown, setShowCountdown] = useState(false);
   const [countdownVal, setCountdownVal] = useState(3)
   const [countdownLength] = useState(3)
+  const [isStartDetectionVisible, setStartDetectionVisible] = useState(true)
 
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
@@ -370,13 +373,17 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       posePresenceBreakdown,
       elbowPostureBreakdown,
       userId: eventUserId,
-      timestamp
+      timestamp,
+      durationSeconds,
+      durationFormatted
     } = event.nativeEvent;
 
     console.log('=== SESSION END EVENT ===');
     console.log('Event userId:', eventUserId);
     console.log('Event timestamp:', timestamp);
     console.log('Event timestamp type:', typeof timestamp);
+    console.log('Event durationFormatted:', durationFormatted);
+    console.log('Event durationSeconds:', durationSeconds);
 
     let finalDuration = "0s";
     if (sessionStartTime) {
@@ -395,6 +402,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       userId: eventUserId,
       timestamp,
       sessionDuration: finalDuration,
+      durationSeconds: durationSeconds || 0,
+      durationFormatted: durationFormatted || finalDuration,
     };
     //navigation.navigate('SessionSummary', { summaryData: newSummaryData });
     setSummaryData(newSummaryData);
@@ -601,7 +610,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Bow hand position</Text>
+            <Text style={styles.sectionTitle}>Bow Hand Position</Text>
             <TouchableOpacity
               style={styles.viewMoreButton}
               onPress={() => openDetail('handPosture')}
@@ -658,7 +667,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         <View style={styles.section}>
           <Text style={styles.timestamp}>
             <Text style={styles.subTitle}>Total Playing Time: </Text>
-            {data?.sessionDuration || "0s"}
+            {data?.durationFormatted || data?.sessionDuration || "0s"}
           </Text>
         </View>
 
@@ -895,71 +904,99 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         animationType="fade"
         transparent={true}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.detailModalContent}>
-            <ScrollView>
-              <Text style={styles.title}>
-                {selectedDetailSection === 'bowHeight' && 'Bow Height Details'}
-                {selectedDetailSection === 'bowAngle' && 'Bow Angle Details'}
-                {selectedDetailSection === 'handPosture' && 'Hand Posture Details'}
-                {selectedDetailSection === 'elbowPosture' && 'Elbow Posture Details'}
-              </Text>
+          <View style={styles.modalContainer}>
+            <View style={styles.detailModalContent}>
+              <ScrollView>
 
-              {/* Images section */}
-              {isLoadingImages ? (
-                <View style={styles.detailImagePlaceholder}>
-                  <Text style={styles.detailImageText}>Loading images...</Text>
-                </View>
-              ) : getImagesForSection(selectedDetailSection || '').length > 0 ? (
-                <>
-                  <Text style={styles.imageCountText}>
-                    {getImagesForSection(selectedDetailSection || '').length} images found
-                  </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-                    {getImagesForSection(selectedDetailSection || '').map((imagePath, index) => {
-                      console.log(`Rendering image ${index}:`, imagePath);
-                      return (
-                        <View key={index} style={styles.imageContainer}>
-                          <Image
-                            source={{ uri: `file://${imagePath}` }}
-                            style={styles.detailImage}
-                            resizeMode="contain"
-                            onError={(error) => {
-                              console.error(`Image ${index} failed to load:`, error.nativeEvent.error);
-                            }}
-                            onLoad={() => {
-                              console.log(`Image ${index} loaded successfully`);
-                            }}
-                          />
-                          <Text style={styles.imageLabel}>
-                            {imagePath.split('/').pop()?.split('.')[0].replace(/_/g, ' ')}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </ScrollView>
-                </>
-              ) : (
-                <View style={styles.detailImagePlaceholder}>
-                  <Text style={styles.detailImageText}>
-                    No images available for this section
-                  </Text>
-                  <Text style={styles.detailImageSubtext}>
-                    Total images loaded: {sessionImages.all.length}
-                  </Text>
-                </View>
-              )}
+               {selectedDetailSection === 'bowHeight' && (() => {
+                 const src = require('../assets/postures/2.Bow Contact Point examples.jpg');
+                 const resolved = Image.resolveAssetSource(src);
+                 const modalWidth = Dimensions.get('window').width - 80;
+                 const imgHeight = resolved?.width ? (modalWidth * resolved.height) / resolved.width : 200;
+                 return (
+                   <>
+                     <Text style={styles.title}>Bow Contact Point</Text>
+                     <Text style={styles.detailText}>
+                       The bow should be placed between the fingerboard and the bridge.
+                       Especially for beginners, it is important to check that the bow is not too close to the fingerboard (too high) or too close to the bridge (too low).
+                       Advanced players may intentionally place the bow higher or lower to change tone for musical purposes.
+                     </Text>
+                     <Image
+                       source={src}
+                       style={[styles.detailImage, { height: imgHeight }]}
+                       resizeMode="contain"
+                     />
+                   </>
+                 );
+               })()}
 
-              <Text style={styles.detailText}>
-                This panel shows screenshots from your session categorized by posture type.
-                Review your technique across different moments during practice.
-              </Text>
+               {selectedDetailSection === 'bowAngle' && (() => {
+                 const src = require('../assets/postures/3.bow angle examples.jpg');
+                 const resolved = Image.resolveAssetSource(src);
+                 const modalWidth = Dimensions.get('window').width - 80;
+                 const imgHeight = resolved?.width ? (modalWidth * resolved.height) / resolved.width : 200;
+                 return (
+                   <>
+                     <Text style={styles.title}>Bow Angle</Text>
+                     <Text style={styles.detailText}>
+                       The bow should remain perpendicular to the strings and parallel to the bridge.
+                       Each string (A, D, G, and C) has its own correct bow angle, and this angle must adjust as you move from one string to another.
+                     </Text>
+                     <Image
+                       source={src}
+                       style={[styles.detailImage, { height: imgHeight }]}
+                       resizeMode="contain"
+                     />
+                   </>
+                 );
+               })()}
 
-              <Button title="Close" onPress={closeDetail} />
-            </ScrollView>
+               {selectedDetailSection === 'handPosture' && (() => {
+                 const src = require('../assets/postures/4. Bow han example.jpg');
+                 const resolved = Image.resolveAssetSource(src);
+                 const modalWidth = Dimensions.get('window').width - 80;
+                 const imgHeight = resolved?.width ? (modalWidth * resolved.height) / resolved.width : 200;
+                 return (
+                   <>
+                     <Text style={styles.title}>Bow Hand Position</Text>
+                     <Text style={styles.detailText}>
+                       The standard bow hand posture may vary slightly depending on hand size, but the bow should be held with a slight tilt toward the left hand side. This tilt of the hand wrist and elbow is called pronation. Especially at the tip of the bow, both the hand and wrist should remain pronated.
+                       If the hand and wrist tilt to the right, this is called supination, which leads to poor tone and reduced control.
+                     </Text>
+                     <Image
+                       source={src}
+                       style={[styles.detailImage, { height: imgHeight }]}
+                       resizeMode="contain"
+                     />
+                   </>
+                 );
+               })()}
+
+               {selectedDetailSection === 'elbowPosture' && (() => {
+                 const src = require('../assets/postures/5. elbow example.jpg');
+                 const resolved = Image.resolveAssetSource(src);
+                 const modalWidth = Dimensions.get('window').width - 80;
+                 const imgHeight = resolved?.width ? (modalWidth * resolved.height) / resolved.width : 200;
+                 return (
+                   <>
+                     <Text style={styles.title}>Elbow Posture</Text>
+                     <Text style={styles.detailText}>
+                       At the frog, the elbow should be comfortably lowered and positioned close to the cello body.
+                     </Text>
+                     <Image
+                       source={src}
+                       style={[styles.detailImage, { height: imgHeight }]}
+                       resizeMode="contain"
+                     />
+                   </>
+                 );
+               })()}
+
+                <Button title="Close" onPress={closeDetail} />
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
       {!initialHistoryOpen && (
         <CameraxView
@@ -1084,9 +1121,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             <Text style={styles.timerText}>{elapsedTime}</Text>
           </View>
         )}
-        <TouchableOpacity
+        { isStartDetectionVisible && <TouchableOpacity
           style={styles.detectionButton}
           onPress={() => {
+            setStartDetectionVisible(false);
             if (!isDetectionEnabled) {
               // setShowSetupOverlay(true);
               setShowCountdown(true);
@@ -1100,6 +1138,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     clearInterval(interval);
                     setIsDetectionEnabled(!isDetectionEnabled);
                     setSessionStartTime(new Date());
+                    setStartDetectionVisible(true);
                     setShowCountdown(false);
                     console.log("DetectionEnabled: ", !isDetectionEnabled);
                   }
@@ -1113,7 +1152,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           <Text style={styles.buttonText}>
             {isDetectionEnabled ? 'Stop Detection' : 'Start Detection'}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
         </>
       )}
 

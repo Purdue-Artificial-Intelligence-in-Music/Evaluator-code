@@ -33,6 +33,10 @@ export async function processVideoComplete(videoUri: String): Promise<any> {
   return await ExpoVideoAnalyzerModule.processVideoComplete(videoUri);
 }
 
+export async function analyzeVideo(videoUri: String, userId: String): Promise<any> {
+    return await ExpoVideoAnalyzerModule.analyzeVideo(videoUri, userId);
+}
+
 export async function testFFmpeg(): Promise<any> {
   return await ExpoVideoAnalyzerModule.testFFmpeg();
 }

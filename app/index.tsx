@@ -11,6 +11,7 @@ import SessionHistory from '../assets/images/SessionHistory.png';
 import Back from '../assets/images/Back.png';
 import SendVideo from '../assets/images/SendVideo.png';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import * as MediaLibrary from 'expo-media-library';
 
@@ -33,6 +34,7 @@ export default function HomePage() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [userId, setUserId] = useState('default_user');
   const [loading, setLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);  // State for camera permission
 
@@ -109,6 +111,23 @@ export default function HomePage() {
     }
   };
 
+  const loadUserId = async () => {
+      try {
+        const email = await AsyncStorage.getItem('userEmail');
+        if (email) {
+          setUserId(email);
+          console.log('User ID loaded for video processing:', email);
+          return email;
+        } else {
+          console.warn('No user email found, using default');
+          return 'default_user';
+        }
+      } catch (error) {
+        console.error('Error loading user ID:', error);
+        return 'default_user';
+      }
+  };
+
   const sendVideoBackend = async () => {
     if (!videofile) {
       Alert.alert('Error', 'Please select a video');
@@ -126,6 +145,10 @@ export default function HomePage() {
 
       // 2. process video
       console.log('Start frame extraction...');
+      //console.log(VideoAnalyzer);
+      const currentUserId = await loadUserId();
+      const proc = await VideoAnalyzer.analyzeVideo(videofile, currentUserId);
+      /*
       const proc = await VideoAnalyzer.processVideoComplete(videofile);
       console.log('Processing complete:', proc);
       console.log('Frame processing result:', proc);
@@ -137,6 +160,7 @@ export default function HomePage() {
       setvideofile(proc.outputPath);
       setVideoUri(proc.outputPath);
       setsendVideo(false);
+
 
       // 3. give user option of saving resulting video to photos
       Alert.alert(
@@ -172,6 +196,7 @@ export default function HomePage() {
           },
         ]
       );
+  */
     } catch (error: any) {
       console.error('sendVideoBackend failed:', error);
     } finally {
@@ -342,7 +367,6 @@ export default function HomePage() {
             startDelay={0}
             onClose={closeCamera}
             initialHistoryOpen={openHistoryOnCamera}
-            initialSetupOpen={true}
           />
         </View>
       ) : null}

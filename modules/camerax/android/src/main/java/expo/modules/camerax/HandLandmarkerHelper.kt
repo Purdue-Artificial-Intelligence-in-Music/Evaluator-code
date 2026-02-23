@@ -284,6 +284,83 @@ class HandLandmarkerHelper(
         }
     }
 
+    fun detectVideoFrame(frame: Bitmap?, timestampMs: Long): CombinedResultBundle? {
+        if (runningMode != RunningMode.VIDEO) {
+            throw IllegalArgumentException("Attempting to call detectVideoFrame while not using RunningMode.VIDEO")
+        }
+        if (frame == null) return null
+
+        val startTime = SystemClock.uptimeMillis()
+
+        val mpImage = BitmapImageBuilder(frame).build()
+        val handResult = handLandmarker?.detectForVideo(mpImage, timestampMs)
+        val poseResult = poseLandmarker?.detectForVideo(mpImage, timestampMs)
+
+        var handCoords: FloatArray? = null
+        var handPrediction: String = "No hand detected"
+        var targetHandIndex = -1
+
+        // Pick closest hand, using wrist cord, to pose landmark 16 using 2D screen-normalized coords
+        if (
+            handResult != null && handResult.landmarks().isNotEmpty() &&
+            poseResult != null && poseResult.landmarks().isNotEmpty() &&
+            poseResult.landmarks()[0].size > 16
+        ) {
+            val poseLandmarks = poseResult.landmarks()[0]
+            val handIndex = if (isFrontCameraActive) 15 else 16
+            val poseHandX = poseLandmarks[handIndex].x()
+            val poseHandY = poseLandmarks[handIndex].y()
+
+            val landmarksList = handResult.landmarks()
+            var bestDist = Float.MAX_VALUE
+            val threshold = 0.1f
+
+            landmarksList.forEachIndexed { index, handLandmarks ->
+                if (handLandmarks.isNotEmpty()) {
+                    val wrist = handLandmarks[0]
+                    val dx = wrist.x() - poseHandX
+                    val dy = wrist.y() - poseHandY
+                    val dist = sqrt(dx * dx + dy * dy)
+
+                    if (dist < threshold && dist < bestDist) {
+                        bestDist = dist
+                        targetHandIndex = index
+                    }
+                }
+            }
+
+            if (targetHandIndex != -1) {
+                handCoords = extractHandCoordinates(handResult, targetHandIndex)
+                handCoords?.let {
+                    handPrediction = runTFLiteInference(it)
+                }
+            }
+        }
+
+        var poseCoords: FloatArray? = null
+        var posePrediction: String = "No pose detected"
+        if (poseResult != null && poseResult.landmarks().isNotEmpty()) {
+            poseCoords = extractPoseCoordinates(poseResult)
+            posePrediction = runTFLitePoseInference(poseCoords)
+        }
+
+        val inferenceTime = SystemClock.uptimeMillis() - startTime
+
+        val resultBundle = CombinedResultBundle(
+            handResults = if (handResult != null) listOf(handResult) else emptyList(),
+            poseResults = if (poseResult != null) listOf(poseResult) else emptyList(),
+            inferenceTime = inferenceTime,
+            inputImageHeight = frame.height,
+            inputImageWidth = frame.width,
+            handCoordinates = handCoords,
+            poseCoordinates = poseCoords,
+            handDetection = handPrediction,
+            poseDetection = posePrediction,
+            targetHandIndex = targetHandIndex
+        )
+        return resultBundle
+    }
+
     // VIDEO MODE: detect + draw only the selected hand
     fun detectAndDrawVideoFrame(frame: Bitmap?, timestampMs: Long): Pair<CombinedResultBundle?, Bitmap?> {
         if (runningMode != RunningMode.VIDEO) {
