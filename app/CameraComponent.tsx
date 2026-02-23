@@ -84,11 +84,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-  const [maxAngle, setMaxAngle] = useState(18);
+  const [maxAngle, setMaxAngle] = useState(25);
 
   // Settings modal state
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [tempMaxAngle, setTempMaxAngle] = useState(18);
+  const [tempMaxAngle, setTempMaxAngle] = useState(25);
 
   // History modal state
   const [historyVisible, setHistoryVisible] = useState(!!initialHistoryOpen);
@@ -719,7 +719,19 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                 {selectedHistoryIndex === null ? (
                   <>
                     <Text style={styles.historySubtitle}>
-                      Showing {currentPage * SESSIONS_PER_PAGE + 1}-{Math.min((currentPage + 1) * SESSIONS_PER_PAGE, historySessions.length)} of {historySessions.length} Sessions
+                      {(() => {
+                        const total = historySessions.length;
+
+                        // Each page shows SESSIONS_PER_PAGE sessions, but numbers are descending.
+                        // Example total=15:
+                        // page 0 => 11-15
+                        // page 1 => 6-10
+                        // page 2 => 1-5
+                        const startNum = Math.max(total - (currentPage + 1) * SESSIONS_PER_PAGE + 1, 1);
+                        const endNum = total - currentPage * SESSIONS_PER_PAGE;
+
+                        return `Showing ${startNum}-${endNum} of ${total} Sessions`;
+                      })()}
                     </Text>
 
                     {getCurrentPageSessions().map((session, index) => {
@@ -1058,8 +1070,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
-                  openSettings();
                   setToolbarExpanded(false);
+                  Alert.alert(
+                    'Not available',
+                    'Threshold adjust is currently not available.'
+                  );
                 }}
                 activeOpacity={0.8}
               >
