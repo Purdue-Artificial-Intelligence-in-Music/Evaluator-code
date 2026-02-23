@@ -225,8 +225,8 @@ class OverlayView @JvmOverloads constructor(
         val lineSpacing = 60f
         val padding = 16f
 
-        val scaleX = 720f * 1.5f
-        val scaleY = 1280f * 1.5f
+        val scaleX = width.toFloat()
+        val scaleY = height.toFloat()
         val scaleFactor = 1f //max(scaleX, scaleY)
 
         if (results?.classification != -2) {

@@ -60,6 +60,7 @@ interface CameraComponentProps {
   startDelay?: number;
   onClose: () => void;
   initialHistoryOpen?: boolean;
+  initialSetupOpen?: boolean;
 }
 
 const SESSIONS_PER_PAGE = 5;
