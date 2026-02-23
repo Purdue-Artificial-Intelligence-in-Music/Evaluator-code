@@ -1140,9 +1140,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         { isStartDetectionVisible && <TouchableOpacity
           style={styles.detectionButton}
           onPress={() => {
-            setStartDetectionVisible(false);
             if (!isDetectionEnabled) {
-              // setShowSetupOverlay(true);
+              // Start detection
+              setStartDetectionVisible(false);  // start countdown, hide "start" btn
               setShowCountdown(true);
               let count = countdownLength;
               setCountdownVal(countdownLength);
@@ -1154,12 +1154,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     clearInterval(interval);
                     setIsDetectionEnabled(!isDetectionEnabled);
                     setSessionStartTime(new Date());
-                    setStartDetectionVisible(true);
+                    setStartDetectionVisible(true); // countdown ended, show "start" btn again
                     setShowCountdown(false);
                     console.log("DetectionEnabled: ", !isDetectionEnabled);
                   }
               }, 1000);
             } else {
+              // Stop detection
               setIsDetectionEnabled(!isDetectionEnabled);
               console.log("DetectionEnabled: ", !isDetectionEnabled);
             }
@@ -1180,8 +1181,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           {/* cello silhouette */}
           <View pointerEvents="none" style={styles.silhouetteWrap}>
             <View style={styles.celloBody} />
-            <View style={styles.bridgeGuide} />
-            <View style={styles.endpinGuide} />
           </View>
 
           {/* setup instructions */}
@@ -1194,9 +1193,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             <Bullet>Point your cello towards the camera</Bullet>
 
             {/* Start detection button inside setup overlay section */}
-            <TouchableOpacity
+            {isStartDetectionVisible && <TouchableOpacity
               style={[styles.readyBtn, { position: 'relative', bottom: 0, marginTop: 16 }]}
               onPress={() => {
+                setStartDetectionVisible(false);  // start countdown, hide "start" btn
                 setShowSetupOverlay(false);
                 setShowCountdown(true);
                 let count = countdownLength;
@@ -1209,13 +1209,14 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                     setIsDetectionEnabled(true);
                     setSessionStartTime(new Date());
                     setShowCountdown(false);
+                    setStartDetectionVisible(true); // countdown ended, show "start" btn again
                   }
                 }, 1000);
               }}
               activeOpacity={0.8}
             >
               <Text style={styles.buttonText}>Start Detection</Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
           </View>
         </>
       )}
@@ -1227,8 +1228,6 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         {/* cello silhouette */}
         <View pointerEvents="none" style={styles.silhouetteWrap}>
           <View style={styles.celloBody} />
-          <View style={styles.bridgeGuide} />
-          <View style={styles.endpinGuide} />
         </View>
 
         {/* Countdown Circle */}

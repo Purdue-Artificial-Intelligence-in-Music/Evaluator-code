@@ -216,28 +216,6 @@ export const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.9)',
     backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  // dashed line near the bridge (now relative to celloBody)
-  bridgeGuide: {
-    position: 'absolute',
-    top: BODY_H * 0.46,
-    left: BODY_W * 0.15,
-    width: BODY_W * 0.7,
-    borderTopWidth: 2,
-    borderColor: 'white',
-    borderStyle: 'dashed',
-    opacity: 0.85,
-  },
-  // short dashed vertical near the endpin (relative to celloBody)
-  endpinGuide: {
-    position: 'absolute',
-    top: BODY_H * 0.9,
-    left: BODY_W * 0.5 - 1,
-    height: BODY_H * 0.12,
-    borderLeftWidth: 2,
-    borderColor: 'white',
-    borderStyle: 'dashed',
-    opacity: 0.85,
-  },
   instructionsCard: {
     position: 'absolute',
     bottom: Platform.select({ ios: 20, android: 16 }),
