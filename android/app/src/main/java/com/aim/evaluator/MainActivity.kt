@@ -1,4 +1,4 @@
-package com.anonymous.frontend
+package com.aim.evaluator
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
