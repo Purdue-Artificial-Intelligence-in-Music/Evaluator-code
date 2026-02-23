@@ -815,8 +815,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                 )}
               </ScrollView>
             )}
-
-            <View style={{ marginTop: 16 }}>
+            <View style={{ marginTop: 8 }}>
               <Button title="Close" onPress={closeHistory} />
             </View>
           </View>

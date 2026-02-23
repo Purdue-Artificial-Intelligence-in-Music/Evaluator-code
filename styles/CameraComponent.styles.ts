@@ -109,8 +109,8 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)'
   },
   modalContent: {
-    width: '90%',
-    maxHeight: '80%',
+    width: '95%',
+    maxHeight: '100%',
     backgroundColor: 'white',
     borderRadius: 10,
     padding: 20
