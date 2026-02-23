@@ -33,7 +33,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="myapp"/>
-        <data android:scheme="com.anonymous.frontend"/>
+        <data android:scheme="com.aim.evaluator"/>
       </intent-filter>
     </activity>
   </application>

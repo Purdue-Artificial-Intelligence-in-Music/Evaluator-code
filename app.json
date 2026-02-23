@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "evaluator",
+    "slug": "evaluator",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -28,7 +28,7 @@
         "android.permission.CAMERA",
         "android.permission.CAMERA"
       ],
-      "package": "com.anonymous.frontend"
+      "package": "com.aim.evaluator"
     },
     "web": {
       "bundler": "metro",
