@@ -462,12 +462,12 @@ class CameraxView(
                     calibrationCount = 0
                     Log.d("Calibration", "Calibration Failed")
                 }
-            }*/
-        latestBowResults = Detector.returnBow(-2, null, null, 0)
-        updateOverlay()
-        sendDetectionResults()
-        onNoDetection(mapOf("message" to "No objects detected"))
-        //}
+            }
+            latestBowResults = Detector.returnBow(-2, null, null, 0)
+            updateOverlay()
+            sendDetectionResults()
+            onNoDetection(mapOf("message" to "No objects detected"))
+        //}*/
     }
 
     override fun noDetect() {
