@@ -88,7 +88,7 @@ export const styles = StyleSheet.create({
   },
   detectionButton: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 20,
     left: 20,
     right: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -592,12 +592,12 @@ export const styles = StyleSheet.create({
   },
   timerDisplay: {
     position: 'absolute',
-    bottom: 120,
-    alignSelf: 'center',
+    bottom: 90,
+    right: 20,
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   timerText: {
     color: '#FFFFFF',
