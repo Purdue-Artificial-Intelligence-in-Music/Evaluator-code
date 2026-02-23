@@ -151,7 +151,7 @@ class Detector (
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.1F
+        private const val CONFIDENCE_THRESHOLD = 0.7F
     }
 
     init {
@@ -709,6 +709,7 @@ class Detector (
             //Log.d("String Box Lock", "y-vals Bow: (" + top_avg_bow_y.toString() + "," +  bot_avg_bow_y.toString() + ") String: " + top_avg_str_y.toString())
             //Log.d("String Box Lock", "x-vals Bow: (" + sortedBow[0].x.toString() + "," + sortedBow[1].x.toString() + ") String: (" + sortedString[0].x.toString() + "," + sortedString[1].x.toString() + ")")
             // Top of image is lower y value, bottom is higher
+
             if ((top_avg_bow_y <= top_avg_str_y) &&
                 (bot_avg_bow_y >= (top_avg_str_y - MAX_BOW_DIST_THRESHOLD))) { // bow y-level on string box y-level
                 if ((sortedBow[0].x < sortedString[0].x) and (sortedBow[1].x > sortedString[1].x)) { // within x range
