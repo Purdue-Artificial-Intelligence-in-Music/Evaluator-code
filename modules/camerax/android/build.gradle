@@ -31,6 +31,11 @@ if (useManagedAndroidSdkVersions) {
   }
 }
 
+def localProps = new Properties()
+def localPropsFile = rootProject.file("local.properties")
+if (localPropsFile.exists()) {
+  localProps.load(new FileInputStream(localPropsFile))
+}
 
 repositories {
   google()
@@ -53,6 +58,10 @@ android {
     packaging {
       jniLibs.useLegacyPackaging = true
     }
+
+    buildConfigField "String", "COGNITO_IDENTITY_POOL_ID", "\"${localProps['COGNITO_IDENTITY_POOL_ID'] ?: ''}\""
+    buildConfigField "String", "S3_BUCKET_NAME", "\"${localProps['S3_BUCKET_NAME'] ?: ''}\""
+    buildConfigField "String", "AWS_REGION", "\"${localProps['AWS_REGION'] ?: ''}\""
   }
   lintOptions {
     abortOnError false
@@ -79,6 +88,11 @@ android {
 
 
 dependencies {
+  //Aws
+  implementation 'com.amazonaws:aws-android-sdk-core:2.77.0'
+  implementation 'com.amazonaws:aws-android-sdk-s3:2.77.0'
+  implementation 'com.amazonaws:aws-android-sdk-cognitoidentityprovider:2.77.0'
+  implementation 'com.amazonaws:aws-android-sdk-mobile-client:2.77.0'
   // CameraX dependencies
   implementation("androidx.camera:camera-core:1.4.2")
   implementation("androidx.camera:camera-camera2:1.4.2")

@@ -179,7 +179,7 @@ dependencies {
 
 firebaseAppDistribution {
     serviceCredentialsFile = file("$projectDir/firebase-appdist-service-account.json")
-    appId = "1:78505815305:android:d6b9652566476aab2777d8"
+    appId = "1:78505815305:android:9491e4ee54c5fd242777d8"
     releaseNotes = "EvalCV release build"
     groups = "Test1"
 }

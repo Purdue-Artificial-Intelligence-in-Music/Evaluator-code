@@ -14,3 +14,8 @@ local.properties
 
 # Bundle artifacts
 *.jsbundle
+
+# ignore firebase files
+evaluator-890d1-410107ba1f7f.json
+firebase-appdist-service-account.json
+google-services.json

@@ -8,12 +8,14 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-
+import android.util.Log
 class Profile {
 
     companion object {
         private var ts: String = ""
         private var id: String = ""
+        private val finalizedDetailJson: MutableMap<String, String> = mutableMapOf()
+        private val finalizedSummaryJson: MutableMap<String, String> = mutableMapOf()
 
         fun setSession(userId: String, timestamp: String) {
             id = userId
@@ -26,6 +28,13 @@ class Profile {
 
         fun getUserId(): String {
             return id
+        }
+        fun getDetailJson(userId: String): String? {
+            return finalizedDetailJson[userId]
+        }
+
+        fun getSummaryJson(userId: String): String? {
+            return finalizedSummaryJson[userId]
         }
     }
 
@@ -142,7 +151,9 @@ class Profile {
                 }
                 writer.write("]}")
             }
-        }
+            // ✨ ADD: Copy the finalized detail JSON content
+            finalizedDetailJson[userId] = file.readText()
+            Log.d("Profile", "Copied detail JSON to variable (${finalizedDetailJson[userId]?.length} chars)")        }
 
         // Create session summary file with duration
         val sessionStartTimestamp = sessionTimestampsFormatted[userId]
@@ -193,6 +204,8 @@ class Profile {
             }
 
             android.util.Log.d("Profile", "Summary saved to: ${summaryFile.absolutePath}")
+            finalizedSummaryJson[userId] = jsonSummary
+            android.util.Log.d("Profile", "Copied summary JSON to variable (${jsonSummary.length} chars)")
         } catch (e: Exception) {
             e.printStackTrace()
         }

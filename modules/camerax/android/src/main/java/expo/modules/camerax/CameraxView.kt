@@ -236,7 +236,9 @@ class CameraxView(
             }
         }
     }
-
+    fun getUserId(): String {
+        return userId
+    }
     fun setCameraActive(active: Boolean) {
         if (isCameraActive == active) return
         isCameraActive = active
