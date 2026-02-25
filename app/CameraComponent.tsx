@@ -85,11 +85,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
   const [summaryVisible, setSummaryVisible] = useState(false);
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-  const [maxAngle, setMaxAngle] = useState(25);
+  const [maxAngle, setMaxAngle] = useState(20);
 
   // Settings modal state
   const [settingsVisible, setSettingsVisible] = useState(false);
-  const [tempMaxAngle, setTempMaxAngle] = useState(25);
+  const [tempMaxAngle, setTempMaxAngle] = useState(20);
 
   // History modal state
   const [historyVisible, setHistoryVisible] = useState(!!initialHistoryOpen);
