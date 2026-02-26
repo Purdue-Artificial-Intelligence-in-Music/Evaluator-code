@@ -618,7 +618,10 @@ class Detector (
             val stringCnf = array[5 * N + r]
             val bowCnf = array[4 * N + r]
             val cls = if (stringCnf > bowCnf) 1 else 0
-            val cnf = max(stringCnf, bowCnf)
+            var cnf = max(stringCnf, bowCnf)
+            if (cls == 0) {
+                cnf += 0.3f
+            }
 
             if (cnf > CONFIDENCE_THRESHOLD) {
                 val x = array[0 * N + r]
