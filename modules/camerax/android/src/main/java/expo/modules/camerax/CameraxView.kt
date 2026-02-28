@@ -391,8 +391,22 @@ class CameraxView(
             )
 
             imageProxy.use {
-                bitmapBuffer.copyPixelsFromBuffer(imageProxy.planes[0].buffer)
-                imageProxy.planes[0].buffer.rewind()
+                val plane = imageProxy.planes[0]
+                val rowStride = plane.rowStride
+                val pixelStride = plane.pixelStride
+                val buf = plane.buffer
+
+                if (rowStride == imageProxy.width * pixelStride) {
+                    bitmapBuffer.copyPixelsFromBuffer(buf)
+                } else {
+                    val rowData = ByteArray(rowStride)
+                    val dest = ByteArray(imageProxy.width * imageProxy.height * pixelStride)
+                    for (row in 0 until imageProxy.height) {
+                        buf.get(rowData, 0, rowStride)
+                        System.arraycopy(rowData, 0, dest, row * imageProxy.width * pixelStride, imageProxy.width * pixelStride)
+                    }
+                    bitmapBuffer.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(dest))
+                }
 
                 // Run MediaPipe live stream hand detection
                 /*
