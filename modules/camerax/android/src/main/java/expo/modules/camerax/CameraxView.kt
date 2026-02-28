@@ -95,6 +95,10 @@ class CameraxView(
     private var latestHandDetection: String = ""
     private var latestPoseDetection: String = ""
 
+    // Cached buffers for stride-aware RGBA copy — allocated once, reused every frame
+    private var strideDestCache: ByteArray? = null
+    private var strideDestBufferCache: java.nio.ByteBuffer? = null
+
     init {
         // Root layout
         frameLayout.layoutParams = FrameLayout.LayoutParams(
@@ -399,13 +403,20 @@ class CameraxView(
                 if (rowStride == imageProxy.width * pixelStride) {
                     bitmapBuffer.copyPixelsFromBuffer(buf)
                 } else {
-                    val rowData = ByteArray(rowStride)
-                    val dest = ByteArray(imageProxy.width * imageProxy.height * pixelStride)
-                    for (row in 0 until imageProxy.height) {
-                        buf.get(rowData, 0, rowStride)
-                        System.arraycopy(rowData, 0, dest, row * imageProxy.width * pixelStride, imageProxy.width * pixelStride)
+                    val pixelRowBytes = imageProxy.width * pixelStride
+                    val totalBytes = pixelRowBytes * imageProxy.height
+                    if (strideDestCache?.size != totalBytes) {
+                        strideDestCache = ByteArray(totalBytes)
+                        strideDestBufferCache = java.nio.ByteBuffer.wrap(strideDestCache!!)
                     }
-                    bitmapBuffer.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(dest))
+                    val dest = strideDestCache!!
+                    val destBuffer = strideDestBufferCache!!
+                    for (row in 0 until imageProxy.height) {
+                        buf.position(row * rowStride)
+                        buf.get(dest, row * pixelRowBytes, pixelRowBytes)
+                    }
+                    destBuffer.rewind()
+                    bitmapBuffer.copyPixelsFromBuffer(destBuffer)
                 }
 
                 // Run MediaPipe live stream hand detection
