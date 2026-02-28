@@ -658,7 +658,7 @@ class Detector (
         bowBox: MutableList<Point>
     ) {
         bowPoints = bowBox //change bow points to mutable list
-        val stringPoints = updateStringPoints(stringBox)
+        this.stringPoints = updateStringPoints(stringBox)
         Log.d("sorted points", stringPoints.toString())
     }
 
