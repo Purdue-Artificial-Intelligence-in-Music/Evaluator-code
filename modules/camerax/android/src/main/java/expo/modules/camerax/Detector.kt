@@ -207,20 +207,23 @@ class Detector (
             }
         }
 
-        // 2) GPU attempt
-       try {
+        // 2) GPU attempt — try regardless of CompatibilityList allowlist, since it may
+        //    exclude devices (e.g. A36 / Adreno 710) that actually support the delegate fine.
+        try {
             val gpuOptions = org.tensorflow.lite.Interpreter.Options()
             val cl = org.tensorflow.lite.gpu.CompatibilityList()
-
-            if (cl.isDelegateSupportedOnThisDevice) {
-                tfliteGpu = org.tensorflow.lite.gpu.GpuDelegate(cl.bestOptionsForThisDevice)
-                gpuOptions.addDelegate(tfliteGpu)
-
-                Log.i(TAG, "Trying TFLite GPU delegate...")
-                val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, gpuOptions)
-                Log.i(TAG, "Successfully using GPU delegate")
-                return interp
+            val delegateOptions = if (cl.isDelegateSupportedOnThisDevice) {
+                cl.bestOptionsForThisDevice
+            } else {
+                org.tensorflow.lite.gpu.GpuDelegate.Options()
             }
+            tfliteGpu = org.tensorflow.lite.gpu.GpuDelegate(delegateOptions)
+            gpuOptions.addDelegate(tfliteGpu)
+
+            Log.i(TAG, "Trying TFLite GPU delegate (compat=${cl.isDelegateSupportedOnThisDevice})...")
+            val interp = org.tensorflow.lite.Interpreter(modelBuffer as java.nio.ByteBuffer, gpuOptions)
+            Log.i(TAG, "Successfully using GPU delegate")
+            return interp
         } catch (t: Throwable) {
             Log.w(TAG, "GPU delegate failed, cleaning up: ${t.message}")
             tfliteGpu?.close()
