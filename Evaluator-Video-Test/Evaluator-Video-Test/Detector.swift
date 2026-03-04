@@ -39,10 +39,9 @@ class Detector {
     private var frameCounter: Int = 0
     private var stringYCoordHeights: [[Int]] = []
     private var maxAngle = 20
-    // TODO: Implement Queues
-    //private var lowerHeap =
-    //private var upperHeap
-    //private val deltaQueue
+    // Heaps and Sliding window arrays for String Box Locks
+    private var deltaQueue: [Double] = []
+    private var sortedDeltas: [Double] = []
 
     
     // Constants
@@ -90,39 +89,9 @@ class Detector {
     }
     
     init(listener: DetectorListener? = nil) throws {
-        // TODO: Add interpreter creation with options
         self.listener = listener
 
-        // Load model path FIRST
-        guard let modelPath = Bundle.main.path(
-            forResource: "version36_small",
-            ofType: "tflite"
-        ) else {
-            throw NSError(
-                domain: "Detector",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Model file not found"]
-            )
-        }
-
-        // Interpreter options
-        var options = Interpreter.Options()
-        options.threadCount = 4
-
-        // Delegates
-        var delegates: [Delegate] = []
-        let coreMLDelegate = CoreMLDelegate()
-        //let metalDelegate = MetalDelegate()
-        delegates.append(coreMLDelegate!)
-        //#delegates.append(metalDelegate)
-        
-
-        // Create interpreter ONCE
-        interpreter = try Interpreter(
-            modelPath: modelPath,
-            options: options,
-            delegates: delegates
-        )
+        interpreter = try Detector.createInterpreterWithFallbacks()
 
         // Allocate tensors
         try interpreter.allocateTensors()
@@ -144,31 +113,85 @@ class Detector {
         numElements = outputShape.dimensions[2]
     }
     
-    // TODO: implement fallbacks for creating an interpreter on IOS
+    // Implement fallbacks for creating an interpreter on IOS
     // Use NPU, then GPU, then default to CPU
-    private func createInterpreterWithFallbacks() throws -> Interpreter {
-        fatalError("Not implemented")
+    private static func createInterpreterWithFallbacks() throws -> Interpreter {
+        guard let modelPath = Bundle.main.path(
+            forResource: "version36_small",
+            ofType: "tflite"
+        ) else {
+            throw NSError(
+                domain: "Detector",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Model file not found in bundle"]
+            )
+        }
+
+        var options = Interpreter.Options()
+        options.threadCount = 4
+
+        // Try NPU (CoreML)
+        if let coreMLDelegate = CoreMLDelegate() {
+            do {
+                let interpreter = try Interpreter(modelPath: modelPath, options: options, delegates: [coreMLDelegate])
+                print("Successfully loaded CoreML (NPU).")
+                return interpreter
+            } catch {
+                print("CoreML Delegate Issue")
+            }
+        } else {
+            print("CoreML Delegate not supported.")
+        }
+        
+        // Try GPU (Metal)
+        let metalDelegate = MetalDelegate()
+        do {
+            let interpreter = try Interpreter(modelPath: modelPath, options: options, delegates: [metalDelegate])
+            print("Successfully loaded Metal Delegate (GPU).")
+            return interpreter
+        } catch {
+            print("Metal Delegate Issue")
+        }
+
+        // Fallback to CPU
+        let interpreter = try Interpreter(modelPath: modelPath, options: options)
+        print("Fallback to CPU")
+        return interpreter
     }
     
     // TODO: Implement resetting heaps (after implemeneting heaps)
     public func resetHeaps() {
+        deltaQueue.removeAll()
+        sortedDeltas.removeAll()
     }
     
     // TODO: Implement adding a value to heaps
     private func addDelta(value: Double) {
+        let index = sortedDeltas.firstIndex(where: { $0 > value }) ?? sortedDeltas.count
+        sortedDeltas.insert(value, at: index)
     }
     
     // TODO: Implement removing a value from heaps
     private func removeDelta(value: Double) {
+        if let index = sortedDeltas.firstIndex(of: value) {
+            sortedDeltas.remove(at: index)
+        }
     }
     
     // TODO: Implement rebalancing heaps (s.t. lower heap <= upperHeap.size + 1
     private func rebalanceHeaps() {
+        // Swift simplified arrays automatically sort on insert above
     }
     
     // TODO: Implement getting the median value from heaps (whichever is bigger or avg of both next)
     private func currentMedian() -> Double {
-        return -1.0
+        if sortedDeltas.isEmpty { return 0.0 }
+        let count = sortedDeltas.count
+        if count % 2 == 0 {
+            return (sortedDeltas[count / 2 - 1] + sortedDeltas[count / 2]) / 2.0
+        } else {
+            return sortedDeltas[count / 2]
+        }
     }
     
     // Sets angle to a value 0-90, using modulo 90 and subtracting from 90 to enforce.
@@ -512,18 +535,57 @@ class Detector {
     
     func updatePoints(stringBox: [Point], bowBox: [Point]) {
         bowPoints = bowBox
-        
-        if !yLocked {
-            stringPoints = stringBox
-        } else if let yAvg = yAvg {
-            let sortedString = sortStringPoints(pts: stringBox)
-            stringPoints = sortedString
-        }
+        self.stringPoints = updateStringPoints(stringBox: stringBox)
+        print("sorted points \(String(describing: stringPoints))")
     }
     
     //TODO: add handling of updating string points for locking the string box
     func updateStringPoints(stringBox: [Point]) -> [Point] {
-        fatalError("Not implemented")
+        var sortedString = sortStringPoints(pts: stringBox)
+        
+        let deltaY = abs(sortedString[0].y - sortedString[3].y)
+        
+        // add new height to queue
+        deltaQueue.append(deltaY)
+        addDelta(value: deltaY)
+        
+        // keep queue size at max
+        if deltaQueue.count > MAX_QUEUE_SIZE {
+            let old = deltaQueue.removeFirst()
+            removeDelta(value: old)
+        }
+        
+        // if only one height in queue, return sorted string
+        if deltaQueue.count == 1 {
+            stringPoints = sortedString
+            return sortedString
+        }
+        
+        let medianDelta = currentMedian()
+        
+        //if there is a huge deviation, we manually lock the top 2 points of the string box to the median
+        if abs(medianDelta - deltaY) > Double(MAX_Y_DELTA_THRESHOLD) {
+            sortedString[0].y = sortedString[3].y - medianDelta
+            sortedString[1].y = sortedString[2].y - medianDelta
+            print("String Box Locked; Big Deviation")
+        }
+        // if bow is close to string, we also lock the string box to the bow box
+        else if let bowPoints = bowPoints {
+            let sortedBow = sortBowPoints(pts: bowPoints)
+            let topAvgBowY = (sortedBow[0].y + sortedBow[1].y) / 2.0
+            let topAvgStrY = (sortedString[0].y + sortedString[1].y) / 2.0
+            let botAvgBowY = (sortedBow[2].y + sortedBow[3].y) / 2.0
+            
+            if topAvgBowY <= topAvgStrY && botAvgBowY >= (topAvgStrY - Double(MAX_BOW_DIST_THRESHOLD)) {
+                if sortedBow[0].x <= sortedString[0].x && sortedBow[1].x >= sortedString[1].x {
+                    sortedString[0].y = sortedString[3].y - medianDelta
+                    sortedString[1].y = sortedString[2].y - medianDelta
+                    print("String Box Lock; Bow Covering")
+                }
+            }
+        }
+        
+        return sortedString
     }
     
     func sortStringPoints(pts: [Point]) -> [Point] {
@@ -533,7 +595,17 @@ class Detector {
         return topPoints + bottomPoints
     }
     
-    func getMidline() -> [Int] {
+    //
+    func sortBowPoints(pts: [Point]) -> [Point] {
+        let sortedPoints = pts.sorted { $0.x < $1.x }
+        
+        let leftPoints = Array(sortedPoints.prefix(2)).sorted { $0.y < $1.y }
+        let rightPoints = Array(sortedPoints.suffix(2)).sorted { $0.y < $1.y }
+        
+        return [leftPoints[0], rightPoints[0], rightPoints[1], leftPoints[1]]
+    }
+
+    func getMidline() -> [Double] {
         func distance(pt1: Point, pt2: Point) -> Double {
             return (pt1.x - pt2.x) * (pt1.x - pt2.x) + (pt1.y - pt2.y) * (pt1.y - pt2.y)
         }
@@ -574,11 +646,11 @@ class Detector {
         let dx = mid1[0] - mid2[0]
         
         if dx == 0.0 {
-            return [Int.max, Int(mid1[0])]
+            return [Double.infinity, mid1[0]]
         } else {
             let slope = dy / dx
             let intercept = mid1[1] - slope * mid1[0]
-            return [Int(slope), Int(intercept)]
+            return [slope, intercept]
         }
     }
     
@@ -620,9 +692,9 @@ class Detector {
         return [leftLine, rightLine]
     }
     
-    private func intersectsVertical(linearLine: [Int], verticalLines: [[Double]]) -> Int {
-        let m = Double(linearLine[0])
-        let b = Double(linearLine[1])
+    private func intersectsVertical(linearLine: [Double], verticalLines: [[Double]]) -> Int {
+        let m = linearLine[0]
+        let b = linearLine[1]
         
         let verticalOne = verticalLines[0]
         let verticalTwo = verticalLines[1]
@@ -712,48 +784,14 @@ class Detector {
         return 0
     }
     
-    private func averageYCoordinate(stringBoxCoords: [Point]) {
-        frameCounter += 1
-        let yCoords = stringBoxCoords.map { Int($0.y) }
-        stringYCoordHeights.append(yCoords)
-        
-        if frameCounter % numWaitFrames == 0 {
-            let topLeftAvg = median(values: stringYCoordHeights.map { $0[0] })
-            let topRightAvg = median(values: stringYCoordHeights.map { $0[1] })
-            let botRightAvg = median(values: stringYCoordHeights.map { $0[2] })
-            let botLeftAvg = median(values: stringYCoordHeights.map { $0[3] })
-            
-            stringPoints?[0].y = topLeftAvg
-            stringPoints?[1].y = topRightAvg
-            stringPoints?[2].y = botRightAvg
-            stringPoints?[3].y = botLeftAvg
-            yAvg = [topLeftAvg, topRightAvg]
-            yLocked = true
-            stringYCoordHeights = []
-        }
-    }
-    
-    private func median(values: [Int]) -> Double {
-        guard !values.isEmpty else { fatalError("Empty list has no median") }
-        
-        let sorted = values.sorted()
-        let middle = sorted.count / 2
-        
-        if sorted.count % 2 == 0 {
-            return Double(sorted[middle - 1] + sorted[middle]) / 2.0
-        } else {
-            return Double(sorted[middle])
-        }
-    }
-    
     private func degrees(radians: Double) -> Double {
         return radians * (180.0 / Double.pi)
     }
     
-    private func bowAngle(bowLine: [Int], verticalLines: [[Double]]) -> Int {
+    private func bowAngle(bowLine: [Double], verticalLines: [[Double]]) -> Int {
         let maxAngle = 15.0
         
-        let mBow = Double(bowLine[0])
+        let mBow = bowLine[0]
         let m1 = verticalLines[0][0]
         let m2 = verticalLines[1][0]
         
