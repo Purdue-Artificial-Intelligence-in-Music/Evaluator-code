@@ -3,6 +3,7 @@ import UIKit
 import TensorFlowLite
 import Accelerate
 
+
 //Interface for detector listener
 protocol DetectorListener: AnyObject {
     
@@ -11,6 +12,15 @@ protocol DetectorListener: AnyObject {
 }
 
 class Detector {
+    // VARS FOR TESTING AND OUTPUTTING CSV
+    var prev_bow_w: Float = 0
+    var prev_bow_h: Float = 0
+    var prev_string_w: Float = 0
+    var prev_string_h: Float = 0
+    private var frame_num = 0
+    private let CSV_HEADER = "FRAME, BOW, STRING, BOW_W_D, BOW_H_D, STRING_W_D, STRING_H_D, TIME_D"
+    private var CSV_OUT = ""
+    // END VARS
     private var interpreter: Interpreter
     private weak var listener: DetectorListener?
     private var labels: [String] = []
@@ -28,12 +38,22 @@ class Detector {
     private var yAvg: [Double]?
     private var frameCounter: Int = 0
     private var stringYCoordHeights: [[Int]] = []
-    private let numWaitFrames: Int = 5
+    private var maxAngle = 20
+    // TODO: Implement Queues
+    //private var lowerHeap =
+    //private var upperHeap
+    //private val deltaQueue
+
     
-    // Constsants
+    // Constants
     private static let INPUT_MEAN: Float = 0.0
     private static let INPUT_STANDARD_DEVIATION: Float = 255.0
     private static let CONFIDENCE_THRESHOLD: Float = 0.1
+    private let MAX_QUEUE_SIZE = 60
+    private let MAX_Y_DELTA_THRESHOLD = 3
+    private let MAX_BOW_DIST_THRESHOLD = 5
+    private let numWaitFrames: Int = 5
+    
     
     // Custom data structs
     struct YoloResults {
@@ -63,12 +83,19 @@ class Detector {
         var angle: Int?
     }
     
+    struct bitmapAndClassifications{
+        var bitmap: UIImage
+        var height: Int?
+        var angle: Int?
+    }
+    
     init(listener: DetectorListener? = nil) throws {
+        // TODO: Add interpreter creation with options
         self.listener = listener
 
         // Load model path FIRST
         guard let modelPath = Bundle.main.path(
-            forResource: "try",
+            forResource: "version36_small",
             ofType: "tflite"
         ) else {
             throw NSError(
@@ -84,9 +111,10 @@ class Detector {
 
         // Delegates
         var delegates: [Delegate] = []
-        
-        let metalDelegate = MetalDelegate()
-        delegates.append(metalDelegate)
+        let coreMLDelegate = CoreMLDelegate()
+        //let metalDelegate = MetalDelegate()
+        delegates.append(coreMLDelegate!)
+        //#delegates.append(metalDelegate)
         
 
         // Create interpreter ONCE
@@ -114,6 +142,38 @@ class Detector {
 
         numChannel = outputShape.dimensions[1]
         numElements = outputShape.dimensions[2]
+    }
+    
+    // TODO: implement fallbacks for creating an interpreter on IOS
+    // Use NPU, then GPU, then default to CPU
+    private func createInterpreterWithFallbacks() throws -> Interpreter {
+        fatalError("Not implemented")
+    }
+    
+    // TODO: Implement resetting heaps (after implemeneting heaps)
+    public func resetHeaps() {
+    }
+    
+    // TODO: Implement adding a value to heaps
+    private func addDelta(value: Double) {
+    }
+    
+    // TODO: Implement removing a value from heaps
+    private func removeDelta(value: Double) {
+    }
+    
+    // TODO: Implement rebalancing heaps (s.t. lower heap <= upperHeap.size + 1
+    private func rebalanceHeaps() {
+    }
+    
+    // TODO: Implement getting the median value from heaps (whichever is bigger or avg of both next)
+    private func currentMedian() -> Double {
+        return -1.0
+    }
+    
+    // Sets angle to a value 0-90, using modulo 90 and subtracting from 90 to enforce.
+    func setMaxAngle(angle: Int) {
+        maxAngle = 90 - (abs(angle) % 90)
     }
     
     func detect(frame: UIImage) -> YoloResults {
@@ -160,65 +220,94 @@ class Detector {
         guard let inputData = preprocessImage(pixelBuffer: pixelBuffer) else {
             return results
         }
-        
-        // Run inference
-        do {
-            try interpreter.copy(inputData, toInputAt: 0)
-            try interpreter.invoke()
-            
-            let outputTensor = try interpreter.output(at: 0)
-            let outputData = outputTensor.data
-            let floatArray = outputData.toArray(type: Float.self)
-            
-            let bestBoxes = newBestBox(array: floatArray)
-            
-            var bowConf: Float = 0
-            var stringConf: Float = 0
-            let ogWidth = Float(frame.size.width)
-            let ogHeight = Float(frame.size.height)
-            let newWidth = Float(resizedImage.size.width)
-            let newHeight = Float(resizedImage.size.height)
-            print("ogW: " + String(ogWidth) + " ogH: " + String(ogHeight))
-            print("newW: " + String(newWidth) + " newH: " + String(newHeight))
-            
-            for box in bestBoxes {
-                if box.cls == 0 && box.conf > bowConf {
-                    results.bowResults = rotatedRectToPoints(
-                        cx: box.x * (ogWidth / newWidth) * 2,
-                        cy: box.y * (ogHeight / newHeight),
-                        w: box.width * (ogWidth / newWidth) * 2,
-                        h: box.height * (ogHeight / newHeight),
-                        angleRad: (box.angle - Float.pi / 2.0)
-                    )
-                    bowConf = box.conf
-                } else if box.cls == 1 && box.conf > stringConf {
-                    let angle = box.width > box.height ? box.angle + Float.pi / 2 : box.angle
-                    let points = rotatedRectToPoints(
-                        cx: box.x * (ogWidth / newWidth) * 2,
-                        cy: box.y * (ogHeight / newHeight),
-                        w: box.width * (ogWidth / newWidth) * 2,
-                        h: box.height * (ogHeight / newHeight),
-                        angleRad: (box.angle - Float.pi / 2.0)
-                    )
-                    results.stringResults = sortStringPoints(pts: points)
-                    stringConf = box.conf
+        var bow = false
+        var string = false
+        var bow_w_d: Float = 0.0
+        var bow_h_d: Float = 0.0
+        var string_w_d: Float = 0.0
+        var string_h_d: Float = 0.0
+        let clock = ContinuousClock()
+        let duration = clock.measure {
+            // Run inference
+            do {
+                
+                try interpreter.copy(inputData, toInputAt: 0)
+                try interpreter.invoke()
+                
+                let outputTensor = try interpreter.output(at: 0)
+                let outputData = outputTensor.data
+                let floatArray = outputData.toArray(type: Float.self)
+                
+                let bestBoxes = newBestBox(array: floatArray)
+                
+                var bowConf: Float = 0
+                var stringConf: Float = 0
+                let ogWidth = Float(frame.size.width)
+                let ogHeight = Float(frame.size.height)
+                let newWidth = Float(resizedImage.size.width)
+                let newHeight = Float(resizedImage.size.height)
+                print("ogW: " + String(ogWidth) + " ogH: " + String(ogHeight))
+                print("newW: " + String(newWidth) + " newH: " + String(newHeight))
+                
+                for box in bestBoxes {
+                    if box.cls == 0 && box.conf > bowConf {
+                        results.bowResults = rotatedRectToPoints(
+                            cx: box.x * (ogWidth / newWidth) * 2,
+                            cy: box.y * (ogHeight / newHeight),
+                            w: box.width * (ogWidth / newWidth) * 2,
+                            h: box.height * (ogWidth / newWidth) * 2,
+                            angleRad: (box.angle - Float.pi / 2.0)
+                        )
+                        bowConf = box.conf
+                        bow = true
+                        if (frame_num != 0) {
+                            bow_w_d = prev_bow_w - box.width * (ogWidth / newWidth) * 2
+                            bow_h_d = prev_bow_h - box.height * (ogWidth / newWidth) * 2
+                        }
+                        prev_bow_w = box.width * (ogWidth / newWidth) * 2
+                        prev_bow_h = box.height * (ogWidth / newWidth) * 2
+                    } else if box.cls == 1 && box.conf > stringConf {
+                        let angle = box.width > box.height ? box.angle + Float.pi / 2 : box.angle
+                        let points = rotatedRectToPoints(
+                            cx: box.x * (ogWidth / newWidth) * 2,
+                            cy: box.y * (ogHeight / newHeight),
+                            w: box.width * (ogWidth / newWidth) * 2,
+                            h: box.height * (ogHeight / newHeight),
+                            angleRad: (box.angle - Float.pi / 2.0)
+                        )
+                        results.stringResults = sortStringPoints(pts: points)
+                        stringConf = box.conf
+                        string = true
+                        if (frame_num != 0) {
+                            string_w_d = prev_string_w - box.width * (ogWidth / newWidth) * 2
+                            string_h_d = prev_string_h - box.height * (ogWidth / newWidth) * 2
+                        }
+                        prev_string_w = box.width * (ogWidth / newWidth) * 2
+                        prev_string_h = box.height * (ogWidth / newWidth) * 2
+                    }
                 }
+                
+                //let inferenceTime = Date().timeIntervalSince(inferenceStartTime)
+                
+                if results.bowResults == nil && results.stringResults == nil {
+                    listener?.noDetect()
+                } else {
+                    listener?.detected(results: results, sourceWidth: Int(frame.size.width), sourceHeight: Int(frame.size.height))
+                    print(results)
+                    print("\n")
+                }
+                
+            } catch {
+                print("Inference error: \(error)\n")
             }
-            
-            //let inferenceTime = Date().timeIntervalSince(inferenceStartTime)
-            
-            if results.bowResults == nil && results.stringResults == nil {
-                listener?.noDetect()
-            } else {
-                listener?.detected(results: results, sourceWidth: Int(frame.size.width), sourceHeight: Int(frame.size.height))
-                print(results)
-                print("\n")
-            }
-            
-        } catch {
-            print("Inference error: \(error)\n")
         }
-        
+        // FRAME, BOW, STRING, BOW_W_D, BOW_H_D, STRING_W_D, STRING_H_D, TIME_D
+        CSV_OUT += "\n\(frame_num), \(bow), \(string), \(bow_w_d), \(bow_h_d), \(string_w_d), \(string_h_d), \(duration)"
+        frame_num += 1
+        if (frame_num == 120) {
+            print(CSV_HEADER + CSV_OUT)
+            exit(EXIT_SUCCESS)
+        }
         return results
     }
     
@@ -364,6 +453,13 @@ class Detector {
         )
         return annotatedBitmap
     }
+    
+    func analyzeFrame(bitmap: UIImage) -> bitmapAndClassifications {
+        let classificationResult = classify(results: detect(frame: bitmap))
+        let annotatedBitmap = drawPointsOnBitmap(bitmap: bitmap,
+                                                 points: YoloResults(bowResults: classificationResult.bow, stringResults: classificationResult.string), classification: classificationResult.classification, angle: classificationResult.angle)
+        return bitmapAndClassifications(bitmap: annotatedBitmap, height: classificationResult.classification, angle: classificationResult.angle)
+    }
 
     private func rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float) -> [Point] {
         let halfW = w / 2
@@ -423,6 +519,11 @@ class Detector {
             let sortedString = sortStringPoints(pts: stringBox)
             stringPoints = sortedString
         }
+    }
+    
+    //TODO: add handling of updating string points for locking the string box
+    func updateStringPoints(stringBox: [Point]) -> [Point] {
+        fatalError("Not implemented")
     }
     
     func sortStringPoints(pts: [Point]) -> [Point] {
