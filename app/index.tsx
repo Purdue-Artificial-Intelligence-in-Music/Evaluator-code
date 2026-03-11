@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/react-native';
 import React, { useState } from 'react';
 import * as VideoAnalyzer from '../modules/expo-video-analyzer/src/ExpoVideoAnalyzer';
 import CameraComponent from './CameraComponent';
@@ -76,6 +77,7 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error('Error picking video:', error);
+      Sentry.captureException(error);
       alert('Failed to pick video. Please try again.');
     }
   };
@@ -199,6 +201,8 @@ export default function HomePage() {
   */
     } catch (error: any) {
       console.error('sendVideoBackend failed:', error);
+      Sentry.captureException(error);
+      Alert.alert('Error', 'Video processing failed. Please try again.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -239,6 +243,7 @@ export default function HomePage() {
       alert("Video has been saved to your gallery!");
     } catch (error) {
       console.error("Download error:", error);
+      Sentry.captureException(error);
       alert("Failed to download video.");
     }
   };

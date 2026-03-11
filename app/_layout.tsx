@@ -2,8 +2,14 @@
 import React, { useEffect, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
 
-export default function RootLayout() {
+Sentry.init({
+  dsn: 'https://c6215d1cf1960b60f35cf6870e78eb0e@o4511027696959488.ingest.us.sentry.io/4511027701481472',
+  debug: true,
+});
+
+function RootLayoutInner() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
@@ -46,3 +52,5 @@ export default function RootLayout() {
     </Stack>
   );
 }
+
+export default Sentry.wrap(RootLayoutInner);
