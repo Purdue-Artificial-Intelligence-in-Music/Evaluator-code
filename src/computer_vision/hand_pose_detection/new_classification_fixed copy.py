@@ -293,7 +293,7 @@ class Classification:
         
         dy = mid1[1] - mid2[1]
         dx = mid1[0] - mid2[0]
-        if dy == 0:
+        if dx == 0:
             return float('inf'), mid1[0]
         slope = dy / dx
         intercept = mid1[1] - slope * mid1[0]
@@ -445,54 +445,37 @@ class Classification:
         - vertical_lines (tuple): Output of get_vertical_lines() (m1, b1, ht1, hb1)
 
         Returns:
-        - 3: Intersection is near top of the box (ht1 or ht2)
-        - 2: Intersection is near bottom (hb1 or hb2)
-        - 0: Intersection is in middle
+        - 2: too high
+        - 3: too low
+        - 0: in the middle
         """
-        #print('intersection:', intersection_points)
-        bot_scaling_factor = .25
-        top_scaling_factor = .20
+        top_zone_percentage = 0.1
+        bottom_zone_percentage = 0.1
 
         vertical_one = vertical_lines[0]
         vertical_two = vertical_lines[1]
 
-        bot_y1 = vertical_one[3]
-        bot_y2 = vertical_two[3]
-        
         top_y1 = vertical_one[2]
         top_y2 = vertical_two[2]
+        bot_y1 = vertical_one[3]
+        bot_y2 = vertical_two[3]
 
-        # # get avg height of vertical lines
-        # height = (top_y1 - bot_y1 + top_y2 - bot_y2 ) / 2
+        height = abs(((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2.0)
+        if height == 0:
+            return 0
 
-        # ## TOP AND BOTTOM CURRENTLY INTENTIONALLY FLIPPED
+        avg_top_y = (top_y1 + top_y2) / 2.0
+        avg_bot_y = (bot_y1 + bot_y2) / 2.0
 
-        # # get lower limit by averaging bottom y value. Scaled by height of strings and bot_scaling_factor
-        # min = ((bot_y1 + bot_y2) / 2) + height * top_scaling_factor
-        # print('min:', min)
+        too_high_threshold = avg_top_y + height * top_zone_percentage
+        too_low_threshold = avg_bot_y - height * bottom_zone_percentage
 
-        # if (intersection_points[0][1] <= min or intersection_points[1][1] <= min):
-        #     return 3
-        
-        # # get upper limit by averaging top y value. Scaled by height of strings and bot_scaling_factor
-        # max = ((top_y1 + top_y2) / 2) - height * bot_scaling_factor
-        # print('max:', max)
+        intersection_y = (intersection_points[0][1] + intersection_points[1][1]) / 2.0
 
-        # if (intersection_points[0][1] >= max or intersection_points[1][1] >= max):
-        #     return 2
-        
-
-                # get avg height of vertical lines
-        height = ((bot_y1 - top_y1) + (bot_y2 - top_y2)) / 2
-
-        min_y = ((top_y1 + top_y2) / 2) + height * top_scaling_factor
-        #print('min:', min_y)
-        if (intersection_points[0][1] >= min_y or intersection_points[1][1] >= min_y):
+        if intersection_y <= too_high_threshold:
             return 2
 
-        max_y = ((bot_y1 + bot_y2) / 2) - height * bot_scaling_factor
-        #print('min:', max_y)
-        if (intersection_points[0][1] <= max_y or intersection_points[1][1] <= max_y):
+        if intersection_y >= too_low_threshold:
             return 3
 
         return 0
@@ -532,19 +515,18 @@ class Classification:
         """
         max_angle = 20
 
-        vertical_one = vertical_lines[0]
-        vertical_two = vertical_lines[1]
+        m_bow = bow_line[0]
+        m1 = vertical_lines[0][0]
+        m2 = vertical_lines[1][0]
 
-        # Gets the angle converted to degrees using # arctan(|m1 - m2| / (1 + m1 * m2)). 
-        # Uses the most-perpendicular of the two bow angles.
-        angle_one = abs(math.degrees(math.atan(abs(bow_line[0] - vertical_two[0]) / (1 + bow_line[0] * vertical_two[0]))))
-        angle_two = abs(math.degrees(math.atan(abs(vertical_one[0] - bow_line[0]) / (1 + vertical_one[0] * bow_line[0]))))
-        
-        #print('angle:', max(90 - angle_one, 90 - angle_two))
-        
-        if (max(angle_one, angle_two) < (90 - max_angle)):
+        angle_one = abs(math.degrees(math.atan(abs(m_bow - m2) / (1 + m_bow * m2))))
+        angle_two = abs(math.degrees(math.atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
+
+        min_angle = min(abs(90 - min(angle_one, angle_two)), min(angle_one, angle_two))
+
+        if min_angle > max_angle:
             return 1
-        
+
         return 0
 
     def display_classification(self, result, opencv_frame):
@@ -602,7 +584,7 @@ class Classification:
         return_dict = {"class": None, "bow": None, "string": None, "angle": None}
         #expectation is that the frame is already resized to correct proportions
         classes = ["bow", "string"]
-        model = YOLO('best.pt')  # Replace with your actual model file    
+        model = YOLO('robust_yolo.pt')  # Replace with your actual model file    
         results = model(frame)
         avg_frame_counter = False
         string_coords = None
@@ -733,9 +715,9 @@ def main():
     # Open video
     # Load YOLOv11 OBB model
     #model_path = "newest_best.pt"
-    model_path = "/Users/paolowang/best_saved_model/best_float16.tflite"
+    model_path = "robust_yolo.pt"
     model = YOLO(model_path, task="obb")  # Replace with your actual model file     
-    cap = cv2.VideoCapture("Cello_backend_test_v3.mp4")
+    cap = cv2.VideoCapture("bow placing too high.mp4")
     #cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     
     # Get video properties for output
