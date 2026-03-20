@@ -4,267 +4,43 @@ import numpy as np
 from ultralytics import YOLO
 import statistics
 import math
+import time
 
-"""
-class Point2D:
-    def __init__(self, x=0, y=0):
-        self.x = x
-        self.y = y
-
-    def __repr__(self):
-        return f"Point2D({self.x}, {self.y})"
-
-    def __eq__(self, other):
-        return self.x == other.x and self.y == other.y
-
-    def distance_to(self, other):
-        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
-
-    def move(self, dx, dy):
-        self.x += dx
-        self.y += dy
-
-    def as_tuple(self):
-        return (self.x, self.y)
-    
-    def find_point_p1(A, B, ratio=0.7):
-        """
-        # Finds the coordinates of point P1 that is `ratio` distance from A to B.
-        
-        # Parameters:
-        # A (Point2D): Point A
-        # B (Point2D): Point B
-        # ratio (float): Ratio of the distance from A to B where P1 should be (default is 0.7)
-        
-        # Returns:
-        # Point2D: Coordinates of point P1
-"""
-        Px = A.x + ratio * (B.x - A.x)
-        Py = A.y + ratio * (B.y - A.y)
-        return Point2D(Px, Py)
-    
-    def find_intersection(p1, p2, p3, p4):
-        # Line 1: passing through p1 and p2
-        A1 = p2.y - p1.y  # y2 - y1
-        B1 = p1.x - p2.x  # x1 - x2
-        C1 = A1 * p1.x + B1 * p1.y
- 
-        # Line 2: passing through p3 and p4
-        A2 = p4.y - p3.y  # y4 - y3
-        B2 = p3.x - p4.x  # x3 - x4
-        C2 = A2 * p3.x + B2 * p3.y
- 
-        # Determinant of the system
-        det = A1 * B2 - A2 * B1
- 
-        if det == 0:
-            # Lines are parallel (no intersection)
-            return None
-        else:
-            # Lines intersect, solving for x and y
-            x = (B2 * C1 - B1 * C2) / det
-            y = (A1 * C2 - A2 * C1) / det
-        return Point2D(x, y)
-    
-    def is_above_or_below(self, A, B):
-        """
-        # Determines if the current point (self) is above or below the line segment defined by points A and B.
-        # Parameters:
-        # A (Point2D): First endpoint of the line segment.
-        # B (Point2D): Second endpoint of the line segment.
-        # Returns:
-        # bool: True if the current point (self) is above the line, False if it is below or on the line.
-"""
-        # Calculate the cross product of vectors AB and AC (where C is self)
-        cross_product = (B.x - A.x) * (self.y - A.y) - (B.y - A.y) * (self.x - A.x)
-        if cross_product > 0:
-            return True  # Current point (self) is above the line
-        else:
-            return False 
-    
-    def is_above_or_below_list(self, pts_list):
-        """
-        # Determines if the current point (self) is above or below the line segment defined by points in pts_list.
-        # Parameters:
-        # pts_list (list of Point2D): List of points defining the line segment. Should be ordered from left to right.
-        # Returns:
-        # bool: True if the current point (self) is above the line, False if it is below or on the line.
-"""
-        for x in range(len(pts_list)):
-            if x == 0:
-                continue
-            else:
-                #If the self point is above the line segment formed by the current point and the previous point, then return True
-                if self.is_above_or_below(pts_list[x], pts_list[x-1]):
-                    return True
-                #Otherwise do nothing and continue to the next point
-        #If the self point is below all the line segments, then return False
-        return False
-    
-    def check_correct_bow_position(bow_coord_list, string_coord_list):
-        """
-        # Determines if the bow is in the correct position.
-        # Parameters:
-        # bow_coord_list: list of Point2D, for the bow, from hand side to other side
-        # string_coord_list: list of Point2D, for the cello strings, left to right for top strings then bottom strings
-        # Does this by looking for a single intersection between the bow and a string
-"""
-        for x in range(len(string_coord_list)/2):
-            if find_intersection(bow_coord_list[0], bow_coord_list[1], string_coord_list[x], string_coord_list[6+x]):
-                return True
-        return False
-
-    @staticmethod
-    def angle_between_lines(A, B, C, D):
-        """
-       # Calculates the angle between the line segment AB and CD.        
-"""
-        # Vectors AB and CD
-        vector_ab = (B.x - A.x, B.y - A.y)
-        vector_cd = (D.x - C.x, D.y - C.y)
-
-        dot_product = vector_ab[0] * vector_cd[0] + vector_ab[1] * vector_cd[1]
-
-        magnitude_ab = A.distance_to(B)
-        magnitude_cd = C.distance_to(D)
-      
-       # Dot product property
-        cos_theta = dot_product / (magnitude_ab * magnitude_cd)
-
-        # Calculate arc cosine
-        angle_radians = math.acos(cos_theta)
-        angle_degrees = math.degrees(angle_radians)
-        
-        return angle_degrees
-
-    # Function to resize image with aspect ratio
-    def ResizeWithAspectRatio(image, width=None, height=None, inter=cv2.INTER_AREA):
-        dim = None
-        (h, w) = image.shape[:2]
-        if width is None and height is None:
-            return image
-        if width is None:
-            r = height / float(h)
-            dim = (int(w * r), height)
-        else:
-            r = width / float(w)
-            dim = (width, int(h * r))
-        return cv2.resize(image, dim, interpolation=inter)
-
-    # Function to store finger node coordinates
-    def store_finger_node_coords(id: int, cx: float, cy: float, finger_coords: dict):
-        if id not in finger_coords:
-            finger_coords[id] = []
-        finger_coords[id].append((cx, cy))
-
-    def find_intersection(p1, p2, p3, p4):
-        # Line 1: passing through p1 and p2
-        A1 = p2[1] - p1[1]  # y2 - y1
-        B1 = p1[0] - p2[0]  # x1 - x2
-        C1 = A1 * p1[0] + B1 * p1[1]
-    
-        # Line 2: passing through p3 and p4
-        A2 = p4[1] - p3[1]  # y4 - y3
-        B2 = p3[0] - p4[0]  # x3 - x4
-        C2 = A2 * p3[0] + B2 * p3[1]
-    
-        # Determinant of the system
-        det = A1 * B2 - A2 * B1
-    
-        if det == 0:
-            # Lines are parallel (no intersection)
-            return None
-        else:
-            # Lines intersect, solving for x and y
-            x = (B2 * C1 - B1 * C2) / det
-            y = (A1 * C2 - A2 * C1) / det
-            return (x, y)
-
-    def find_intersection_list(self, p1, p2, pts_list):
-        """
-            # Determines Finds intersection between line segment p1p2 and line segments formed by points in pts_list.
-            # Parameters:
-            # p1: Point2D, first endpoint of the line segment
-            # p2: Point2D, second endpoint of the line segment
-            # pts_list: list of Point2D, for the cello strings, left to right for top strings then bottom strings
-            # Returns:
-            # bool: Coordinates of first intersection point found, if no intersection found then return None.
-"""
-        for x in range(len(pts_list)/2):
-            intersection = find_intersection(p1, p2, pts_list[x], pts_list[6+x])
-            if intersection:
-                return intersection
-        return None
-
-    def check_angle(p1, p2, pts_list):
-        """
-        # Determines if there is a line segment that is almost parallel (within 10 degrees) to the line segment p1p2.
-        # Parameters:
-        # p1: Point2D, first endpoint of the line segment
-        # p2: Point2D, second endpoint of the line segment
-        # pts_list: list of Point2D, for the cello strings, left to right for top strings
-"""
-        for x in range(len(pts_list[:6])):
-            if x == 0:
-                continue
-            else:
-                angle = Point2D.angle_between_lines(p1, p2, pts_list[x], pts_list[x-1])
-                if angle < 10:
-                    return True
-        return False
-"""
 class Classification:
     frame_num = 0
     string_ycoord_heights = []
     def __init__(self):
-        self.bow_points = None  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
-        self.string_points = None  # Expected: [top-left, top-right, bottom-right, bottom-left] as (x, y) tuples
+        self.model = YOLO('robust_yolo.pt')
+        self.bow_points = None
+        self.string_points = None
         self.y_locked = False
         self.FRAME_COUNTER = 0
         self.num_wait_frames = 11
         self.y_avg = [0, 0]
         self.bow_repeat = 0
         self.string_repeat = 0
+        self.inference_times = []  # Store inference times
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
-        #print('String points:', self.string_points)
 
         if string_box_xyxyxyxy is not None:
             if not self.y_locked:
                 self.string_points = string_box_xyxyxyxy
             else:
-                """
-                self.string_points = np.array([
-                    (new_x, old_y) for (new_x, _), (_, old_y) in zip(string_box_xyxyxyxy, self.string_points)
-                ])
-                """
                 string_box_xyxyxyxy = self.sort_string_points(string_box_xyxyxyxy)
                 self.string_points = string_box_xyxyxyxy
                 self.string_points[0][1] = self.y_avg[0]
                 self.string_points[1][1] = self.y_avg[1]
-                #self.string_points[2][1] = self.y_avg[2]
-                #self.string_points[3][1] = self.y_avg[3]
                 print("y_avg:",self.y_avg)
                 print(self.string_points)
-            self.last_valid_string = self.string_points  # save for fallback use
+            self.last_valid_string = self.string_points
         else:
             print("No new string box detected. Reusing last known string box.")
             if hasattr(self, 'last_valid_string'):
                 self.string_points = self.last_valid_string
 
-
-
-
-
     def get_midline(self):
-        """
-        Compute the midline (parallel to top and bottom edges) of the bow.
-        Returns:
-            - (m, b): slope and intercept for y = mx + b (midline),
-                    OR (inf, x) for vertical line
-        """
-
         def distance(pt1, pt2):
             return (pt1[0] - pt2[0]) ** 2 + (pt1[1] - pt2[1]) ** 2
 
@@ -274,7 +50,7 @@ class Classification:
         d4 = distance(self.bow_points[3], self.bow_points[0])
         l = [d1, d2, d3, d4]
         min_index = l.index(min(l))
-        #two shortest distances are the two ends of the bow, use to get midpoints for midline
+
         if min_index == 0:
             pair1 = self.bow_points[0], self.bow_points[1]
             pair2 = self.bow_points[2], self.bow_points[3]
@@ -300,43 +76,15 @@ class Classification:
         
         return slope, intercept
 
-        """topLeft, topRight, botRight, botLeft = pt1, pt2, pt3, pt4
-
-        if self.bow_points is None:
-            return None
-
-        # Get slope and intercept of top edge
-        dx_top = topRight[0] - topLeft[0]
-        dy_top = topRight[1] - topLeft[1]
-
-        if dx_top == 0:
-            # Perfect vertical bow
-            mid_x = (topLeft[0] + botLeft[0]) / 2
-            return float('inf'), mid_x
-
-        slope = dy_top / dx_top
-        intercept_top = topLeft[1] - slope * topLeft[0]
-
-        # Get slope and intercept of bottom edge (should be nearly same slope)
-        intercept_bottom = botLeft[1] - slope * botLeft[0]
-
-        # Midline is average of intercepts
-        intercept_mid = (intercept_top + intercept_bottom) / 2
-
-        return slope, intercept_mid"""
-
-
-
     def get_vertical_lines(self):
         topLeft = self.string_points[0]
         topRight = self.string_points[1]
         botRight = self.string_points[2]
         botLeft = self.string_points[3]
 
-        # Avoid division by zero by checking x-difference
         dx_left = topLeft[0] - botLeft[0]
         if dx_left == 0:
-            leftSlope = float('inf')  # or use a large number like 1e6
+            leftSlope = float('inf')
             leftYint = None
         else:
             leftSlope = (topLeft[1] - botLeft[1]) / dx_left
@@ -350,8 +98,6 @@ class Classification:
             rightSlope = (topRight[1] - botRight[1]) / dx_right
             rightYint = topRight[1] - rightSlope * topRight[0]
 
-        # [top-left, top-right, bottom-right, bottom-left]
-        # (m1, b1, ht1, hb1)
         leftHT1 = self.string_points[0][1]
         leftHT2 = self.string_points[3][1]
         rightHT1 = self.string_points[1][1]
@@ -360,9 +106,7 @@ class Classification:
         return (leftSlope, leftYint, leftHT1, leftHT2), (rightSlope, rightYint, rightHT1, rightHT2)
 
     def intersects_vertical(self, linear_line, vertical_lines):
-        #print('linear:', linear_line, '\nvertical:', vertical_lines)
-
-        m, b = linear_line  # from get_midline()
+        m, b = linear_line
         vertical_one = vertical_lines[0]
         vertical_two = vertical_lines[1]
 
@@ -370,53 +114,40 @@ class Classification:
             slope_v, intercept_v, top_y, bot_y = v_line
 
             if slope_v == float("inf") or intercept_v is None:
-                # Vertical string line: x = constant
                 x = x_ref
                 if m == float('inf'):
-                    return None  # both lines vertical
+                    return None
                 y = m * x + b
             elif m == float('inf'):
-                # Vertical bow midline
                 x = b
                 y = slope_v * x + intercept_v
             elif abs(m - slope_v) < 1e-6:
-                return None  # Parallel lines
+                return None
             else:
                 x = (intercept_v - b) / (m - slope_v)
                 y = m * x + b
 
-            # Ensure top_y is *smaller* than bot_y (because image y increases downward)
             ymin = min(top_y, bot_y)
             ymax = max(top_y, bot_y)
 
             if not (ymin <= y <= ymax):
-                #print(f"Intersection y={y} is outside vertical range ({ymin}, {ymax})")
                 return None
 
             return (x, y)
 
-
-        x_left = self.string_points[0][0]  # top-left x
-        x_right = self.string_points[1][0]  # top-right x
+        x_left = self.string_points[0][0]
+        x_right = self.string_points[1][0]
 
         pt1 = get_intersection(vertical_one, x_left)
         pt2 = get_intersection(vertical_two, x_right)
 
         if pt1 is None or pt2 is None:
-            #print("One or both intersections invalid")
             return 1
 
         return self.bow_height_intersection((pt1, pt2), vertical_lines)
     
     @staticmethod
     def sort_string_points(pts):
-        # Ensure numpy array for consistent indexing
-        #sort in clockwise order around center, returns top left point first
-        #assumes only 4 points in a rectangle, with cello in upright position
-        #Since its upright rectangular, get top 2 points and the leftmost point will be the top left point. 
-        #get top 2 points
-        #TOP LEFT CORNER IS (0,0)
-        #TOP LEFT POINT WILL BE SMALL Y, SMALL X
         sorted_pts = sorted(pts, key=lambda x: x[1])
         top_points = sorted_pts[:2]
         bottom_points = sorted_pts[2:]
@@ -424,31 +155,7 @@ class Classification:
         bottom_points = sorted(bottom_points, key=lambda x: x[0], reverse=True)
         return np.array(top_points + bottom_points)
 
-
-        """pts = np.array(pts)
-        center = np.mean(pts, axis=0)
-
-        def angle_from_center(pt):
-            return np.arctan2(pt[1] - center[1], pt[0] - center[0])
-
-        # Sort points clockwise around center
-        sorted_pts = sorted(pts, key=angle_from_center)"""
-        #return pts
-
-
     def bow_height_intersection(self, intersection_points, vertical_lines):
-        """
-        Determines the height level at which the linear line intersects the vertical lines.
-
-        Parameters:
-        - intersection_points (tuple): ((x1, y1), (x2, y2)) coordinates of intersection for each line
-        - vertical_lines (tuple): Output of get_vertical_lines() (m1, b1, ht1, hb1)
-
-        Returns:
-        - 2: too high
-        - 3: too low
-        - 0: in the middle
-        """
         top_zone_percentage = 0.1
         bottom_zone_percentage = 0.1
 
@@ -488,31 +195,14 @@ class Classification:
         if self.frame_num % self.num_wait_frames:
             top_left_avg = statistics.median([frame[0] for frame in self.string_ycoord_heights])
             top_right_avg = statistics.median([frame[1] for frame in self.string_ycoord_heights])
-            #bot_right_avg = statistics.median([frame[2] for frame in self.string_ycoord_heights])  # top edge
-            #bot_left_avg = statistics.median([frame[3] for frame in self.string_ycoord_heights])  # bottom edge
-
-            # Use original x-values, but lock Y-values at average top height
             self.string_points = string_box_xyxyxyxy
             self.string_points[0][1] = top_left_avg
             self.string_points[1][1] = top_right_avg
-            #self.string_points[2][1] = bot_right_avg
-            #self.string_points[3][1] = bot_left_avg
             self.y_avg = [top_left_avg, top_right_avg]
             self.y_locked = True
             self.string_ycoord_heights = []
 
     def bow_angle(self, bow_line, vertical_lines):
-        """
-        Classify the bow angle relative to the two vertical lines
-
-        Parameters:
-        - bow_line (tuple): (m, b)
-        - vertical_lines (tuple): ((m1, b1, top1, bot1), (m2, b2, top2, bot2))
-
-        Returns:
-        - 1: Wrong Angle
-        - 0: Correct Angle
-        """
         max_angle = 20
 
         m_bow = bow_line[0]
@@ -530,21 +220,6 @@ class Classification:
         return 0
 
     def display_classification(self, result, opencv_frame):
-        """
-        Display a classification label based on the result code. Display bounding boxes and coordinates as well.
-
-        Parameters:
-        - result (int): Classification result code
-            - 0: Correct bow height
-            - 1: Outside bow zone
-            - 2: Too low
-            - 3: Too high
-
-        Returns:
-        - opencv frame
-        """
-
-        # define labels for classification results
         label_map = {
             0: ("Correct Bow Height", (0,255,0)),
             1: ("Outside Bow Zone", (0,0,255)),
@@ -552,7 +227,6 @@ class Classification:
             3: ("Too High", (255,0,0))
         }
 
-        # if the result is in the label map, use that label and color
         if result in label_map:
             label, color = label_map[result]
         else:
@@ -567,40 +241,48 @@ class Classification:
 
         return opencv_frame
     
+    def print_timing_table(self):
+        if not self.inference_times:
+            print("No timing data collected.")
+            return
+        
+        times_ms = [t * 1000 for t in self.inference_times]
+        avg = statistics.mean(times_ms)
+        med = statistics.median(times_ms)
+        mn = min(times_ms)
+        mx = max(times_ms)
+
+        print("\n" + "="*55)
+        print(f"{'INFERENCE TIMING SUMMARY':^55}")
+        print("="*55)
+        print(f"{'Metric':<25} {'Value':>20}")
+        print("-"*55)
+        print(f"{'Total Frames':<25} {len(times_ms):>20}")
+        print(f"{'Avg Inference (ms)':<25} {avg:>20.2f}")
+        print(f"{'Median Inference (ms)':<25} {med:>20.2f}")
+        print(f"{'Min Inference (ms)':<25} {mn:>20.2f}")
+        print(f"{'Max Inference (ms)':<25} {mx:>20.2f}")
+        print(f"{'Avg FPS':<25} {1000/avg:>20.2f}")
+        print("="*55)
+
     def process_frame(self, frame):
-        """
-        returns dictionary with keys: class, bow, string
-        class:
-        -3: updating string y coordinates, not ready to classify
-        -2: no detections
-        -1: detection of only one object
-        0: correct bow height
-        1: outside bow zone
-        2: too low
-        3: too high
-        
-        
-        """
         return_dict = {"class": None, "bow": None, "string": None, "angle": None}
-        #expectation is that the frame is already resized to correct proportions
         classes = ["bow", "string"]
-        model = YOLO('robust_yolo.pt')  # Replace with your actual model file    
-        results = model(frame)
+
+        t_start = time.perf_counter()
+        results = self.model(frame, device=0)
+        t_end = time.perf_counter()
+        self.inference_times.append(t_end - t_start)
+
         avg_frame_counter = False
         string_coords = None
         bow_coords = None
         if len(results) == 0:
             return None
-        #print("************", len(results[0].obb.xyxyxyxy), "************")
         for result in results:
             if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
-                obb_coords = result.obb.xyxyxyxy.cpu().numpy()  # shape: (N, 4, 2)
-                # for box in obb_coords:
-                #     pts = box.reshape((-1, 1, 2)).astype(int)
-                #     cv2.polylines(annotated_frame, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
+                obb_coords = result.obb.xyxyxyxy.cpu().numpy()
             if len(result.obb.xyxyxyxy) >= 1:
-                #if there is at least one detection, we run through the for loop to find the detection of each class with the highest confidnece
-                #this is then used to update the actual coordinate of the points stored within the object
                 bow_conf = 0.0
                 bow_index = -1
                 string_conf = 0.0
@@ -617,14 +299,12 @@ class Classification:
                 if bow_index != -1 and string_index != -1:
                     return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                     return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                    #print(result.obb[string_index].xyxyxyxy)
                     string_coords = self.sort_string_points(return_dict["string"])
                     bow_coords = np.array(return_dict["bow"])
                     self.string_repeat = 0
                     self.bow_repeat = 0
                     self.average_y_coordinates(string_coords)
                 else:
-                    #only one object class detected
                     return_dict["class"] = -1
                     if bow_index != -1:
                         self.bow_repeat = 0
@@ -645,112 +325,52 @@ class Classification:
                             self.bow_repeat += 1
                         else:
                             self.bow_repeat = 0
-
-                
             else:
-                #no detections, set class to -2
                 return_dict["class"] = -2
                 print("no detections")
                 return return_dict
             
-            
             if string_coords is not None and bow_coords is not None:
-                #runs only if detection of both objects in the last 6 frames
                 self.update_points(string_coords, bow_coords)
-                #string_coords = self.string_points
-                # Get bow midline and vertical lines
                 midlines = self.get_midline()
                 vert_lines = self.get_vertical_lines()
                 intersect_points = self.intersects_vertical(midlines, vert_lines)
                 return_dict["angle"] = self.bow_angle(midlines, vert_lines)
-
-                # If vertical intersection returned 1 (invalid or out of bounds), classify as outside
-                result = intersect_points  # Could be 0 (correct), 2 (too low), 3 (too high)
+                result = intersect_points
                 return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
                 return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
                 return_dict["class"] = result
-                #print(self.string_points)
             else:
                 return_dict["class"] = -1
             return return_dict
-            """
-            elif len(result.obb.xyxyxyxy) == 1:
-                #print("Only one detection")
-                #print(result.obb.cls[0], result.obb.xyxyxyxy)
-                return_dict["class"] = -1
-                return_dict[classes[int(result.obb.cls[0].item())]] = [tuple(torch.round(result.obb[0].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                if int(result.obb.cls[0].item()) == 1 and self.FRAME_COUNTER <= num_wait_frames:
-                    self.FRAME_COUNTER += 1
-                    self.average_y_coordinates(return_dict["string"])
-                    return_dict["class"] = -3
-                return return_dict
-            """
-        
-"""
-    Main classification logic:
-        within loop:
-        1. Receive new bounding box corner coordinates.
-        2. Call update_points() with the new coordinates.
-        3. Compute and store vertical edge data using get_vertical_lines().
-        4. Call intersects_vertical() with the current line and vertical edges.
 
-        5. Interpret the return value from intersects_vertical():
-            - 0 → Classify as "Correct"
-            - 1 → Classify as "Outside Bow Zone"
-            - 2 → Classify as "Too Low"
-            - 3 → Classify as "Too High"
 
-        6. Call display_classification(result, cv2_frame) to add classification labels.
-
-        7. Display and show return value of display_classification.
-
-        Note: if extra time check if computer uses gpu if not use this line:
-                obb_coords = result.obb.xyxyxyxy.cpu().numpy()  # shape: (N, 4, 2)
-                if using gpu use this: 
-                    obb_coords = result.obb.xyxyxyxy.cuda().numpy()  # shape: (N, 4, 2)
-                    (might not need the.numpy() could be wrong though)
-
-"""
 def main():
-    # Open video
-    # Load YOLOv11 OBB model
-    #model_path = "newest_best.pt"
-    model_path = "robust_yolo.pt"
-    model = YOLO(model_path, task="obb")  # Replace with your actual model file     
-    cap = cv2.VideoCapture("bow placing too high.mp4")
-    #cap = cv2.VideoCapture("bow too high-slow (3).mp4")
+    cap = cv2.VideoCapture("bow too high-slow (3).mp4")
     
-    # Get video properties for output
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
-    # Define codec and create VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # You can also use 'XVID'
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter('annotated_output2.mp4', fourcc, fps, (frame_width, frame_height))
     
     def resize_keep_aspect(image, target_width=1200):
-        """Resize image while keeping aspect ratio"""
         h, w = image.shape[:2]
         scale = target_width / w
         new_dim = (int(w * scale), int(h * scale))
         return cv2.resize(image, new_dim, interpolation=cv2.INTER_AREA)
 
     cln = Classification()
-    FRAME_COUNTER = 0
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
             break
 
-        # Rotate frame 180 degrees to correct orientation
-        #frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-
-        # Run YOLOv11 OBB inference
-        annotated_frame = frame.copy()  # Initialize it safely with the original frame
+        annotated_frame = frame.copy()
 
         c = cln.process_frame(annotated_frame)
-        print(c)
+        # print(c)
 
         if c["class"] is not None and c["class"] > -1:
             m, b = cln.get_midline()
@@ -764,37 +384,22 @@ def main():
                 y1 = int(m * x1 + b)
                 cv2.line(annotated_frame, (x0, y0), (x1, y1), (0, 255, 255), 2)
 
-            # Draw intersection points
-#            if isinstance(cln.intersect_points, tuple):
-#                for pt in cln.intersect_points:
-#                    cv2.circle(annotated_frame, (int(pt[0]), int(pt[1])), 5, (255, 255, 255), -1)
-        
             annotated_frame = cln.display_classification(c["class"], annotated_frame)
 
-                
-
-        
-
-        # Write the annotated frame to output video (full resolution)
         out.write(annotated_frame)
 
-        # Resize frame for display
         resized_frame = resize_keep_aspect(annotated_frame, target_width=900)
-
-        # resized_frame = resize_keep_aspect(frame, target_width=700)
-
-        # Show the resized frame
         cv2.imshow("YOLOv11 OBB", resized_frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
-    # Release everything
     cap.release()
     out.release()
     cv2.destroyAllWindows()
     print("Video saved as 'annotated_output.mp4'")
 
-
+    # Print timing summary table
+    cln.print_timing_table()
 
 
 if __name__ == "__main__":
