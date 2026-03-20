@@ -8,8 +8,10 @@ import time
 print("CUDA available:", torch.cuda.is_available())
 print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
 class Classification:
-    frame_num = 0
-    string_ycoord_heights = []
+    MAX_QUEUE_SIZE = 60
+    MAX_Y_DELTA_THRESHOLD = 3
+    MAX_BOW_DIST_THRESHOLD = 5
+
     def __init__(self):
         self.model = YOLO('robust_yolo.pt')
         self.model.to('cuda')
@@ -22,24 +24,15 @@ class Classification:
         self.y_avg = [0, 0]
         self.bow_repeat = 0
         self.string_repeat = 0
+        self.delta_queue = []
         self.inference_times = []
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
-
         if string_box_xyxyxyxy is not None:
-            if not self.y_locked:
-                self.string_points = string_box_xyxyxyxy
-            else:
-                string_box_xyxyxyxy = self.sort_string_points(string_box_xyxyxyxy)
-                self.string_points = string_box_xyxyxyxy
-                self.string_points[0][1] = self.y_avg[0]
-                self.string_points[1][1] = self.y_avg[1]
-                print("y_avg:",self.y_avg)
-                print(self.string_points)
+            self.string_points = self.update_string_points(string_box_xyxyxyxy)
             self.last_valid_string = self.string_points
-        else:
-            print("No new string box detected. Reusing last known string box.")
+        else: 
             if hasattr(self, 'last_valid_string'):
                 self.string_points = self.last_valid_string
 
@@ -157,6 +150,46 @@ class Classification:
         top_points = sorted(top_points, key=lambda x: x[0])
         bottom_points = sorted(bottom_points, key=lambda x: x[0], reverse=True)
         return np.array(top_points + bottom_points)
+
+
+    def sort_bow_points(self, pts):
+        sorted_pts = sorted(pts, key=lambda p: p[0])  # sort by x
+        left_points = sorted(sorted_pts[:2], key=lambda p: p[1])   # sort by y ascending
+        right_points = sorted(sorted_pts[2:], key=lambda p: p[1])  # sort by y ascending
+        return np.array([left_points[0], right_points[0], right_points[1], left_points[1]])
+
+    def update_string_points(self, string_box):
+        sorted_string = self.sort_string_points(string_box)
+
+        delta_y = abs(sorted_string[0][1] - sorted_string[3][1])
+        self.delta_queue.append(delta_y)
+        if len(self.delta_queue) > self.MAX_QUEUE_SIZE:
+            self.delta_queue.pop(0)
+
+        if len(self.delta_queue) == 1:
+            self.string_points = sorted_string
+            return sorted_string
+
+        median_delta = statistics.median(self.delta_queue)
+
+        if abs(median_delta - delta_y) > self.MAX_Y_DELTA_THRESHOLD:
+            sorted_string[0][1] = sorted_string[3][1] - median_delta
+            sorted_string[1][1] = sorted_string[2][1] - median_delta
+
+        if self.bow_points is not None:
+            sorted_bow = self.sort_bow_points(self.bow_points)
+            top_avg_bow_y = (sorted_bow[0][1] + sorted_bow[1][1]) / 2
+            top_avg_str_y = (sorted_string[0][1] + sorted_string[1][1]) / 2
+            bot_avg_bow_y = (sorted_bow[2][1] + sorted_bow[3][1]) / 2
+
+            if (top_avg_bow_y <= top_avg_str_y and
+                bot_avg_bow_y >= (top_avg_str_y - self.MAX_BOW_DIST_THRESHOLD)):
+                if (sorted_bow[0][0] < sorted_string[0][0] and
+                    sorted_bow[1][0] > sorted_string[1][0]):
+                    sorted_string[0][1] = sorted_string[3][1] - median_delta
+                    sorted_string[1][1] = sorted_string[2][1] - median_delta
+
+        return sorted_string
 
     def bow_height_intersection(self, intersection_points, vertical_lines):
         top_zone_percentage = 0.1
@@ -305,7 +338,6 @@ class Classification:
                     bow_coords = np.array(return_dict["bow"])
                     self.string_repeat = 0
                     self.bow_repeat = 0
-                    self.average_y_coordinates(string_coords)
                 else:
                     return_dict["class"] = -1
                     if bow_index != -1:
@@ -321,7 +353,6 @@ class Classification:
                         self.string_repeat = 0
                         return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                         string_coords = self.sort_string_points(return_dict["string"])
-                        self.average_y_coordinates(string_coords)
                         if self.bow_repeat <= 6:
                             bow_coords = self.bow_points
                             self.bow_repeat += 1
