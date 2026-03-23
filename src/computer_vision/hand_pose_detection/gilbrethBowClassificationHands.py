@@ -1,5 +1,4 @@
 import os
-import sys
 import csv
 import cv2
 import torch
@@ -15,6 +14,10 @@ import itertools
 
 from model import KeyPointClassifier
 
+
+print("CUDA available:", torch.cuda.is_available())
+print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
+
 base_directory = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -24,7 +27,14 @@ class Classification:
     MAX_BOW_DIST_THRESHOLD = 5
 
     def __init__(self):
-        self.model = YOLO('robust_yolo.pt')
+        yolo_path = os.path.join(base_directory, 'robust_yolo.pt')
+        self.model = YOLO(yolo_path if os.path.exists(yolo_path) else 'robust_yolo.pt')
+
+        self.yolo_device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.yolo_infer_device = 0 if torch.cuda.is_available() else 'cpu'
+        self.model.to(self.yolo_device)
+        print("Model device:", next(self.model.model.parameters()).device)
+
         self.bow_points = None
         self.string_points = None
         self.y_locked = False
@@ -34,7 +44,7 @@ class Classification:
         self.bow_repeat = 0
         self.string_repeat = 0
         self.delta_queue = []
-        self.inference_times = []  # Store inference times
+        self.inference_times = []
 
     def update_points(self, string_box_xyxyxyxy, bow_box_xyxyxyxy):
         self.bow_points = bow_box_xyxyxyxy
@@ -265,10 +275,10 @@ class Classification:
 
     def display_classification(self, result, opencv_frame):
         label_map = {
-            0: ("Correct Bow Height", (0,255,0)),
-            1: ("Outside Bow Zone", (0,0,255)),
-            2: ("Too Low", (0,165,255)),
-            3: ("Too High", (255,0,0))
+            0: ("Correct Bow Height", (0, 255, 0)),
+            1: ("Outside Bow Zone", (0, 0, 255)),
+            2: ("Too Low", (0, 165, 255)),
+            3: ("Too High", (255, 0, 0))
         }
 
         if result in label_map:
@@ -277,10 +287,10 @@ class Classification:
             label = "Unknown"
             color = (255, 255, 255)
 
-        cv2.putText(opencv_frame, label, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
+        cv2.putText(opencv_frame, label, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
         for point in [self.bow_points, self.string_points]:
-            if point.any() and len(point) == 4:
-                points = [tuple(map(int,p)) for p in point]
+            if point is not None and point.any() and len(point) == 4:
+                points = [tuple(map(int, p)) for p in point]
                 cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=color, thickness=2)
 
         return opencv_frame
@@ -290,101 +300,103 @@ class Classification:
             print("No timing data collected.")
             return
 
-        times_ms = [t * 1000 for t in self.inference_times]
+        times_ms = [t * 1000 for t in self.inference_times[1:]] if len(self.inference_times) > 1 else [self.inference_times[0] * 1000]
         avg = statistics.mean(times_ms)
         med = statistics.median(times_ms)
         mn = min(times_ms)
         mx = max(times_ms)
 
-        print("\n" + "="*55)
+        print("\n" + "=" * 55)
         print(f"{'INFERENCE TIMING SUMMARY':^55}")
-        print("="*55)
+        print("=" * 55)
         print(f"{'Metric':<25} {'Value':>20}")
-        print("-"*55)
+        print("-" * 55)
         print(f"{'Total Frames':<25} {len(times_ms):>20}")
         print(f"{'Avg Inference (ms)':<25} {avg:>20.2f}")
         print(f"{'Median Inference (ms)':<25} {med:>20.2f}")
         print(f"{'Min Inference (ms)':<25} {mn:>20.2f}")
         print(f"{'Max Inference (ms)':<25} {mx:>20.2f}")
-        print(f"{'Avg FPS':<25} {1000/avg:>20.2f}")
-        print("="*55)
+        print(f"{'Avg FPS':<25} {1000 / avg:>20.2f}")
+        print("=" * 55)
 
     def process_frame(self, frame):
         return_dict = {"class": None, "bow": None, "string": None, "angle": None}
-        classes = ["bow", "string"]
 
         t_start = time.perf_counter()
-        results = self.model(frame, device='cpu', verbose=False)
+        results = self.model(frame, device=self.yolo_infer_device, verbose=False)
         t_end = time.perf_counter()
         self.inference_times.append(t_end - t_start)
 
-        avg_frame_counter = False
         string_coords = None
         bow_coords = None
         if len(results) == 0:
             return None
+
         for result in results:
             if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
-                obb_coords = result.obb.xyxyxyxy.cpu().numpy()
-            if len(result.obb.xyxyxyxy) >= 1:
-                bow_conf = 0.0
-                bow_index = -1
-                string_conf = 0.0
-                string_index = -1
-                for x in range(len(result.obb)):
-                    if int(result.obb.cls[x].item()) == 0:
-                        if result.obb[x].conf > bow_conf:
-                            bow_conf = result.obb[x].conf
-                            bow_index = x
-                    elif int(result.obb.cls[x].item()) == 1:
-                        if result.obb[x].conf > string_conf:
-                            string_conf = result.obb[x].conf
-                            string_index = x
-                if bow_index != -1 and string_index != -1:
-                    return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                    return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                    string_coords = self.sort_string_points(return_dict["string"])
-                    bow_coords = np.array(return_dict["bow"])
-                    self.string_repeat = 0
-                    self.bow_repeat = 0
-                else:
-                    return_dict["class"] = -1
-                    if bow_index != -1:
-                        self.bow_repeat = 0
+                if len(result.obb.xyxyxyxy) >= 1:
+                    bow_conf = 0.0
+                    bow_index = -1
+                    string_conf = 0.0
+                    string_index = -1
+
+                    for x in range(len(result.obb)):
+                        if int(result.obb.cls[x].item()) == 0:
+                            if result.obb[x].conf > bow_conf:
+                                bow_conf = result.obb[x].conf
+                                bow_index = x
+                        elif int(result.obb.cls[x].item()) == 1:
+                            if result.obb[x].conf > string_conf:
+                                string_conf = result.obb[x].conf
+                                string_index = x
+
+                    if bow_index != -1 and string_index != -1:
                         return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                        bow_coords = np.array(return_dict["bow"])
-                        if self.string_repeat <= 6:
-                            string_coords = self.string_points
-                            self.string_repeat += 1
-                        else:
-                            string_coords = None
-                    else:
-                        self.string_repeat = 0
                         return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                         string_coords = self.sort_string_points(return_dict["string"])
-                        if self.bow_repeat <= 6:
-                            bow_coords = self.bow_points
-                            self.bow_repeat += 1
-                        else:
+                        bow_coords = np.array(return_dict["bow"])
+                        self.string_repeat = 0
+                        self.bow_repeat = 0
+                    else:
+                        return_dict["class"] = -1
+                        if bow_index != -1:
                             self.bow_repeat = 0
-            else:
-                return_dict["class"] = -2
-                print("no detections")
+                            return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                            bow_coords = np.array(return_dict["bow"])
+                            if self.string_repeat <= 6:
+                                string_coords = self.string_points
+                                self.string_repeat += 1
+                            else:
+                                string_coords = None
+                        elif string_index != -1:
+                            self.string_repeat = 0
+                            return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                            string_coords = self.sort_string_points(return_dict["string"])
+                            if self.bow_repeat <= 6:
+                                bow_coords = self.bow_points
+                                self.bow_repeat += 1
+                            else:
+                                self.bow_repeat = 0
+                else:
+                    return_dict["class"] = -2
+                    print("no detections")
+                    return return_dict
+
+                if string_coords is not None and bow_coords is not None:
+                    self.update_points(string_coords, bow_coords)
+                    midlines = self.get_midline()
+                    vert_lines = self.get_vertical_lines()
+                    intersect_points = self.intersects_vertical(midlines, vert_lines)
+                    return_dict["angle"] = self.bow_angle(midlines, vert_lines)
+                    return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
+                    return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
+                    return_dict["class"] = intersect_points
+                else:
+                    return_dict["class"] = -1
+
                 return return_dict
 
-            if string_coords is not None and bow_coords is not None:
-                self.update_points(string_coords, bow_coords)
-                midlines = self.get_midline()
-                vert_lines = self.get_vertical_lines()
-                intersect_points = self.intersects_vertical(midlines, vert_lines)
-                return_dict["angle"] = self.bow_angle(midlines, vert_lines)
-                result = intersect_points
-                return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
-                return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
-                return_dict["class"] = result
-            else:
-                return_dict["class"] = -1
-            return return_dict
+        return return_dict
 
 
 class Hands:
@@ -436,7 +448,7 @@ class Hands:
                 self.keypoint_classifier_labels = [row[0] for row in csv.reader(f)]
         else:
             print('Warning: label file not found. Using default labels.')
-            self.keypoint_classifier_labels = ['Class 0', 'Class 1', 'Class 2']  # Default
+            self.keypoint_classifier_labels = ['Class 0', 'Class 1', 'Class 2']
 
     def close(self):
         self.hands.close()
@@ -444,7 +456,6 @@ class Hands:
 
     def calc_bounding_rect(image, landmarks):
         image_width, image_height = image.shape[1], image.shape[0]
-
         landmark_array = np.empty((0, 2), int)
 
         for _, landmark in enumerate(landmarks.landmark):
@@ -488,7 +499,6 @@ class Hands:
             return n / max_value
 
         temp_landmark_list = list(map(normalize_, temp_landmark_list))
-
         return temp_landmark_list
 
     def flip_landmark_list_x(landmark_list, image_width):
@@ -510,9 +520,9 @@ class Hands:
         info_text = handedness_label
         if hand_sign_text != "":
             info_text = info_text + ':' + hand_sign_text
+
         cv2.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
-
         return image
 
     def draw_landmarks(image, landmark_point):
@@ -571,20 +581,8 @@ class Hands:
                 if index in [4, 8, 12, 16, 20]:
                     cv2.circle(image, tuple(landmark), 8, (255, 255, 255), -1)
                     cv2.circle(image, tuple(landmark), 8, (0, 0, 0), 1)
+
         return image
-
-    def classify_elbow_posture(shoulder, elbow, hand, reference_ratio, threshold=0.1):
-        shoulder_to_elbow = np.sqrt((shoulder.x - elbow.x)**2 + (shoulder.y - elbow.y)**2)
-        elbow_to_hand = np.sqrt((elbow.x - hand.x)**2 + (elbow.y - hand.y)**2)
-
-        if elbow_to_hand == 0:
-            return None
-
-        distance_ratio = shoulder_to_elbow / elbow_to_hand
-
-        if abs(distance_ratio - reference_ratio) > threshold:
-            return 'Elbow Too High'
-        return 'Correct Posture'
 
     def get_pose_triplet(self, pose_landmarks):
         if self.bow_hand_label == 'Right':
@@ -610,7 +608,6 @@ class Hands:
         return shoulder, elbow, wrist
 
     def build_elbow_feature_vector(self, shoulder, elbow, wrist):
-        
         shoulder_x = 1.0 - shoulder.x
         shoulder_y = shoulder.y
         shoulder_z = shoulder.z
@@ -783,20 +780,23 @@ class Hands:
 
 
 def main():
-    cap = cv2.VideoCapture("supination_1_26_wide.mp4")
+    input_video = os.path.join(base_directory, "bow too high-slow (3).mp4")
+    output_video = os.path.join(base_directory, 'annotated_output2.mp4')
+
+    cap = cv2.VideoCapture(input_video)
+
+    if not cap.isOpened():
+        raise FileNotFoundError(f"Could not open video: {input_video}")
 
     fps = int(cap.get(cv2.CAP_PROP_FPS))
+    if fps <= 0:
+        fps = 30
+
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter('annotated_output2.mp4', fourcc, fps, (frame_width, frame_height))
-
-    def resize_keep_aspect(image, target_width=1200):
-        h, w = image.shape[:2]
-        scale = target_width / w
-        new_dim = (int(w * scale), int(h * scale))
-        return cv2.resize(image, new_dim, interpolation=cv2.INTER_AREA)
+    out = cv2.VideoWriter(output_video, fourcc, fps, (frame_width, frame_height))
 
     cln = Classification()
     hand_cln = Hands()
@@ -807,7 +807,6 @@ def main():
             break
 
         annotated_frame = frame.copy()
-
         c = cln.process_frame(annotated_frame)
         h = hand_cln.process_frame(annotated_frame)
 
@@ -826,20 +825,12 @@ def main():
             annotated_frame = cln.display_classification(c["class"], annotated_frame)
 
         annotated_frame = hand_cln.display_classification(h, annotated_frame)
-
         out.write(annotated_frame)
-
-        resized_frame = resize_keep_aspect(annotated_frame, target_width=900)
-        cv2.imshow("YOLOv11 OBB", resized_frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
 
     cap.release()
     out.release()
     hand_cln.close()
-    cv2.destroyAllWindows()
-    print("Video saved as 'annotated_output2.mp4'")
-
+    print(f"Video saved as '{output_video}'")
     cln.print_timing_table()
 
 
