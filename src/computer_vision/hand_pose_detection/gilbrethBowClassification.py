@@ -7,6 +7,9 @@ import math
 import time
 print("CUDA available:", torch.cuda.is_available())
 print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
+
+INFER_W, INFER_H = 640, 640  # inference resolution (W, H)
+
 class Classification:
     MAX_QUEUE_SIZE = 60
     MAX_Y_DELTA_THRESHOLD = 3
@@ -151,11 +154,10 @@ class Classification:
         bottom_points = sorted(bottom_points, key=lambda x: x[0], reverse=True)
         return np.array(top_points + bottom_points)
 
-
     def sort_bow_points(self, pts):
-        sorted_pts = sorted(pts, key=lambda p: p[0])  # sort by x
-        left_points = sorted(sorted_pts[:2], key=lambda p: p[1])   # sort by y ascending
-        right_points = sorted(sorted_pts[2:], key=lambda p: p[1])  # sort by y ascending
+        sorted_pts = sorted(pts, key=lambda p: p[0])
+        left_points = sorted(sorted_pts[:2], key=lambda p: p[1])
+        right_points = sorted(sorted_pts[2:], key=lambda p: p[1])
         return np.array([left_points[0], right_points[0], right_points[1], left_points[1]])
 
     def update_string_points(self, string_box):
@@ -270,9 +272,11 @@ class Classification:
             color = (255, 255, 255)
 
         cv2.putText(opencv_frame, label, (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, color, 3, cv2.LINE_AA)
+
+        # Draw boxes using native-resolution points stored on self
         for point in [self.bow_points, self.string_points]:
-            if point.any() and len(point) == 4:
-                points = [tuple(map(int,p)) for p in point]
+            if point is not None and len(point) == 4:
+                points = [tuple(map(int, p)) for p in point]
                 cv2.polylines(opencv_frame, [np.array(points)], isClosed=True, color=color, thickness=2)
 
         return opencv_frame
@@ -282,7 +286,7 @@ class Classification:
             print("No timing data collected.")
             return
 
-        times_ms = [t * 1000 for t in self.inference_times[1:]]  # skip first frame warmup
+        times_ms = [t * 1000 for t in self.inference_times[1:]]
         avg = statistics.mean(times_ms)
         med = statistics.median(times_ms)
         mn = min(times_ms)
@@ -301,9 +305,20 @@ class Classification:
         print(f"{'Avg FPS':<25} {1000/avg:>20.2f}")
         print("="*55)
 
-    def process_frame(self, frame):
+    @staticmethod
+    def scale_points(pts, scale_x, scale_y):
+        """Scale a list/array of (x, y) points by the given factors."""
+        return np.array([[p[0] * scale_x, p[1] * scale_y] for p in pts], dtype=np.float32)
+
+    def process_frame(self, frame, native_w, native_h):
+        """
+        frame      : already downscaled to INFER_W x INFER_H
+        native_w/h : original video resolution — used to scale boxes back up
+        """
         return_dict = {"class": None, "bow": None, "string": None, "angle": None}
-        classes = ["bow", "string"]
+
+        scale_x = native_w / INFER_W
+        scale_y = native_h / INFER_H
 
         t_start = time.perf_counter()
         results = self.model(frame, device=0)
@@ -312,11 +327,13 @@ class Classification:
 
         string_coords = None
         bow_coords = None
+
         if len(results) == 0:
             return None
+
         for result in results:
             if hasattr(result, 'obb') and result.obb is not None and result.obb.xyxyxyxy is not None:
-                obb_coords = result.obb.xyxyxyxy.cpu().numpy()
+                pass  # just confirming OBB exists
             if len(result.obb.xyxyxyxy) >= 1:
                 bow_conf = 0.0
                 bow_index = -1
@@ -331,33 +348,45 @@ class Classification:
                         if result.obb[x].conf > string_conf:
                             string_conf = result.obb[x].conf
                             string_index = x
+
                 if bow_index != -1 and string_index != -1:
-                    return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                    return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                    string_coords = self.sort_string_points(return_dict["string"])
-                    bow_coords = np.array(return_dict["bow"])
+                    # Extract raw inference-resolution points then scale up immediately
+                    bow_pts_infer   = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist())    for i in range(4)]
+                    string_pts_infer = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+
+                    bow_coords    = self.scale_points(bow_pts_infer,    scale_x, scale_y)
+                    string_coords = self.scale_points(string_pts_infer, scale_x, scale_y)
+                    string_coords = self.sort_string_points(string_coords)
+
+                    return_dict["bow"]    = [tuple(bow_coords[i].tolist())    for i in range(4)]
+                    return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
                     self.string_repeat = 0
-                    self.bow_repeat = 0
+                    self.bow_repeat    = 0
+
                 else:
                     return_dict["class"] = -1
                     if bow_index != -1:
                         self.bow_repeat = 0
-                        return_dict["bow"] = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                        bow_coords = np.array(return_dict["bow"])
+                        bow_pts_infer = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                        bow_coords = self.scale_points(bow_pts_infer, scale_x, scale_y)
+                        return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
                         if self.string_repeat <= 6:
-                            string_coords = self.string_points
+                            string_coords = self.string_points  # already in native res
                             self.string_repeat += 1
                         else:
                             string_coords = None
                     else:
                         self.string_repeat = 0
-                        return_dict["string"] = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
-                        string_coords = self.sort_string_points(return_dict["string"])
+                        string_pts_infer = [tuple(torch.round(result.obb[string_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
+                        string_coords = self.scale_points(string_pts_infer, scale_x, scale_y)
+                        string_coords = self.sort_string_points(string_coords)
+                        return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
                         if self.bow_repeat <= 6:
-                            bow_coords = self.bow_points
+                            bow_coords = self.bow_points  # already in native res
                             self.bow_repeat += 1
                         else:
                             self.bow_repeat = 0
+
             else:
                 return_dict["class"] = -2
                 print("no detections")
@@ -369,35 +398,41 @@ class Classification:
                 vert_lines = self.get_vertical_lines()
                 intersect_points = self.intersects_vertical(midlines, vert_lines)
                 return_dict["angle"] = self.bow_angle(midlines, vert_lines)
-                result = intersect_points
-                return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
+                return_dict["bow"]    = [tuple(bow_coords[i].tolist())    for i in range(4)]
                 return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
-                return_dict["class"] = result
+                return_dict["class"]  = intersect_points
             else:
                 return_dict["class"] = -1
+
             return return_dict
 
 
 def main():
     cap = cv2.VideoCapture("bow too high-slow (3).mp4")
 
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps          = int(cap.get(cv2.CAP_PROP_FPS))
+    native_w     = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    native_h     = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter('annotated_output2.mp4', fourcc, fps, (frame_width, frame_height))
+    out = cv2.VideoWriter('annotated_output3.mp4', fourcc, fps, (native_w, native_h))
 
     cln = Classification()
+
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
             break
+        frame = cv2.flip(frame, -1)
+        # Downscale for inference
+        small_frame = cv2.resize(frame, (INFER_W, INFER_H), interpolation=cv2.INTER_LINEAR)
 
+        # Run model on small frame; boxes come back in native resolution
+        c = cln.process_frame(small_frame, native_w, native_h)
+
+        # Annotate the original full-resolution frame
         annotated_frame = frame.copy()
-        c = cln.process_frame(annotated_frame)
-
-        if c["class"] is not None and c["class"] > -1:
+        if c is not None and c["class"] is not None and c["class"] > -1:
             m, b = cln.get_midline()
             if m == float('inf'):
                 x = int(b)
@@ -415,7 +450,7 @@ def main():
 
     cap.release()
     out.release()
-    print("Video saved as 'annotated_output2.mp4'")
+    print("Video saved as 'annotated_output3.mp4'")
     cln.print_timing_table()
 
 
