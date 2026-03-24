@@ -1,3 +1,5 @@
 env/
 
 *.pt
+*.mp4
+src/gilbreth videos/
