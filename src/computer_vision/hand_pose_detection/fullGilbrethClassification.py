@@ -13,6 +13,7 @@ import copy
 import itertools
 
 from model import KeyPointClassifier
+from Profile import Profile
 
 print("CUDA available:", torch.cuda.is_available())
 print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
@@ -751,6 +752,7 @@ class Hands:
                     hand_sign_text = str(hand_sign_id)
 
             return_dict['hand_class'] = hand_sign_text
+            return_dict['hand_class_id'] = hand_sign_id if self.keypoint_classifier is not None else -1
             return_dict['handedness'] = handedness.classification[0].label
             return_dict['brect'] = brect
             return_dict['landmark_list'] = landmark_list
@@ -770,6 +772,7 @@ class Hands:
                         elbow_class = f'Class {elbow_sign_id}'
 
                 return_dict['elbow_class'] = elbow_class
+                return_dict['elbow_class_id'] = elbow_sign_id if self.elbow_classifier is not None else -1
                 return_dict['pose_points'] = [
                     (int(shoulder.x * frame.shape[1]), int(shoulder.y * frame.shape[0])),
                     (int(elbow.x * frame.shape[1]), int(elbow.y * frame.shape[0])),
@@ -810,7 +813,7 @@ class Hands:
 
 
 def main():
-    input_video = os.path.join(base_directory, "bow too high-slow (3).mp4")
+    input_video = os.path.join(base_directory, "test1.mp4")
     output_video = os.path.join(base_directory, 'annotated_output6.mp4')
 
     cap = cv2.VideoCapture(input_video)
@@ -831,6 +834,12 @@ def main():
     cln = Classification()
     hand_cln = Hands()
 
+    session_dir = os.path.join(base_directory, 'sessions')
+    profile = Profile(output_dir=session_dir)
+    video_name = os.path.splitext(os.path.basename(input_video))[0]
+    user_id = video_name
+    profile.create_session(video_name)
+
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
@@ -846,6 +855,8 @@ def main():
 
         # Hand/pose tracking runs on the native-resolution frame
         h = hand_cln.process_frame(frame)
+
+        profile.add_session_data(video_name, bow_result=c, hand_result=h)
 
         annotated_frame = frame.copy()
 
@@ -866,10 +877,12 @@ def main():
         annotated_frame = hand_cln.display_classification(h, annotated_frame)
         out.write(annotated_frame)
 
+    summary = profile.end_session_and_get_summary(video_name)
     cap.release()
     out.release()
     hand_cln.close()
     print(f"Video saved as '{output_video}'")
+    print(f"Session saved to '{session_dir}'")
     cln.print_timing_table()
 
 
