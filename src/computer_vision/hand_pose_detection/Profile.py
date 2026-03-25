@@ -208,7 +208,7 @@ class Profile:
             "elbowPostureBreakdown": elbow_posture,
         }
 
-    def end_session_and_get_summary(self, video_name):
+    def end_session_and_get_summary(self, video_name, video_duration_s=None):
         timer = self._timers.pop(video_name, None)
         if timer:
             timer.cancel()
@@ -233,8 +233,11 @@ class Profile:
                 f.write(content)
             Profile._finalized_detail_json[video_name] = content
 
-        start_time = self._session_start_times.get(video_name, time.time())
-        duration_s = int(time.time() - start_time)
+        if video_duration_s is not None:
+            duration_s = int(video_duration_s)
+        else:
+            start_time = self._session_start_times.get(video_name, time.time())
+            duration_s = int(time.time() - start_time)
         duration_formatted = self._format_duration(duration_s)
 
         session_timestamp = self._session_timestamps_formatted.get(

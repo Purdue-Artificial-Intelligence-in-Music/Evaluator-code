@@ -877,7 +877,9 @@ def main():
         annotated_frame = hand_cln.display_classification(h, annotated_frame)
         out.write(annotated_frame)
 
-    summary = profile.end_session_and_get_summary(video_name)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_duration_s = frame_count / fps if fps > 0 else 0
+    summary = profile.end_session_and_get_summary(video_name, video_duration_s=video_duration_s)
     cap.release()
     out.release()
     hand_cln.close()
