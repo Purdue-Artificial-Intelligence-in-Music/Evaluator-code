@@ -180,7 +180,6 @@ class Classification:
 
     def update_string_points(self, string_box):
         sorted_string = self.sort_string_points(string_box)
-
         delta_y = abs(sorted_string[0][1] - sorted_string[3][1])
         self.delta_queue.append(delta_y)
         if len(self.delta_queue) > self.MAX_QUEUE_SIZE:
@@ -208,7 +207,6 @@ class Classification:
                         sorted_bow[1][0] > sorted_string[1][0]):
                     sorted_string[0][1] = sorted_string[3][1] - median_delta
                     sorted_string[1][1] = sorted_string[2][1] - median_delta
-
         return sorted_string
 
     def bow_height_intersection(self, intersection_points, vertical_lines):
@@ -279,8 +277,8 @@ class Classification:
         label_map = {
             0: ("Correct Bow Height", (0, 255, 0)),
             1: ("Outside Bow Zone", (0, 0, 255)),
-            2: ("Too Low", (0, 165, 255)),
-            3: ("Too High", (255, 0, 0))
+            2: ("Too High", (255, 0, 0)),
+            3: ("Too Low", (0, 165, 255))
         }
 
         if result in label_map:
@@ -334,8 +332,10 @@ class Classification:
         """
         return_dict = {"class": None, "bow": None, "string": None, "angle": None}
 
-        scale_x = native_w / INFER_W
-        scale_y = native_h / INFER_H
+        #scale_x = native_w / INFER_W
+        #scale_y = native_h / INFER_H
+        scale_x = 1.0
+        scale_y = 1.0
 
         t_start = time.perf_counter()
         results = self.model(frame, device=self.yolo_infer_device, verbose=False)
@@ -386,10 +386,11 @@ class Classification:
                             bow_pts_infer = [tuple(torch.round(result.obb[bow_index].xyxyxyxy)[0][i].tolist()) for i in range(4)]
                             bow_coords = self.scale_points(bow_pts_infer, scale_x, scale_y)
                             return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
-                            if self.string_repeat <= 6:
+                            if self.string_repeat < 5 and self.string_points is not None:
                                 string_coords = self.string_points  # already in native res
                                 self.string_repeat += 1
                             else:
+                                self.string_points = None
                                 string_coords = None
                         elif string_index != -1:
                             self.string_repeat = 0
@@ -397,14 +398,14 @@ class Classification:
                             string_coords = self.scale_points(string_pts_infer, scale_x, scale_y)
                             string_coords = self.sort_string_points(string_coords)
                             return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
-                            if self.bow_repeat <= 6:
+                            if self.bow_repeat < 5 and self.bow_points is not None:
                                 bow_coords = self.bow_points  # already in native res
                                 self.bow_repeat += 1
                             else:
-                                self.bow_repeat = 0
+                                self.bow_points = None
+                                bow_coords = None
                 else:
                     return_dict["class"] = -2
-                    print("no detections")
                     return return_dict
 
                 if string_coords is not None and bow_coords is not None:
@@ -412,7 +413,10 @@ class Classification:
                     midlines = self.get_midline()
                     vert_lines = self.get_vertical_lines()
                     intersect_points = self.intersects_vertical(midlines, vert_lines)
-                    return_dict["angle"] = self.bow_angle(midlines, vert_lines)
+                    if intersect_points not in (-1, 1):
+                        return_dict["angle"] = self.bow_angle(midlines, vert_lines)
+                    else:
+                        return_dict["angle"] = -1
                     return_dict["bow"] = [tuple(bow_coords[i].tolist()) for i in range(4)]
                     return_dict["string"] = [tuple(string_coords[i].tolist()) for i in range(4)]
                     return_dict["class"] = intersect_points
@@ -813,8 +817,8 @@ class Hands:
 
 
 def main():
-    input_video = os.path.join(base_directory, "test1.mp4")
-    output_video = os.path.join(base_directory, 'annotated_output6.mp4')
+    input_video = os.path.join(base_directory, "supination-slow.mp4")
+    output_video = os.path.join(base_directory, 'downscaled_supination-slow_annotated.mp4')
 
     cap = cv2.VideoCapture(input_video)
 
@@ -848,10 +852,13 @@ def main():
         # frame = cv2.flip(frame, -1)
 
         # Downscale for YOLO inference only
-        small_frame = cv2.resize(frame, (INFER_W, INFER_H), interpolation=cv2.INTER_LINEAR)
+        #small_frame = cv2.resize(frame, (INFER_W, INFER_H), interpolation=cv2.INTER_LINEAR)
 
-        # Bow classification runs on the downscaled frame; boxes are scaled back to native res
-        c = cln.process_frame(small_frame, native_w, native_h)
+        # no scaling
+        c = cln.process_frame(frame, native_w, native_h)
+
+        # Bow classification runs on the downscaled frame; boxes are scaled back to native res                                                                             
+        #c = cln.process_frame(small_frame, native_w, native_h)
 
         # Hand/pose tracking runs on the native-resolution frame
         h = hand_cln.process_frame(frame)
