@@ -6,8 +6,15 @@ import { styles } from '../styles/CameraComponent.styles';
 import { ICONS } from '../styles/CameraComponent.styles';
 import LearnPosture from './LearnPosture'; // adjust path as needed
 
-const CameraxView = requireNativeViewManager('Camerax');
-const CameraxModule = requireNativeModule('Camerax');
+let CameraxView: any = null;
+let CameraxModule: any = null;
+
+try {
+  CameraxView = requireNativeViewManager('Camerax');
+  CameraxModule = requireNativeModule('Camerax');
+} catch (error) {
+  console.warn('Camerax native module unavailable:', error);
+}
 
 interface SummaryData {
   heightBreakdown?: {
@@ -221,6 +228,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   };*/
 
   const loadSessionHistory = async () => {
+    if (!CameraxModule?.getRecentSessions) {
+      Alert.alert('Unavailable', 'Session history is unavailable in this build.');
+      return;
+    }
+
     setIsLoadingHistory(true);
     setCurrentPage(0); // reset to first page
     try {
@@ -308,6 +320,11 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   };
 
   const loadSessionImages = async (session: SummaryData) => {
+    if (!CameraxModule?.getSessionImages) {
+      Alert.alert('Unavailable', 'Session images are unavailable in this build.');
+      return;
+    }
+
     if (!session.timestamp || !session.userId) {
       console.error('=== MISSING SESSION INFO ===');
       console.log('Session data:', JSON.stringify(session, null, 2));
@@ -1010,7 +1027,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           </View>
         </Modal>
 
-      {!initialHistoryOpen && (
+      {!initialHistoryOpen && CameraxView && (
         <CameraxView
           style={styles.camera}
           userId={userId}
@@ -1023,6 +1040,14 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           maxBowAngle={maxAngle}
           flip={isMirrored}
         />
+      )}
+      {!initialHistoryOpen && !CameraxView && (
+        <View style={[styles.camera, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }] }>
+          <Text style={{ color: '#fff', textAlign: 'center', marginBottom: 12 }}>
+            Camera is unavailable in this build.
+          </Text>
+          <Button title="Close" onPress={onClose} />
+        </View>
       )}
       {!initialHistoryOpen && (
         <>
