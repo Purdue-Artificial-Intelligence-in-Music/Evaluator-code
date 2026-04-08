@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import * as VideoAnalyzer from '../modules/expo-video-analyzer/src/ExpoVideoAnalyzer';
 import CameraComponent from './CameraComponent';
 
 import LogoutButton from '../components/LogoutButton';
@@ -29,8 +28,16 @@ const height = Dimensions.get('window').height;
 console.log(width)
 console.log(height)
 
+const getVideoAnalyzer = () => {
+  try {
+    return require('../modules/expo-video-analyzer/src/ExpoVideoAnalyzer');
+  } catch (error) {
+    console.warn('ExpoVideoAnalyzer native module unavailable:', error);
+    return null;
+  }
+};
 
-export default function HomePage() {
+export function HomePage() {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -91,7 +98,10 @@ export default function HomePage() {
   const cancelVidProc = async () => {
     if (isAnalyzing) {
       try {
-        await VideoAnalyzer.cancelProcessing();
+        const analyzer = getVideoAnalyzer();
+        if (analyzer?.cancelProcessing) {
+          await analyzer.cancelProcessing();
+        }
         Alert.alert('Cancelled', 'Video processing cancelled.');
         console.log("Video processing cancelled.");
       } catch (err) {
@@ -136,8 +146,14 @@ export default function HomePage() {
 
     setIsAnalyzing(true);
     try {
+      const analyzer = getVideoAnalyzer();
+      if (!analyzer) {
+        Alert.alert('Unavailable', 'Video analysis module is not available in this build.');
+        return;
+      }
+
       // 1. initialize video analyzer
-      const initResult = await VideoAnalyzer.initialize();
+      const initResult = await analyzer.initialize();
       if (!initResult.success) {
         Alert.alert('Error: Initialization fail', 'Initialization Failed');
         return;
@@ -147,7 +163,7 @@ export default function HomePage() {
       console.log('Start frame extraction...');
       //console.log(VideoAnalyzer);
       const currentUserId = await loadUserId();
-      const proc = await VideoAnalyzer.analyzeVideo(videofile, currentUserId);
+      const proc = await analyzer.analyzeVideo(videofile, currentUserId);
       /*
       const proc = await VideoAnalyzer.processVideoComplete(videofile);
       console.log('Processing complete:', proc);
@@ -543,3 +559,5 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
 });
+
+export default HomePage;

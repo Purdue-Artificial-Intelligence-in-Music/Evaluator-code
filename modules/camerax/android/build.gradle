@@ -43,7 +43,7 @@ repositories {
 
   // ✅ Required so Gradle can find Qualcomm LiteRT AARs and .so libraries
   flatDir {
-    dirs "H:/Downloads/QualcommSDK/qairt/2.38.0.250901/lib/aarch64-android"
+    dirs "/Users/danielc/Downloads/qairt/2.43.0.260128/lib/aarch64-android"
   }
 }
 
@@ -119,6 +119,6 @@ dependencies {
   
   // Other
   implementation 'androidx.fragment:fragment-ktx:1.6.2'
-  implementation "com.qualcomm.qti:qnn-runtime:2.38.0"
-  implementation "com.qualcomm.qti:qnn-litert-delegate:2.38.0"
+  implementation "com.qualcomm.qti:qnn-runtime:2.43.0"
+  implementation "com.qualcomm.qti:qnn-litert-delegate:2.43.0"
 }
