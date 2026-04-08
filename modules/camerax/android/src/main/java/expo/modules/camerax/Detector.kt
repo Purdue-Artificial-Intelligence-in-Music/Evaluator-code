@@ -767,7 +767,7 @@ class Detector (
 
         val minIndex = distances.indexOf(distances.minOrNull()) //find the smallest distance
 
-        //find the two shortest distances to fin dthe end of teh bow and set those points as pair1 and pair2
+        //find the two shortest distances to find the end of the bow and set those points as pair1 and pair2
         val (pair1, pair2) = when (minIndex) {
             0 -> Pair(bowPoints!![0] to bowPoints!![1], bowPoints!![2] to bowPoints!![3])
             1 -> Pair(bowPoints!![1] to bowPoints!![2], bowPoints!![3] to bowPoints!![0])
