@@ -8,12 +8,16 @@ import org.json.JSONObject
 import java.io.File
 
 class CameraxModule : Module() {
-    private lateinit var s3Uploader: S3Uploader
-
+    private var s3Uploader: S3Uploader? = null
     override fun definition() = ModuleDefinition {
         Name("Camerax")
         OnCreate {
-            s3Uploader = S3Uploader(appContext.reactContext!!)
+            val isConfigured = BuildConfig.COGNITO_IDENTITY_POOL_ID.isNotBlank() &&
+                    BuildConfig.S3_BUCKET_NAME.isNotBlank() &&
+                    BuildConfig.AWS_REGION.isNotBlank()
+
+            s3Uploader = if (isConfigured) S3Uploader(appContext.reactContext!!) else null
+            Log.d("S3Upload", if (isConfigured) "S3 configured" else "S3 not configured, uploads disabled")
         }
         View(CameraxView::class) {
             Prop("userId") { view: CameraxView, userId: String ->
@@ -29,7 +33,7 @@ class CameraxModule : Module() {
                     val timestamp = Profile.getTimeStamp()
 
                     Thread {
-                        s3Uploader.uploadSessionData(userId, timestamp, detailJson, summaryJson) { success, msg ->
+                        s3Uploader?.uploadSessionData(userId, timestamp, detailJson, summaryJson) { success, msg ->
                             Log.d("S3Upload", if (success) " $msg" else "$msg")
                         }
                     }.start()

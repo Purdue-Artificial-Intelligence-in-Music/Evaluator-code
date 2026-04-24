@@ -175,6 +175,27 @@ class CameraxView(
             latestPosePoints = emptyList()
             latestHandDetection = ""
             latestPoseDetection = ""
+            fun setDetectionEnabled(enabled: Boolean) {
+                if (isDetectionEnabled == enabled) return
+                isDetectionEnabled = enabled
+
+                if (enabled) {
+                    profile.createNewID(userId)
+                } else {
+                    // 1. End the session locally to get the results
+                    val detailedSummary = profile.endSessionAndGetSummary(userId)
+
+                    // 2. Wrap the upload/sending logic
+                    if (detailedSummary != null) {
+                        // Check if S3 is configured before attempting upload
+                        // You can add a check here or inside the Profile class
+                        sendDetailedSummary(detailedSummary)
+                    }
+
+                    // Reset state...
+                    activity.runOnUiThread { overlayView.clear() }
+                }
+            }
             detector?.resetHeaps()
             activity.runOnUiThread { overlayView.clear() }
         }
