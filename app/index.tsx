@@ -24,6 +24,8 @@ import { Camera } from 'react-native-vision-camera';
 
 import * as FileSystem from 'expo-file-system';
 
+import * as Sentry from '@sentry/react-native';
+
 const width = Dimensions.get('window').width;
 const height = Dimensions.get('window').height;
 console.log(width)
@@ -47,16 +49,44 @@ export default function HomePage() {
   const [openHistoryOnCamera, setOpenHistoryOnCamera] = useState(false);
 
   const requestCameraPermission = async () => {
-    const status = await Camera.requestCameraPermission();
-    if (status === 'granted') {
-      setHasPermission(true);
-    } else {
+    Sentry.addBreadcrumb({
+      category: 'camera',
+      message: 'Requesting camera permission',
+      level: 'info',
+    });
+
+    try {
+      const status = await Camera.requestCameraPermission();
+
+      Sentry.addBreadcrumb({
+        category: 'camera',
+        message: 'Camera permission result',
+        level: 'info',
+        data: { status },
+      });
+
+      if (status === 'granted') {
+        setHasPermission(true);
+      } else {
+        setHasPermission(false);
+      }
+    } catch (error) {
+      Sentry.captureException(error, {
+        tags: { area: 'camera', action: 'request_permission' },
+      });
       setHasPermission(false);
     }
   };
 
   // Function to handle video selection
   const pickVideo = async () => {
+
+    Sentry.addBreadcrumb({
+      category: 'video',
+      message: 'User opened video picker',
+      level: 'info',
+    });
+
     try {
       const result = await ImagePickerExpo.launchImageLibraryAsync({
         mediaTypes: ['videos'],
@@ -66,15 +96,25 @@ export default function HomePage() {
       if(!result.canceled && result.assets && result.assets[0]) {
         const selectedVideoUri = result.assets[0].uri;
         const { width = 0, height = 0 } = result.assets[0];
+
+        Sentry.addBreadcrumb({
+          category: 'video',
+          message: 'Video selected successfully',
+          level: 'info',
+          data: { width, height },
+        });
+
         setVideoDimensions({ width, height });
         setVideoUri(selectedVideoUri);
-
-        
         setvideofile(selectedVideoUri);
         setIsCameraOpen(false);
         setsendButton(true);
       }
     } catch (error) {
+      Sentry.captureException(error, {
+        tags: { area: 'video_picker', action: 'pick_video' },
+        extra: { userId },
+      });
       console.error('Error picking video:', error);
       alert('Failed to pick video. Please try again.');
     }
@@ -95,6 +135,10 @@ export default function HomePage() {
         Alert.alert('Cancelled', 'Video processing cancelled.');
         console.log("Video processing cancelled.");
       } catch (err) {
+        Sentry.captureException(err, {
+          tags: { area: 'video_analyzer', action: 'cancel_processing' },
+          extra: { isAnalyzing },
+        });
         console.error("Failed to cancel processing:", err);
       } finally {
         setIsAnalyzing(false);
@@ -123,6 +167,9 @@ export default function HomePage() {
           return 'default_user';
         }
       } catch (error) {
+        Sentry.captureException(error, {
+          tags: { area: 'auth', action: 'load_user_id' },
+        });
         console.error('Error loading user ID:', error);
         return 'default_user';
       }
@@ -134,11 +181,22 @@ export default function HomePage() {
       return;
     }
 
+    Sentry.addBreadcrumb({
+      category: 'video_analyzer',
+      message: 'Started sendVideoBackend',
+      level: 'info',
+      data: { videofile },
+    });
+
     setIsAnalyzing(true);
     try {
       // 1. initialize video analyzer
       const initResult = await VideoAnalyzer.initialize();
+
       if (!initResult.success) {
+        Sentry.captureMessage('VideoAnalyzer initialization returned unsuccessful result', {
+          level: 'error',
+        });
         Alert.alert('Error: Initialization fail', 'Initialization Failed');
         return;
       }
@@ -147,7 +205,22 @@ export default function HomePage() {
       console.log('Start frame extraction...');
       //console.log(VideoAnalyzer);
       const currentUserId = await loadUserId();
+
+      Sentry.addBreadcrumb({
+        category: 'video_analyzer',
+        message: 'Calling analyzeVideo',
+        level: 'info',
+        data: { currentUserId, videofile },
+      });
+
       const proc = await VideoAnalyzer.analyzeVideo(videofile, currentUserId);
+
+      Sentry.addBreadcrumb({
+        category: 'video_analyzer',
+        message: 'analyzeVideo completed',
+        level: 'info',
+        data: { proc },
+      });
       /*
       const proc = await VideoAnalyzer.processVideoComplete(videofile);
       console.log('Processing complete:', proc);
@@ -198,6 +271,14 @@ export default function HomePage() {
       );
   */
     } catch (error: any) {
+      Sentry.captureException(error, {
+        tags: { area: 'video_analyzer', action: 'send_video_backend' },
+        extra: {
+          videofile,
+          userId,
+          isAnalyzing,
+        },
+      });
       console.error('sendVideoBackend failed:', error);
     } finally {
       setIsAnalyzing(false);
@@ -238,6 +319,10 @@ export default function HomePage() {
 
       alert("Video has been saved to your gallery!");
     } catch (error) {
+      Sentry.captureException(error, {
+        tags: { area: 'media_library', action: 'download_video' },
+        extra: { videoUrl },
+      });
       console.error("Download error:", error);
       alert("Failed to download video.");
     }
@@ -246,10 +331,17 @@ export default function HomePage() {
  
   
   const openCamera = async (requestPerm: boolean = true) => {
+    Sentry.addBreadcrumb({
+      category: 'camera',
+      message: 'Opening camera',
+      level: 'info',
+      data: { requestPerm },
+    });
+
     if (requestPerm) {
       await requestCameraPermission();
     }
-    requestCameraPermission()
+
     setIsCameraOpen(true);
     setVideoUri(null);
     setVideoDimensions(null);

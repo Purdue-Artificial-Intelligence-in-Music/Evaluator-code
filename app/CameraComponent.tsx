@@ -6,6 +6,8 @@ import { styles } from '../styles/CameraComponent.styles';
 import { ICONS } from '../styles/CameraComponent.styles';
 import LearnPosture from './LearnPosture'; // adjust path as needed
 
+import * as Sentry from "@sentry/react-native";
+
 const CameraxView = requireNativeViewManager('Camerax');
 const CameraxModule = requireNativeModule('Camerax');
 
@@ -166,6 +168,9 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           console.warn('No user email found, using default');
         }
       } catch (error) {
+        Sentry.captureException(error, {
+          tags: { area: 'auth', action: 'camera_load_user_id' },
+        });
         console.error('Error loading user ID:', error);
       }
     };
@@ -193,6 +198,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   }, [isDetectionEnabled, sessionStartTime]);
 
   const toggleCamera = () => {
+    Sentry.addBreadcrumb({
+      category: 'camera',
+      message: 'User toggled camera lens',
+      level: 'info',
+      data: { from: lensType },
+    });
+
     setLensType(prev => {
       if (prev === 'front') setIsMirrored(false); // reset mirroring option after switching to back cam
       return prev === 'back' ? 'front' : 'back';
@@ -223,9 +235,24 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   const loadSessionHistory = async () => {
     setIsLoadingHistory(true);
     setCurrentPage(0); // reset to first page
+
+    Sentry.addBreadcrumb({
+      category: 'history',
+      message: 'Loading session history',
+      level: 'info',
+      data: { userId },
+    });
+
     try {
       // load history session
       const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
+
+      Sentry.addBreadcrumb({
+        category: 'history',
+        message: 'Session history loaded',
+        level: 'info',
+        data: { count: sessions?.length ?? 0 },
+      });
 
       if (sessions && sessions.length > 0) {
         setHistorySessions(sessions as SummaryData[]);
@@ -235,6 +262,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         setHistoryVisible(true);
       }
     } catch (error) {
+      Sentry.captureException(error, {
+        tags: { area: 'camera_history', action: 'load_session_history' },
+        extra: { userId, totalSessions: TOTAL_SESSIONS },
+      });
       console.error('Error loading session history:', error);
       Alert.alert('Error', 'Failed to load session history. Please try again.');
       setHistorySessions([]);
@@ -350,6 +381,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         });
       }
     } catch (error) {
+      Sentry.captureException(error, {
+        tags: { area: 'camera_history', action: 'load_session_images' },
+        extra: {
+          sessionUserId: session.userId,
+          sessionTimestamp: session.timestamp,
+        },
+      });
       console.error('=== ERROR LOADING IMAGES ===');
       console.error('Error:', error);
       Alert.alert('Error', 'Failed to load session images');
@@ -366,49 +404,65 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   };
 
   const handleSessionEnd = async (event: any) => {
-    const {
-      heightBreakdown,
-      angleBreakdown,
-      handPresenceBreakdown,
-      handPostureBreakdown,
-      posePresenceBreakdown,
-      elbowPostureBreakdown,
-      userId: eventUserId,
-      timestamp,
-      durationSeconds,
-      durationFormatted
-    } = event.nativeEvent;
 
-    console.log('=== SESSION END EVENT ===');
-    console.log('Event userId:', eventUserId);
-    console.log('Event timestamp:', timestamp);
-    console.log('Event timestamp type:', typeof timestamp);
-    console.log('Event durationFormatted:', durationFormatted);
-    console.log('Event durationSeconds:', durationSeconds);
+    Sentry.addBreadcrumb({
+      category: 'session',
+      message: 'Session ended',
+      level: 'info',
+      data: event?.nativeEvent,
+    });
 
-    let finalDuration = "0s";
-    if (sessionStartTime) {
-      const endTime = new Date();
-      const diffMs = endTime.getTime() - sessionStartTime.getTime();
-      finalDuration = formatDuration(diffMs);
+    try {
+      const {
+        heightBreakdown,
+        angleBreakdown,
+        handPresenceBreakdown,
+        handPostureBreakdown,
+        posePresenceBreakdown,
+        elbowPostureBreakdown,
+        userId: eventUserId,
+        timestamp,
+        durationSeconds,
+        durationFormatted
+      } = event.nativeEvent;
+
+      console.log('=== SESSION END EVENT ===');
+      console.log('Event userId:', eventUserId);
+      console.log('Event timestamp:', timestamp);
+      console.log('Event timestamp type:', typeof timestamp);
+      console.log('Event durationFormatted:', durationFormatted);
+      console.log('Event durationSeconds:', durationSeconds);
+
+      let finalDuration = "0s";
+      if (sessionStartTime) {
+        const endTime = new Date();
+        const diffMs = endTime.getTime() - sessionStartTime.getTime();
+        finalDuration = formatDuration(diffMs);
+      }
+
+      const newSummaryData = {
+        heightBreakdown,
+        angleBreakdown,
+        handPresenceBreakdown,
+        handPostureBreakdown,
+        posePresenceBreakdown,
+        elbowPostureBreakdown,
+        userId: eventUserId,
+        timestamp,
+        sessionDuration: finalDuration,
+        durationSeconds: durationSeconds || 0,
+        durationFormatted: durationFormatted || finalDuration,
+      };
+
+      setSummaryData(newSummaryData);
+      setSummaryVisible(true);
+    } catch (error) {
+      Sentry.captureException(error, {
+        tags: { area: 'session', action: 'handle_session_end' },
+        extra: { nativeEvent: event?.nativeEvent },
+      });
+      console.error('handleSessionEnd failed:', error);
     }
-
-    const newSummaryData = {
-      heightBreakdown,
-      angleBreakdown,
-      handPresenceBreakdown,
-      handPostureBreakdown,
-      posePresenceBreakdown,
-      elbowPostureBreakdown,
-      userId: eventUserId,
-      timestamp,
-      sessionDuration: finalDuration,
-      durationSeconds: durationSeconds || 0,
-      durationFormatted: durationFormatted || finalDuration,
-    };
-    //navigation.navigate('SessionSummary', { summaryData: newSummaryData });
-    setSummaryData(newSummaryData);
-    setSummaryVisible(true);
   };
 
   const closeSummary = () => {
@@ -1140,6 +1194,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           style={styles.detectionButton}
           onPress={() => {
             if (!isDetectionEnabled) {
+
+              Sentry.addBreadcrumb({
+                category: 'detection',
+                message: 'User started detection countdown',
+                level: 'info',
+              });
+
               // Start detection
               setStartDetectionVisible(false);  // start countdown, hide "start" btn
               setShowCountdown(true);
@@ -1151,6 +1212,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   setCountdownVal(count)
                   if (count <= 0) {
                     clearInterval(interval);
+
+                    Sentry.addBreadcrumb({
+                      category: 'detection',
+                      message: 'Detection started',
+                      level: 'info',
+                    });
+
                     setIsDetectionEnabled(!isDetectionEnabled);
                     setSessionStartTime(new Date());
                     setStartDetectionVisible(true); // countdown ended, show "start" btn again
@@ -1159,6 +1227,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                   }
               }, 1000);
             } else {
+              Sentry.addBreadcrumb({
+                category: 'detection',
+                message: 'User stopped detection',
+                level: 'info',
+                data: { elapsedTime },
+              });
+
               // Stop detection
               setIsDetectionEnabled(!isDetectionEnabled);
               console.log("DetectionEnabled: ", !isDetectionEnabled);
@@ -1195,6 +1270,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
             {isStartDetectionVisible && <TouchableOpacity
               style={[styles.readyBtn, { position: 'relative', bottom: 0, marginTop: 16 }]}
               onPress={() => {
+
+                Sentry.addBreadcrumb({
+                  category: 'detection',
+                  message: 'User started detection from setup overlay',
+                  level: 'info',
+                });
+
                 setStartDetectionVisible(false);  // start countdown, hide "start" btn
                 setShowSetupOverlay(false);
                 setShowCountdown(true);
