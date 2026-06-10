@@ -4,6 +4,8 @@ apply plugin: "com.facebook.react"
 apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.appdistribution'
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+def cmakeSafePath = { File path -> path.absolutePath.replace(File.separator, "/") }
+def reactNativePackageDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -11,8 +13,8 @@ def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
  */
 react {
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", projectRoot, "android", "absolute"].execute(null, rootDir).text.trim())
-    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
-    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    reactNativeDir = reactNativePackageDir
+    hermesCommand = reactNativePackageDir.getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
     codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
 
     // Use Expo CLI to bundle the app, this ensures the Metro config
@@ -94,6 +96,12 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+        externalNativeBuild {
+            cmake {
+                arguments "-DPROJECT_BUILD_DIR=${cmakeSafePath(layout.buildDirectory.get().asFile)}",
+                        "-DREACT_ANDROID_DIR=${cmakeSafePath(new File(reactNativePackageDir, "ReactAndroid"))}"
+            }
+        }
     }
     signingConfigs {
         debug {
