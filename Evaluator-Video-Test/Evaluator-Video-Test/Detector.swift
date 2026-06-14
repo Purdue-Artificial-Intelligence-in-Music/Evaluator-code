@@ -209,31 +209,27 @@ class Detector {
         
         print("Tensor Size: \(tensorWidth)x\(tensorHeight)x\(numChannel)x\(numElements)")
         
-        // Create resized image with 1:2 aspect ratio
-        guard let resizedNew = frame.resize(to: CGSize(width: tensorWidth / 2, height: tensorHeight)) else {
+        // Letterbox: scale the frame uniformly to fit the square model input so
+        // aspect ratio is preserved (handles both portrait and landscape clips),
+        // then pad the remainder. Content is placed at the top-left origin.
+        let size = CGSize(width: tensorWidth, height: tensorHeight)
+        let letterboxScale = min(size.width / frame.size.width,
+                                 size.height / frame.size.height)
+        let scaledSize = CGSize(width: (frame.size.width * letterboxScale).rounded(),
+                                height: (frame.size.height * letterboxScale).rounded())
+
+        guard let resizedNew = frame.resize(to: scaledSize) else {
             print("Failed to Resize Image\n")
             return results
         }
-        
-        let size = CGSize(width: tensorWidth, height: tensorHeight)
+
         let renderer = UIGraphicsImageRenderer(size: size)
-        
-        // Create image to draw the resized image onto (640x640)
-        let baseImage = renderer.image { context in
-                // Set the fill color to white
-                UIColor.white.setFill()
-                
-                // Fill the entire rectangle with white
-                context.fill(CGRect(origin: .zero, size: size))
-            }
-        // Draw resized image onto base
+
+        // White-padded square canvas with the scaled frame drawn at the top-left.
         let resizedImage = renderer.image { context in
-            // Draw the base image first
-            baseImage.draw(at: .zero)
-            
-            // Draw the overlay image at a specific point (top-left corner of the overlay)
-            resizedNew.draw(at: CGPoint(x:0, y:0))
-            
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            resizedNew.draw(at: CGPoint(x: 0, y: 0))
         }
         guard let pixelBuffer = resizedImage.pixelBuffer() else {
             print("Failed to Resize Image\n")
@@ -271,42 +267,47 @@ class Detector {
                 let newHeight = Float(resizedImage.size.height)
                 print("ogW: " + String(ogWidth) + " ogH: " + String(ogHeight))
                 print("newW: " + String(newWidth) + " newH: " + String(newHeight))
-                
+
+                // Letterbox scaling is uniform and the frame is drawn at the
+                // origin, so model-space coordinates map back to the frame by a
+                // single inverse scale. Uniform scaling preserves rotated boxes.
+                let invScale = 1.0 / Float(letterboxScale)
+
+                func mapBoxToFrame(_ box: OrientedBoundingBox) -> [Point] {
+                    let pts = self.rotatedRectToPoints(
+                        cx: box.x, cy: box.y,
+                        w: box.width, h: box.height,
+                        angleRad: (box.angle - Float.pi / 2.0)
+                    )
+                    return pts.map { Point(x: $0.x * Double(invScale),
+                                           y: $0.y * Double(invScale)) }
+                }
+
                 for box in bestBoxes {
                     if box.cls == 0 && box.conf > bowConf {
-                        results.bowResults = rotatedRectToPoints(
-                            cx: box.x * (ogWidth / newWidth) * 2,
-                            cy: box.y * (ogHeight / newHeight),
-                            w: box.width * (ogWidth / newWidth) * 2,
-                            h: box.height * (ogWidth / newWidth) * 2,
-                            angleRad: (box.angle - Float.pi / 2.0)
-                        )
+                        results.bowResults = mapBoxToFrame(box)
                         bowConf = box.conf
                         bow = true
+                        let scaledW = box.width * invScale
+                        let scaledH = box.height * invScale
                         if (frame_num != 0) {
-                            bow_w_d = prev_bow_w - box.width * (ogWidth / newWidth) * 2
-                            bow_h_d = prev_bow_h - box.height * (ogWidth / newWidth) * 2
+                            bow_w_d = prev_bow_w - scaledW
+                            bow_h_d = prev_bow_h - scaledH
                         }
-                        prev_bow_w = box.width * (ogWidth / newWidth) * 2
-                        prev_bow_h = box.height * (ogWidth / newWidth) * 2
+                        prev_bow_w = scaledW
+                        prev_bow_h = scaledH
                     } else if box.cls == 1 && box.conf > stringConf {
-                        let angle = box.width > box.height ? box.angle + Float.pi / 2 : box.angle
-                        let points = rotatedRectToPoints(
-                            cx: box.x * (ogWidth / newWidth) * 2,
-                            cy: box.y * (ogHeight / newHeight),
-                            w: box.width * (ogWidth / newWidth) * 2,
-                            h: box.height * (ogHeight / newHeight),
-                            angleRad: (box.angle - Float.pi / 2.0)
-                        )
-                        results.stringResults = sortStringPoints(pts: points)
+                        results.stringResults = sortStringPoints(pts: mapBoxToFrame(box))
                         stringConf = box.conf
                         string = true
+                        let scaledW = box.width * invScale
+                        let scaledH = box.height * invScale
                         if (frame_num != 0) {
-                            string_w_d = prev_string_w - box.width * (ogWidth / newWidth) * 2
-                            string_h_d = prev_string_h - box.height * (ogWidth / newWidth) * 2
+                            string_w_d = prev_string_w - scaledW
+                            string_h_d = prev_string_h - scaledH
                         }
-                        prev_string_w = box.width * (ogWidth / newWidth) * 2
-                        prev_string_h = box.height * (ogWidth / newWidth) * 2
+                        prev_string_w = scaledW
+                        prev_string_h = scaledH
                     }
                 }
                 

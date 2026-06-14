@@ -38,7 +38,7 @@ final class CombinedLandmarkerHelper: NSObject {
         case cpu
         case gpu
 
-        var mediaPipeDelegate: BaseOptions.Delegate {
+        var mediaPipeDelegate: MediaPipeTasksVision.Delegate {
             switch self {
             case .cpu:
                 return .CPU
@@ -80,7 +80,7 @@ final class CombinedLandmarkerHelper: NSObject {
     private static let handLandmarkerModelType = "task"
     private static let poseLandmarkerModelName = "pose_landmarker_full"
     private static let poseLandmarkerModelType = "task"
-    private static let handClassifierModelName = "2_19_hands"
+    private static let handClassifierModelName = "keypoint_classifier_FINAL"
     private static let handClassifierModelType = "tflite"
     private static let poseClassifierModelName = "keypoint_classifier (1)"
     private static let poseClassifierModelType = "tflite"
@@ -449,28 +449,14 @@ final class CombinedLandmarkerHelper: NSObject {
         var handPrediction = "No hand detected"
         var targetHandIndex = -1
 
-        if let handResult,
-           let poseResult,
-           !handResult.landmarks.isEmpty,
-           !poseResult.landmarks.isEmpty,
-           poseResult.landmarks[0].count > 16 {
-
-            let poseLandmarks = poseResult.landmarks[0]
-            let handIndex = isFrontCameraActive ? 15 : 16
-            let poseHandX = poseLandmarks[handIndex].x
-            let poseHandY = poseLandmarks[handIndex].y
-
-            var bestDistance = Float.greatestFiniteMagnitude
-            let threshold: Float = 0.1
+        // Match the Kotlin helper: pick the lowest hand on screen (max wristY).
+        if let handResult, !handResult.landmarks.isEmpty {
+            var maxY: Float = -1.0
 
             for (index, handLandmarks) in handResult.landmarks.enumerated() {
                 guard let wrist = handLandmarks.first else { continue }
-                let dx = wrist.x - poseHandX
-                let dy = wrist.y - poseHandY
-                let distance = sqrt(dx * dx + dy * dy)
-
-                if distance < threshold && distance < bestDistance {
-                    bestDistance = distance
+                if wrist.y > maxY {
+                    maxY = wrist.y
                     targetHandIndex = index
                 }
             }
@@ -790,7 +776,7 @@ final class CombinedLandmarkerHelper: NSObject {
 
     // MARK: - Drawing
 
-    private func drawMediaPipeAnnotations(on image: UIImage, result: CombinedResultBundle) -> UIImage {
+    func drawMediaPipeAnnotations(on image: UIImage, result: CombinedResultBundle) -> UIImage {
         let imageSize = CGSize(width: CGFloat(result.inputImageWidth), height: CGFloat(result.inputImageHeight))
         let renderer = UIGraphicsImageRenderer(size: imageSize)
 
@@ -820,9 +806,9 @@ final class CombinedLandmarkerHelper: NSObject {
                 let handMessage: String
                 switch handClass {
                 case 1:
-                    handMessage = "Pronate your wrist more"
+                    handMessage = "Supination"
                 case 2:
-                    handMessage = "Supinate your wrist more"
+                    handMessage = "Too much pronation"
                 default:
                     handMessage = ""
                 }
@@ -842,9 +828,9 @@ final class CombinedLandmarkerHelper: NSObject {
                 let poseMessage: String
                 switch poseClass {
                 case 1:
-                    poseMessage = "Raise your elbow a bit"
+                    poseMessage = "Low elbow"
                 case 2:
-                    poseMessage = "Lower your elbow a bit"
+                    poseMessage = "Elbow too high"
                 default:
                     poseMessage = ""
                 }

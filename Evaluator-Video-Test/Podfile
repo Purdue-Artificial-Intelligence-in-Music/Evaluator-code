@@ -7,4 +7,7 @@ target 'Evaluator-Video-Test' do
   pod 'TensorFlowLiteSwift/Metal'
   pod 'TensorFlowLiteSwift/CoreML'
 
+  # Hand & pose landmarker (.task models) used by CombinedLandmarkerHelper.swift
+  pod 'MediaPipeTasksVision'
+
 end

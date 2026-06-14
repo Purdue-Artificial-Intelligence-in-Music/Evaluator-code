@@ -9,15 +9,23 @@ import UIKit
 import CoreVideo
 import CoreImage
 
-func pixelBufferToUIImage(_ pixelBuffer: CVPixelBuffer) -> UIImage {
-    var ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+func pixelBufferToUIImage(_ pixelBuffer: CVPixelBuffer,
+                          orientation: CGImagePropertyOrientation = .up) -> UIImage {
+    // Apply the video track's orientation so portrait clips aren't sideways/upside down.
+    let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
     let context = CIContext()
     let cgImage = context.createCGImage(ciImage, from: ciImage.extent)!
-    var uiImage = UIImage(cgImage: cgImage)
-    if (uiImage.size.width > uiImage.size.height) {
-        uiImage = uiImage.rotated(by: 90)!
+    return UIImage(cgImage: cgImage)
+}
+
+// Maps a video track's preferredTransform to the equivalent image orientation.
+func imageOrientation(from transform: CGAffineTransform) -> CGImagePropertyOrientation {
+    switch (transform.a, transform.b, transform.c, transform.d) {
+    case (0, 1, -1, 0):   return .right  // recorded in portrait
+    case (0, -1, 1, 0):   return .left   // portrait upside down
+    case (-1, 0, 0, -1):  return .down   // landscape, home button left
+    default:              return .up     // landscape, home button right
     }
-    return uiImage
 }
 
 extension UIImage {

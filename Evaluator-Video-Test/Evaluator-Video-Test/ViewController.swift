@@ -1,12 +1,13 @@
 import UIKit
 import AVFoundation
+import MediaPipeTasksVision
 
 class ViewController: UIViewController {
 
     // MARK: - UI
     private let imageView = UIImageView()
 
-    // MARK: - Detector
+    // MARK: - Detectors
     private lazy var detector: Detector = {
         do {
             return try Detector()
@@ -14,11 +15,16 @@ class ViewController: UIViewController {
             fatalError("Failed to initialize Detector: \(error)")
         }
     }()
+
+    // MediaPipe hand + pose landmarker (elbows are pose landmarks 13 & 14).
+    // .gpu runs inference on the Metal-backed GPU delegate.
+    private lazy var landmarker = CombinedLandmarkerHelper(currentDelegate: .gpu, runningMode: .video)
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
         setupUI()
-        processVideo(named: "test video")
+        processVideo(named: "testClip")
     }
 
     // MARK: - UI Setup
@@ -45,7 +51,11 @@ class ViewController: UIViewController {
                 }
 
                 let reader = try AVAssetReader(asset: asset)
-            
+
+                // Use the track's stored orientation so portrait clips display upright.
+                let transform = try await track.load(.preferredTransform)
+                let orientation = imageOrientation(from: transform)
+                print("preferredTransform: \(transform) -> orientation: \(orientation.rawValue)")
 
                 let outputSettings: [String: Any] = [
                     kCVPixelBufferPixelFormatTypeKey as String:
@@ -54,19 +64,35 @@ class ViewController: UIViewController {
 
                 let output = AVAssetReaderTrackOutput(track: track, outputSettings: outputSettings)
                 reader.add(output)
-                
+
                 reader.startReading()
+
+                // MediaPipe video mode requires strictly increasing timestamps.
+                var frameTimestampMs = 0
 
                 while reader.status == .reading,
                       let sampleBuffer = output.copyNextSampleBuffer(),
                       let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) {
-                    
-                    var frame = pixelBufferToUIImage(pixelBuffer)
-                    
+
+                    let frame = pixelBufferToUIImage(pixelBuffer, orientation: orientation)
+
+                    // 1) bow / string detection (YOLO)
                     let annotated = self.detector.processFrame(bitmap: frame)
 
+                    // 2) hand + pose landmarks via the MediaPipe helper, drawn
+                    //    with the helper's own pipeline (bow-hand skeleton +
+                    //    supination/pronation + elbow-height feedback), matching
+                    //    the Kotlin HandLandmarkerHelper. Overlaid on the YOLO frame.
+                    let landmarkBundle = self.landmarker.detectVideoFrame(
+                        frame: frame, timestampMs: frameTimestampMs)
+                    frameTimestampMs += 33
+
+                    let finalImage = landmarkBundle.map {
+                        self.landmarker.drawMediaPipeAnnotations(on: annotated, result: $0)
+                    } ?? annotated
+
                     await MainActor.run {
-                        self.imageView.image = annotated
+                        self.imageView.image = finalImage
                     }
 
                     try await Task.sleep(nanoseconds: 33_000_000) // ~30 FPS
@@ -77,5 +103,5 @@ class ViewController: UIViewController {
             }
         }
     }
-}
 
+}
