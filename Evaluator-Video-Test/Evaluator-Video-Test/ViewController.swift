@@ -24,7 +24,7 @@ class ViewController: UIViewController {
         super.viewDidLoad()
 
         setupUI()
-        processVideo(named: "testClip")
+        processVideo(named: "supination-slow")
     }
 
     // MARK: - UI Setup
@@ -67,8 +67,10 @@ class ViewController: UIViewController {
 
                 reader.startReading()
 
-                // MediaPipe video mode requires strictly increasing timestamps.
                 var frameTimestampMs = 0
+                var frameIndex = 0
+                let landmarkEvery = 1
+                var lastBundle: CombinedLandmarkerHelper.CombinedResultBundle?
 
                 while reader.status == .reading,
                       let sampleBuffer = output.copyNextSampleBuffer(),
@@ -76,26 +78,21 @@ class ViewController: UIViewController {
 
                     let frame = pixelBufferToUIImage(pixelBuffer, orientation: orientation)
 
-                    // 1) bow / string detection (YOLO)
                     let annotated = self.detector.processFrame(bitmap: frame)
 
-                    // 2) hand + pose landmarks via the MediaPipe helper, drawn
-                    //    with the helper's own pipeline (bow-hand skeleton +
-                    //    supination/pronation + elbow-height feedback), matching
-                    //    the Kotlin HandLandmarkerHelper. Overlaid on the YOLO frame.
-                    let landmarkBundle = self.landmarker.detectVideoFrame(
+                    
+                    lastBundle = self.landmarker.detectVideoFrame(
                         frame: frame, timestampMs: frameTimestampMs)
                     frameTimestampMs += 33
+                    frameIndex += 1
 
-                    let finalImage = landmarkBundle.map {
+                    let finalImage = lastBundle.map {
                         self.landmarker.drawMediaPipeAnnotations(on: annotated, result: $0)
                     } ?? annotated
 
                     await MainActor.run {
                         self.imageView.image = finalImage
                     }
-
-                    try await Task.sleep(nanoseconds: 33_000_000) // ~30 FPS
                 }
 
             } catch {

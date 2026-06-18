@@ -9,12 +9,17 @@ import UIKit
 import CoreVideo
 import CoreImage
 
+// A CIContext allocates GPU/Metal resources, so create it once and reuse it
+// across frames rather than per call (which was a real per-frame tax).
+private let sharedCIContext = CIContext()
+
 func pixelBufferToUIImage(_ pixelBuffer: CVPixelBuffer,
                           orientation: CGImagePropertyOrientation = .up) -> UIImage {
     // Apply the video track's orientation so portrait clips aren't sideways/upside down.
     let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
-    let context = CIContext()
-    let cgImage = context.createCGImage(ciImage, from: ciImage.extent)!
+    guard let cgImage = sharedCIContext.createCGImage(ciImage, from: ciImage.extent) else {
+        return UIImage()
+    }
     return UIImage(cgImage: cgImage)
 }
 

@@ -78,7 +78,7 @@ final class CombinedLandmarkerHelper: NSObject {
 
     private static let handLandmarkerModelName = "hand_landmarker"
     private static let handLandmarkerModelType = "task"
-    private static let poseLandmarkerModelName = "pose_landmarker_full"
+    private static let poseLandmarkerModelName = "pose_landmarker_lite"
     private static let poseLandmarkerModelType = "task"
     private static let handClassifierModelName = "keypoint_classifier_FINAL"
     private static let handClassifierModelType = "tflite"
