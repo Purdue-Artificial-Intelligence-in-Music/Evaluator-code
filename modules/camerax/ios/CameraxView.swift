@@ -11,25 +11,15 @@ class CameraxView: ExpoView {
   private var captureSession: AVCaptureSession?
   private var previewLayer: AVCaptureVideoPreviewLayer?
 
-  // MARK: - State
-  private var sessionStartTime: Date?
-  private var isDetecting: Bool = false
-
-  // MARK: - Counters for fake session summary
-  private var frameCount: Int = 0
-  private var heightTop = 0, heightMiddle = 0, heightBottom = 0
-  private var angleCorrect = 0, angleWrong = 0
-  private var handCorrect = 0, handSupination = 0, handPronation = 0
-  private var elbowCorrect = 0, elbowLow = 0, elbowHigh = 0
+  // MARK: - Profile
+  private let profile = Profile()
 
   // MARK: - Props
   var userId: String = "default_user"
   var maxBowAngle: Double = 18.0
 
   var cameraActive: Bool = false {
-    didSet {
-      if cameraActive { startCamera() } else { stopCamera() }
-    }
+    didSet { cameraActive ? startCamera() : stopCamera() }
   }
 
   var lensType: String = "back" {
@@ -39,9 +29,12 @@ class CameraxView: ExpoView {
   var detectionEnabled: Bool = false {
     didSet {
       if detectionEnabled {
-        startDetectionSession()
+        profile.createNewID(userId: userId)
       } else {
-        endDetectionSession()
+        if let summary = profile.endSessionAndGetSummary(userId: userId) {
+          let payload = profile.summaryToDict(summary: summary, userId: userId)
+          DispatchQueue.main.async { self.onSessionEnd(payload) }
+        }
       }
     }
   }
@@ -75,9 +68,7 @@ class CameraxView: ExpoView {
       setupSession()
     case .notDetermined:
       AVCaptureDevice.requestAccess(for: .video) { granted in
-        if granted {
-          DispatchQueue.main.async { self.setupSession() }
-        }
+        if granted { DispatchQueue.main.async { self.setupSession() } }
       }
     default:
       break
@@ -109,16 +100,12 @@ class CameraxView: ExpoView {
   // MARK: - Start / Stop Camera
   private func startCamera() {
     guard let session = captureSession, !session.isRunning else { return }
-    DispatchQueue.global(qos: .userInitiated).async {
-      session.startRunning()
-    }
+    DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
   }
 
   private func stopCamera() {
     guard let session = captureSession, session.isRunning else { return }
-    DispatchQueue.global(qos: .userInitiated).async {
-      session.stopRunning()
-    }
+    DispatchQueue.global(qos: .userInitiated).async { session.stopRunning() }
   }
 
   // MARK: - Switch Camera
@@ -141,67 +128,17 @@ class CameraxView: ExpoView {
     return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
   }
 
-  // MARK: - Detection Session
-  private func startDetectionSession() {
-    sessionStartTime = Date()
-    frameCount = 0
-    heightTop = 0; heightMiddle = 0; heightBottom = 0
-    angleCorrect = 0; angleWrong = 0
-    handCorrect = 0; handSupination = 0; handPronation = 0
-    elbowCorrect = 0; elbowLow = 0; elbowHigh = 0
+  // MARK: - Public: Add Frame Data
+  func addBowFrame(heightClass: Int, angleClass: Int) {
+    guard detectionEnabled else { return }
+    let frame = BowFrame(heightClassification: heightClass, angleClassification: angleClass)
+    profile.addSessionData(userId: userId, data: frame)
   }
 
-  private func endDetectionSession() {
-    guard let start = sessionStartTime else { return }
-
-    let now = Date()
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-    let timestamp = formatter.string(from: now)
-
-    let total = max(frameCount, 1)
-
-    let payload: [String: Any] = [
-      "userId": userId,
-      "timestamp": timestamp,
-      "heightBreakdown": [
-        "Top": heightTop,
-        "Middle": max(heightMiddle, total - heightTop - heightBottom),
-        "Bottom": heightBottom,
-        "Unknown": 0
-      ],
-      "angleBreakdown": [
-        "Correct": max(angleCorrect, total - angleWrong),
-        "Wrong": angleWrong,
-        "Unknown": 0
-      ],
-      "handPresenceBreakdown": [
-        "Detected": total,
-        "None": 0
-      ],
-      "handPostureBreakdown": [
-        "Correct": max(handCorrect, total - handSupination - handPronation),
-        "Supination": handSupination,
-        "Too much pronation": handPronation,
-        "Unknown": 0
-      ],
-      "posePresenceBreakdown": [
-        "Detected": total,
-        "None": 0
-      ],
-      "elbowPostureBreakdown": [
-        "Correct": max(elbowCorrect, total - elbowLow - elbowHigh),
-        "Low elbow": elbowLow,
-        "Elbow too high": elbowHigh,
-        "Unknown": 0
-      ]
-    ]
-
-    sessionStartTime = nil
-    frameCount = 0
-
-    DispatchQueue.main.async {
-      self.onSessionEnd(payload)
-    }
+  func addCombinedFrame(handDetected: Bool, handPostureClass: Int, poseDetected: Bool, elbowPostureClass: Int) {
+    guard detectionEnabled else { return }
+    let frame = CombinedFrame(handDetected: handDetected, handPostureClass: handPostureClass,
+                               poseDetected: poseDetected, elbowPostureClass: elbowPostureClass)
+    profile.addSessionData(userId: userId, data: frame)
   }
 }

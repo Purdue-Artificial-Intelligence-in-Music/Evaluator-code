@@ -1020,6 +1020,25 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
               <Text style={styles.menuItemIcon}>📖</Text>
               <Text style={styles.menuItemText}>Learn postures</Text>
             </TouchableOpacity>
+                             
+                             <TouchableOpacity
+                                           style={styles.menuItem}
+                                           onPress={async () => {
+                                             try {
+                                               const result = await CameraxModule.addMockSession(userId);
+                                               console.log('Mock session result:', JSON.stringify(result, null, 2));
+                                               Alert.alert('Success', 'Mock session stored! Open Session History to view it.');
+                                             } catch (e) {
+                                               console.error('Mock session error:', e);
+                                               Alert.alert('Error', 'Failed to store mock session.');
+                                             }
+                                             setToolbarExpanded(false);
+                                           }}
+                                           activeOpacity={0.8}
+                                         >
+                                           <Text style={styles.menuItemIcon}>🧪</Text>
+                                           <Text style={styles.menuItemText}>Add mock session</Text>
+                                         </TouchableOpacity>
           </View>
         )}
       </View>
