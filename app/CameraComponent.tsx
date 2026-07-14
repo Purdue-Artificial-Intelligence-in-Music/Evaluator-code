@@ -102,6 +102,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   // Toolbar state
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
 
+  // Correction submenu + per-posture correction text toggles (all on by default)
+  const [correctionsExpanded, setCorrectionsExpanded] = useState(false);
+  const [showBowCorrection, setShowBowCorrection] = useState(true);
+  const [showAngleCorrection, setShowAngleCorrection] = useState(true);
+  const [showHandCorrection, setShowHandCorrection] = useState(true);
+  const [showElbowCorrection, setShowElbowCorrection] = useState(true);
+
   // Mirror toggle (pass to native view if supported)
   const [isMirrored, setIsMirrored] = useState(false);
 
@@ -1022,6 +1029,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
           skipCalibration={!showSetupOverlay}*/
           maxBowAngle={maxAngle}
           flip={isMirrored}
+          showBowCorrection={showBowCorrection}
+          showAngleCorrection={showAngleCorrection}
+          showHandCorrection={showHandCorrection}
+          showElbowCorrection={showElbowCorrection}
         />
       )}
       {!initialHistoryOpen && (
@@ -1081,6 +1092,42 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
                 <Image source={ICONS.adjust_threshold} style={styles.menuItemIconImg} />
                 <Text style={styles.menuItemText}>Threshold adjust</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => setCorrectionsExpanded(v => !v)}
+                activeOpacity={0.8}
+              >
+                <Image source={ICONS.instructions} style={styles.menuItemIconImg} />
+                <Text style={styles.menuItemText}>
+                  Correction text {correctionsExpanded ? '▾' : '▸'}
+                </Text>
+              </TouchableOpacity>
+
+              {correctionsExpanded && (
+                <>
+                  {([
+                    ['Bow contact point', showBowCorrection, setShowBowCorrection],
+                    ['Bow angle', showAngleCorrection, setShowAngleCorrection],
+                    ['Bow hand position', showHandCorrection, setShowHandCorrection],
+                    ['Elbow posture', showElbowCorrection, setShowElbowCorrection],
+                  ] as [string, boolean, React.Dispatch<React.SetStateAction<boolean>>][]).map(
+                    ([label, value, setValue]) => (
+                      <TouchableOpacity
+                        key={label}
+                        style={styles.correctionSubItem}
+                        onPress={() => setValue(v => !v)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.correctionSubItemText}>{label}</Text>
+                        <Text style={value ? styles.correctionToggleOn : styles.correctionToggleOff}>
+                          {value ? 'On' : 'Off'}
+                        </Text>
+                      </TouchableOpacity>
+                    )
+                  )}
+                </>
+              )}
 
               <TouchableOpacity
                 style={styles.menuItem}

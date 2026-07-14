@@ -56,6 +56,22 @@ class CameraxModule : Module() {
                 view.setMaxBowAngle(angle)
             }
 
+            Prop("showBowCorrection") { view: CameraxView, show: Boolean ->
+                view.setShowBowCorrection(show)
+            }
+
+            Prop("showAngleCorrection") { view: CameraxView, show: Boolean ->
+                view.setShowAngleCorrection(show)
+            }
+
+            Prop("showHandCorrection") { view: CameraxView, show: Boolean ->
+                view.setShowHandCorrection(show)
+            }
+
+            Prop("showElbowCorrection") { view: CameraxView, show: Boolean ->
+                view.setShowElbowCorrection(show)
+            }
+
             // Commented out Calibration code as we are using a timer, can be deleted.
            /* Prop("skipCalibration") { view: CameraxView, skip: Boolean ->
                 view.skipCalibration(skip)

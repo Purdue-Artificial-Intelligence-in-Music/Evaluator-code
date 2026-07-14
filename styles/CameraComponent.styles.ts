@@ -548,6 +548,37 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // ===== Correction text submenu =====
+  correctionSubItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingLeft: 40,
+    paddingRight: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  correctionSubItemText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '500',
+    flexShrink: 1,
+  },
+  correctionToggleOn: {
+    color: '#4ade80',
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  correctionToggleOff: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+
   // ===== Exit Confirmation Modal =====
   exitModalContent: {
     width: '85%',

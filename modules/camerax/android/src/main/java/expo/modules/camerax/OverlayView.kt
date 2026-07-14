@@ -101,12 +101,38 @@ class OverlayView @JvmOverloads constructor(
     private var isFrontCameraActive: Boolean = false
     private var shouldFlipDisplay: Boolean = false
 
+    // Per-posture correction text visibility (all shown by default)
+    private var showBowCorrection: Boolean = true
+    private var showAngleCorrection: Boolean = true
+    private var showHandCorrection: Boolean = true
+    private var showElbowCorrection: Boolean = true
+
     fun setFrontCameraState(isFront: Boolean) {
         isFrontCameraActive = isFront
     }
 
     fun setFlipState(flip: Boolean) {
         shouldFlipDisplay = flip
+        invalidate()
+    }
+
+    fun setShowBowCorrection(show: Boolean) {
+        showBowCorrection = show
+        invalidate()
+    }
+
+    fun setShowAngleCorrection(show: Boolean) {
+        showAngleCorrection = show
+        invalidate()
+    }
+
+    fun setShowHandCorrection(show: Boolean) {
+        showHandCorrection = show
+        invalidate()
+    }
+
+    fun setShowElbowCorrection(show: Boolean) {
+        showElbowCorrection = show
         invalidate()
     }
 
@@ -683,12 +709,12 @@ class OverlayView @JvmOverloads constructor(
             }
         }
 
-        // display most frequent issues
+        // display most frequent issues (respecting per-posture toggles)
         val activeIssues = mutableListOf<String>()
-        displayBowIssue?.let { activeIssues.add(it) }
-        displayAngleIssue?.let { activeIssues.add(it) }
-        displayHandIssue?.let { activeIssues.add(it) }
-        displayPoseIssue?.let { activeIssues.add(it) }
+        if (showBowCorrection) displayBowIssue?.let { activeIssues.add(it) }
+        if (showAngleCorrection) displayAngleIssue?.let { activeIssues.add(it) }
+        if (showHandCorrection) displayHandIssue?.let { activeIssues.add(it) }
+        if (showElbowCorrection) displayPoseIssue?.let { activeIssues.add(it) }
 
         if (activeIssues.isNotEmpty()) {
             val fm = textPaint.fontMetrics

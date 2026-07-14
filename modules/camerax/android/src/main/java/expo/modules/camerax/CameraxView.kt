@@ -257,6 +257,22 @@ class CameraxView(
             }
         }
     }
+    fun setShowBowCorrection(show: Boolean) {
+        overlayView.setShowBowCorrection(show)
+    }
+
+    fun setShowAngleCorrection(show: Boolean) {
+        overlayView.setShowAngleCorrection(show)
+    }
+
+    fun setShowHandCorrection(show: Boolean) {
+        overlayView.setShowHandCorrection(show)
+    }
+
+    fun setShowElbowCorrection(show: Boolean) {
+        overlayView.setShowElbowCorrection(show)
+    }
+
     fun getUserId(): String {
         return userId
     }
