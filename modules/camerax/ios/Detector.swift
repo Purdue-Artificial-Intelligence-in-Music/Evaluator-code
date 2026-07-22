@@ -1,0 +1,938 @@
+import Foundation
+import UIKit
+import TensorFlowLite
+import Accelerate
+
+
+//Interface for detector listener
+protocol DetectorListener: AnyObject {
+    
+    func noDetect()
+    func detected(results: Detector.YoloResults, sourceWidth: Int, sourceHeight: Int)
+}
+
+class Detector {
+    // VARS FOR TESTING AND OUTPUTTING CSV
+    var prev_bow_w: Float = 0
+    var prev_bow_h: Float = 0
+    var prev_string_w: Float = 0
+    var prev_string_h: Float = 0
+    private var frame_num = 0
+    private let CSV_HEADER = "FRAME, BOW, STRING, BOW_W_D, BOW_H_D, STRING_W_D, STRING_H_D, TIME_D"
+    private var CSV_OUT = ""
+    // END VARS
+    private var interpreter: Interpreter
+    private weak var listener: DetectorListener?
+    private var labels: [String] = []
+    
+    private var tensorWidth: Int = 0
+    private var tensorHeight: Int = 0
+    private var numChannel: Int = 0
+    private var numElements: Int = 0
+    
+    private var bowRepeat: Int = 0
+    private var stringRepeat: Int = 0
+    private var bowPoints: [Point]?
+    private var stringPoints: [Point]?
+    private var yLocked: Bool = false
+    private var yAvg: [Double]?
+    private var frameCounter: Int = 0
+    private var stringYCoordHeights: [[Int]] = []
+    private var maxAngle = 20
+    // Heaps and Sliding window arrays for String Box Locks
+    private var deltaQueue: [Double] = []
+    private var sortedDeltas: [Double] = []
+
+    
+    // Constants
+    private static let INPUT_MEAN: Float = 0.0
+    private static let INPUT_STANDARD_DEVIATION: Float = 255.0
+    private static let CONFIDENCE_THRESHOLD: Float = 0.1
+    private let MAX_QUEUE_SIZE = 60
+    private let MAX_Y_DELTA_THRESHOLD = 3
+    private let MAX_BOW_DIST_THRESHOLD = 5
+    private let numWaitFrames: Int = 5
+    
+    
+    // Custom data structs
+    struct YoloResults {
+        var bowResults: [Point]?
+        var stringResults: [Point]?
+    }
+    
+    struct Point {
+        var x: Double
+        var y: Double
+    }
+    
+    struct OrientedBoundingBox {
+        let x: Float
+        let y: Float
+        let height: Float
+        let width: Float
+        let conf: Float
+        let cls: Int
+        let angle: Float
+    }
+    
+    struct ReturnBow {
+        var classification: Int?
+        var bow: [Point]?
+        var string: [Point]?
+        var angle: Int?
+    }
+    
+    struct bitmapAndClassifications{
+        var bitmap: UIImage
+        var height: Int?
+        var angle: Int?
+    }
+    
+    init(listener: DetectorListener? = nil) throws {
+        self.listener = listener
+
+        interpreter = try Detector.createInterpreterWithFallbacks()
+
+        // Allocate tensors
+        try interpreter.allocateTensors()
+
+        // Get input/output shapes
+        let inputShape = try interpreter.input(at: 0).shape
+        let outputShape = try interpreter.output(at: 0).shape
+
+        // Handle NCHW vs NHWC
+        if inputShape.dimensions[1] == 3 {
+            tensorWidth = inputShape.dimensions[2]
+            tensorHeight = inputShape.dimensions[3]
+        } else {
+            tensorWidth = inputShape.dimensions[1]
+            tensorHeight = inputShape.dimensions[2]
+        }
+
+        numChannel = outputShape.dimensions[1]
+        numElements = outputShape.dimensions[2]
+    }
+    
+    // Implement fallbacks for creating an interpreter on IOS
+    // Use NPU, then GPU, then default to CPU
+    private static func createInterpreterWithFallbacks() throws -> Interpreter {
+        guard let modelPath = Bundle.main.path(
+            forResource: "version36_small",
+            ofType: "tflite"
+        ) else {
+            throw NSError(
+                domain: "Detector",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Model file not found in bundle"]
+            )
+        }
+
+        var options = Interpreter.Options()
+        options.threadCount = 4
+
+        // Try NPU (CoreML)
+        if let coreMLDelegate = CoreMLDelegate() {
+            do {
+                let interpreter = try Interpreter(modelPath: modelPath, options: options, delegates: [coreMLDelegate])
+                print("Successfully loaded CoreML (NPU).")
+                return interpreter
+            } catch {
+                print("CoreML Delegate Issue")
+            }
+        } else {
+            print("CoreML Delegate not supported.")
+        }
+        
+        // Try GPU (Metal)
+        let metalDelegate = MetalDelegate()
+        do {
+            let interpreter = try Interpreter(modelPath: modelPath, options: options, delegates: [metalDelegate])
+            print("Successfully loaded Metal Delegate (GPU).")
+            return interpreter
+        } catch {
+            print("Metal Delegate Issue")
+        }
+
+        // Fallback to CPU
+        let interpreter = try Interpreter(modelPath: modelPath, options: options)
+        print("Fallback to CPU")
+        return interpreter
+    }
+    
+    // TODO: Implement resetting heaps (after implemeneting heaps)
+    public func resetHeaps() {
+        deltaQueue.removeAll()
+        sortedDeltas.removeAll()
+    }
+    
+    // TODO: Implement adding a value to heaps
+    private func addDelta(value: Double) {
+        let index = sortedDeltas.firstIndex(where: { $0 > value }) ?? sortedDeltas.count
+        sortedDeltas.insert(value, at: index)
+    }
+    
+    // TODO: Implement removing a value from heaps
+    private func removeDelta(value: Double) {
+        if let index = sortedDeltas.firstIndex(of: value) {
+            sortedDeltas.remove(at: index)
+        }
+    }
+    
+    // TODO: Implement rebalancing heaps (s.t. lower heap <= upperHeap.size + 1
+    private func rebalanceHeaps() {
+        // Swift simplified arrays automatically sort on insert above
+    }
+    
+    // TODO: Implement getting the median value from heaps (whichever is bigger or avg of both next)
+    private func currentMedian() -> Double {
+        if sortedDeltas.isEmpty { return 0.0 }
+        let count = sortedDeltas.count
+        if count % 2 == 0 {
+            return (sortedDeltas[count / 2 - 1] + sortedDeltas[count / 2]) / 2.0
+        } else {
+            return sortedDeltas[count / 2]
+        }
+    }
+    
+    // Sets angle to a value 0-90, using modulo 90 and subtracting from 90 to enforce.
+    func setMaxAngle(angle: Int) {
+        maxAngle = 90 - (abs(angle) % 90)
+    }
+    
+    func detect(frame: UIImage) -> YoloResults {
+        var results = YoloResults(bowResults: nil, stringResults: nil)
+        
+        if(tensorWidth == 0 || tensorHeight == 0 || numChannel == 0 || numElements == 0) {
+            print("MODEL ERROR\n")
+            return results
+        }
+        
+        print("Tensor Size: \(tensorWidth)x\(tensorHeight)x\(numChannel)x\(numElements)")
+        
+        // Letterbox: scale the frame uniformly to fit the square model input so
+        // aspect ratio is preserved (handles both portrait and landscape clips),
+        // then pad the remainder. Content is placed at the top-left origin.
+        let size = CGSize(width: tensorWidth, height: tensorHeight)
+        let letterboxScale = min(size.width / frame.size.width,
+                                 size.height / frame.size.height)
+        let scaledSize = CGSize(width: (frame.size.width * letterboxScale).rounded(),
+                                height: (frame.size.height * letterboxScale).rounded())
+
+        guard let resizedNew = frame.resize(to: scaledSize) else {
+            print("Failed to Resize Image\n")
+            return results
+        }
+
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        // White-padded square canvas with the scaled frame drawn at the top-left.
+        let resizedImage = renderer.image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            resizedNew.draw(at: CGPoint(x: 0, y: 0))
+        }
+        guard let pixelBuffer = resizedImage.pixelBuffer() else {
+            print("Failed to Resize Image\n")
+            return results
+        }
+        
+        guard let inputData = preprocessImage(pixelBuffer: pixelBuffer) else {
+            return results
+        }
+        var bow = false
+        var string = false
+        var bow_w_d: Float = 0.0
+        var bow_h_d: Float = 0.0
+        var string_w_d: Float = 0.0
+        var string_h_d: Float = 0.0
+        //let clock = ContinuousClock() // only availabe in iOS 16.0 or newer
+        //let duration = clock.measure {
+        let startTime = Date()  // work in iOS 15.1 (default)
+        
+            // Run inference
+            do {
+                
+                try interpreter.copy(inputData, toInputAt: 0)
+                try interpreter.invoke()
+                
+                let outputTensor = try interpreter.output(at: 0)
+                let outputData = outputTensor.data
+                let floatArray = outputData.toArray(type: Float.self)
+                
+                let bestBoxes = newBestBox(array: floatArray)
+                
+                var bowConf: Float = 0
+                var stringConf: Float = 0
+                let ogWidth = Float(frame.size.width)
+                let ogHeight = Float(frame.size.height)
+                let newWidth = Float(resizedImage.size.width)
+                let newHeight = Float(resizedImage.size.height)
+                print("ogW: " + String(ogWidth) + " ogH: " + String(ogHeight))
+                print("newW: " + String(newWidth) + " newH: " + String(newHeight))
+
+                // Letterbox scaling is uniform and the frame is drawn at the
+                // origin, so model-space coordinates map back to the frame by a
+                // single inverse scale. Uniform scaling preserves rotated boxes.
+                let invScale = 1.0 / Float(letterboxScale)
+
+                func mapBoxToFrame(_ box: OrientedBoundingBox) -> [Point] {
+                    let pts = self.rotatedRectToPoints(
+                        cx: box.x, cy: box.y,
+                        w: box.width, h: box.height,
+                        angleRad: (box.angle - Float.pi / 2.0)
+                    )
+                    return pts.map { Point(x: $0.x * Double(invScale),
+                                           y: $0.y * Double(invScale)) }
+                }
+
+                for box in bestBoxes {
+                    if box.cls == 0 && box.conf > bowConf {
+                        results.bowResults = mapBoxToFrame(box)
+                        bowConf = box.conf
+                        bow = true
+                        let scaledW = box.width * invScale
+                        let scaledH = box.height * invScale
+                        if (frame_num != 0) {
+                            bow_w_d = prev_bow_w - scaledW
+                            bow_h_d = prev_bow_h - scaledH
+                        }
+                        prev_bow_w = scaledW
+                        prev_bow_h = scaledH
+                    } else if box.cls == 1 && box.conf > stringConf {
+                        results.stringResults = sortStringPoints(pts: mapBoxToFrame(box))
+                        stringConf = box.conf
+                        string = true
+                        let scaledW = box.width * invScale
+                        let scaledH = box.height * invScale
+                        if (frame_num != 0) {
+                            string_w_d = prev_string_w - scaledW
+                            string_h_d = prev_string_h - scaledH
+                        }
+                        prev_string_w = scaledW
+                        prev_string_h = scaledH
+                    }
+                }
+                
+                //let inferenceTime = Date().timeIntervalSince(inferenceStartTime)
+                
+                if results.bowResults == nil && results.stringResults == nil {
+                    listener?.noDetect()
+                } else {
+                    listener?.detected(results: results, sourceWidth: Int(frame.size.width), sourceHeight: Int(frame.size.height))
+                    print(results)
+                    print("\n")
+                }
+                
+            } catch {
+                print("Inference error: \(error)\n")
+            }
+        //}
+        let duration = Date().timeIntervalSince(startTime)
+        // FRAME, BOW, STRING, BOW_W_D, BOW_H_D, STRING_W_D, STRING_H_D, TIME_D
+        CSV_OUT += "\n\(frame_num), \(bow), \(string), \(bow_w_d), \(bow_h_d), \(string_w_d), \(string_h_d), \(duration)"
+        frame_num += 1
+        if (frame_num == 120) {
+            print(CSV_HEADER + CSV_OUT)
+            exit(EXIT_SUCCESS)
+        }
+        return results
+    }
+    
+    private func preprocessImage(pixelBuffer: CVPixelBuffer) -> Data? {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+        
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            return nil
+        }
+        
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        
+        var floatData = [Float](repeating: 0, count: width * height * 3)
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                let pixel = baseAddress.advanced(by: y * bytesPerRow + x * 4)
+                let r = Float(pixel.load(fromByteOffset: 0, as: UInt8.self))
+                let g = Float(pixel.load(fromByteOffset: 1, as: UInt8.self))
+                let b = Float(pixel.load(fromByteOffset: 2, as: UInt8.self))
+                
+                let index = (y * width + x) * 3
+                floatData[index] = (r - Detector.INPUT_MEAN) / Detector.INPUT_STANDARD_DEVIATION
+                floatData[index + 1] = (g - Detector.INPUT_MEAN) / Detector.INPUT_STANDARD_DEVIATION
+                floatData[index + 2] = (b - Detector.INPUT_MEAN) / Detector.INPUT_STANDARD_DEVIATION
+            }
+        }
+        
+        return Data(bytes: &floatData, count: floatData.count * MemoryLayout<Float>.size)
+    }
+    
+    func drawPointsOnBitmap(
+        bitmap: UIImage,
+        points: YoloResults,
+        classification: Int?,
+        angle: Int?
+    ) -> UIImage {
+        UIGraphicsBeginImageContextWithOptions(bitmap.size, false, bitmap.scale)
+        defer { UIGraphicsEndImageContext() }
+        
+        guard let context = UIGraphicsGetCurrentContext() else {
+            return bitmap
+        }
+        
+        bitmap.draw(at: .zero)
+        
+        // Determine if there's an issue
+        let hasIssue = (classification != nil && classification != 0) ||
+                       (angle != nil && angle == 1)
+        
+        // Choose colors
+        let boxColor = hasIssue ? UIColor(red: 1.0, green: 140/255.0, blue: 0, alpha: 1.0) : UIColor.blue
+        
+        context.setStrokeColor(boxColor.cgColor)
+        context.setLineWidth(8.0)
+        
+        // Draw string box
+        if let stringBox = points.stringResults, stringBox.count >= 4 {
+            context.move(to: CGPoint(x: stringBox[0].x, y: stringBox[0].y))
+            context.addLine(to: CGPoint(x: stringBox[1].x, y: stringBox[1].y))
+            context.addLine(to: CGPoint(x: stringBox[2].x, y: stringBox[2].y))
+            context.addLine(to: CGPoint(x: stringBox[3].x, y: stringBox[3].y))
+            context.addLine(to: CGPoint(x: stringBox[0].x, y: stringBox[0].y))
+            context.strokePath()
+        }
+        
+        // Draw bow box
+        if let bowBox = points.bowResults, bowBox.count >= 4 {
+            context.move(to: CGPoint(x: bowBox[0].x, y: bowBox[0].y))
+            context.addLine(to: CGPoint(x: bowBox[1].x, y: bowBox[1].y))
+            context.addLine(to: CGPoint(x: bowBox[2].x, y: bowBox[2].y))
+            context.addLine(to: CGPoint(x: bowBox[3].x, y: bowBox[3].y))
+            context.addLine(to: CGPoint(x: bowBox[0].x, y: bowBox[0].y))
+            context.strokePath()
+        }
+        
+        // Classification labels
+        let classificationLabels: [Int: String] = [
+            0: "",
+            1: "Bow outside zone",
+            2: "Bow too high",
+            3: "Bow too low"
+        ]
+        
+        let angleLabels: [Int: String] = [
+            0: "",
+            1: "Incorrect bow angle"
+        ]
+        
+        // Text attributes
+        let orangeColor = UIColor(red: 1.0, green: 140/255.0, blue: 0, alpha: 1.0)
+        let darkOrange = UIColor(red: 204/255.0, green: 85/255.0, blue: 0, alpha: 1.0)
+        
+        let textAttributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.boldSystemFont(ofSize: 56),
+            .foregroundColor: orangeColor,
+            .strokeColor: darkOrange,
+            .strokeWidth: -6.0
+        ]
+        
+        let topMargin: CGFloat = 300
+        let lineSpacing: CGFloat = 70
+        let centerX = bitmap.size.width / 2
+        var currentY = topMargin
+        
+        // Draw classification message
+        if let classification = classification, classification != 0,
+           let message = classificationLabels[classification], !message.isEmpty {
+            let attributedString = NSAttributedString(string: message, attributes: textAttributes)
+            let textSize = attributedString.size()
+            attributedString.draw(at: CGPoint(x: centerX - textSize.width / 2, y: currentY))
+            currentY += lineSpacing
+        }
+        
+        // Draw angle message
+        if let angle = angle, angle == 1,
+           let message = angleLabels[angle], !message.isEmpty {
+            let attributedString = NSAttributedString(string: message, attributes: textAttributes)
+            let textSize = attributedString.size()
+            attributedString.draw(at: CGPoint(x: centerX - textSize.width / 2, y: currentY))
+        }
+        
+        guard let annotatedImage = UIGraphicsGetImageFromCurrentImageContext() else {
+            return bitmap
+        }
+        
+        return annotatedImage
+    }
+    
+    func processFrame(bitmap: UIImage) -> UIImage {
+        let classificationResult = classify(results: detect(frame: bitmap))
+        let annotatedBitmap = drawPointsOnBitmap(
+            bitmap: bitmap,
+            points: YoloResults(
+                bowResults: classificationResult.bow,
+                stringResults: classificationResult.string
+            ),
+            classification: classificationResult.classification,
+            angle: classificationResult.angle
+        )
+        return annotatedBitmap
+    }
+    
+    func analyzeFrame(bitmap: UIImage) -> bitmapAndClassifications {
+        let classificationResult = classify(results: detect(frame: bitmap))
+        let annotatedBitmap = drawPointsOnBitmap(bitmap: bitmap,
+                                                 points: YoloResults(bowResults: classificationResult.bow, stringResults: classificationResult.string), classification: classificationResult.classification, angle: classificationResult.angle)
+        return bitmapAndClassifications(bitmap: annotatedBitmap, height: classificationResult.classification, angle: classificationResult.angle)
+    }
+
+    private func rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float) -> [Point] {
+        let halfW = w / 2
+        let halfH = h / 2
+        print("ANGLE \(angleRad)\n")
+        let cosA = cos(angleRad)
+        let sinA = sin(angleRad)
+        
+        let corners: [(Float, Float)] = [
+            (-halfW, -halfH),
+            (halfW, -halfH),
+            (halfW, halfH),
+            (-halfW, halfH)
+        ]
+        
+        return corners.map { (x, y) in
+            let xRot = x * cosA - y * sinA + cx
+            let yRot = x * sinA + y * cosA + cy
+            return Point(x: Double(xRot), y: Double(yRot))
+        }
+    }
+    
+    private func newBestBox(array: [Float]) -> [OrientedBoundingBox] {
+        var boundingBoxes: [OrientedBoundingBox] = []
+        
+        for r in 0..<numElements {
+            let stringCnf = array[5 * numElements + r]
+            let bowCnf = array[4 * numElements + r]
+            let cls = stringCnf > bowCnf ? 1 : 0
+            let cnf = stringCnf > bowCnf ? stringCnf : bowCnf
+            
+            if cnf > Detector.CONFIDENCE_THRESHOLD {
+                let x = array[r]
+                let y = array[1 * numElements + r]
+                let h = array[2 * numElements + r]
+                let w = array[3 * numElements + r]
+                let angle = array[6 * numElements + r]
+                
+                boundingBoxes.append(
+                    OrientedBoundingBox(
+                        x: x, y: y, height: h, width: w,
+                        conf: cnf, cls: cls, angle: angle
+                    )
+                )
+            }
+        }
+        
+        return boundingBoxes
+    }
+    
+    func updatePoints(stringBox: [Point], bowBox: [Point]) {
+        bowPoints = bowBox
+        self.stringPoints = updateStringPoints(stringBox: stringBox)
+        print("sorted points \(String(describing: stringPoints))")
+    }
+    
+    //TODO: add handling of updating string points for locking the string box
+    func updateStringPoints(stringBox: [Point]) -> [Point] {
+        var sortedString = sortStringPoints(pts: stringBox)
+        
+        let deltaY = abs(sortedString[0].y - sortedString[3].y)
+        
+        // add new height to queue
+        deltaQueue.append(deltaY)
+        addDelta(value: deltaY)
+        
+        // keep queue size at max
+        if deltaQueue.count > MAX_QUEUE_SIZE {
+            let old = deltaQueue.removeFirst()
+            removeDelta(value: old)
+        }
+        
+        // if only one height in queue, return sorted string
+        if deltaQueue.count == 1 {
+            stringPoints = sortedString
+            return sortedString
+        }
+        
+        let medianDelta = currentMedian()
+        
+        //if there is a huge deviation, we manually lock the top 2 points of the string box to the median
+        if abs(medianDelta - deltaY) > Double(MAX_Y_DELTA_THRESHOLD) {
+            sortedString[0].y = sortedString[3].y - medianDelta
+            sortedString[1].y = sortedString[2].y - medianDelta
+            print("String Box Locked; Big Deviation")
+        }
+        // if bow is close to string, we also lock the string box to the bow box
+        else if let bowPoints = bowPoints {
+            let sortedBow = sortBowPoints(pts: bowPoints)
+            let topAvgBowY = (sortedBow[0].y + sortedBow[1].y) / 2.0
+            let topAvgStrY = (sortedString[0].y + sortedString[1].y) / 2.0
+            let botAvgBowY = (sortedBow[2].y + sortedBow[3].y) / 2.0
+            
+            if topAvgBowY <= topAvgStrY && botAvgBowY >= (topAvgStrY - Double(MAX_BOW_DIST_THRESHOLD)) {
+                if sortedBow[0].x <= sortedString[0].x && sortedBow[1].x >= sortedString[1].x {
+                    sortedString[0].y = sortedString[3].y - medianDelta
+                    sortedString[1].y = sortedString[2].y - medianDelta
+                    print("String Box Lock; Bow Covering")
+                }
+            }
+        }
+        
+        return sortedString
+    }
+    
+    func sortStringPoints(pts: [Point]) -> [Point] {
+        let sortedPoints = pts.sorted { $0.y < $1.y }
+        let topPoints = Array(sortedPoints.prefix(2)).sorted { $0.x < $1.x }
+        let bottomPoints = Array(sortedPoints.suffix(2)).sorted { $0.x > $1.x }
+        return topPoints + bottomPoints
+    }
+    
+    //
+    func sortBowPoints(pts: [Point]) -> [Point] {
+        let sortedPoints = pts.sorted { $0.x < $1.x }
+        
+        let leftPoints = Array(sortedPoints.prefix(2)).sorted { $0.y < $1.y }
+        let rightPoints = Array(sortedPoints.suffix(2)).sorted { $0.y < $1.y }
+        
+        return [leftPoints[0], rightPoints[0], rightPoints[1], leftPoints[1]]
+    }
+
+    func getMidline() -> [Double] {
+        func distance(pt1: Point, pt2: Point) -> Double {
+            return (pt1.x - pt2.x) * (pt1.x - pt2.x) + (pt1.y - pt2.y) * (pt1.y - pt2.y)
+        }
+        
+        guard let bowPoints = bowPoints else { return [] }
+        
+        let d1 = distance(pt1: bowPoints[0], pt2: bowPoints[1])
+        let d2 = distance(pt1: bowPoints[1], pt2: bowPoints[2])
+        let d3 = distance(pt1: bowPoints[2], pt2: bowPoints[3])
+        let d4 = distance(pt1: bowPoints[3], pt2: bowPoints[0])
+        let distances = [d1, d2, d3, d4]
+        
+        guard let minDistance = distances.min(),
+              let minIndex = distances.firstIndex(of: minDistance) else {
+            return []
+        }
+        
+        let (pair1, pair2): ((Point, Point), (Point, Point))
+        switch minIndex {
+        case 0:
+            pair1 = (bowPoints[0], bowPoints[1])
+            pair2 = (bowPoints[2], bowPoints[3])
+        case 1:
+            pair1 = (bowPoints[1], bowPoints[2])
+            pair2 = (bowPoints[3], bowPoints[0])
+        case 2:
+            pair1 = (bowPoints[2], bowPoints[3])
+            pair2 = (bowPoints[0], bowPoints[1])
+        default:
+            pair1 = (bowPoints[3], bowPoints[0])
+            pair2 = (bowPoints[1], bowPoints[2])
+        }
+        
+        let mid1 = [(pair1.0.x + pair1.1.x) / 2, (pair1.0.y + pair1.1.y) / 2]
+        let mid2 = [(pair2.0.x + pair2.1.x) / 2, (pair2.0.y + pair2.1.y) / 2]
+        
+        let dy = mid1[1] - mid2[1]
+        let dx = mid1[0] - mid2[0]
+        
+        if dx == 0.0 {
+            return [Double.infinity, mid1[0]]
+        } else {
+            let slope = dy / dx
+            let intercept = mid1[1] - slope * mid1[0]
+            return [slope, intercept]
+        }
+    }
+    
+    private func getVerticalLines() -> [[Double]] {
+        guard let stringPoints = stringPoints else { return [] }
+        
+        let topLeft = stringPoints[0]
+        let topRight = stringPoints[1]
+        let botRight = stringPoints[2]
+        let botLeft = stringPoints[3]
+        
+        let dxLeft = topLeft.x - botLeft.x
+        let leftSlope: Double
+        let leftYint: Double
+        
+        if dxLeft == 0.0 {
+            leftSlope = Double.infinity
+            leftYint = -1.0
+        } else {
+            leftSlope = (topLeft.y - botLeft.y) / dxLeft
+            leftYint = topLeft.y - leftSlope * topLeft.x
+        }
+        
+        let dxRight = topRight.x - botRight.x
+        let rightSlope: Double
+        let rightYint: Double
+        
+        if dxRight == 0.0 {
+            rightSlope = Double.infinity
+            rightYint = -1.0
+        } else {
+            rightSlope = (topRight.y - botRight.y) / dxRight
+            rightYint = topRight.y - rightSlope * topRight.x
+        }
+        
+        let leftLine = [leftSlope, leftYint, topLeft.y, botLeft.y]
+        let rightLine = [rightSlope, rightYint, topRight.y, botRight.y]
+        
+        return [leftLine, rightLine]
+    }
+    
+    private func intersectsVertical(linearLine: [Double], verticalLines: [[Double]]) -> Int {
+        let m = linearLine[0]
+        let b = linearLine[1]
+        
+        let verticalOne = verticalLines[0]
+        let verticalTwo = verticalLines[1]
+        
+        func getIntersection(vLine: [Double], xRef: Double) -> Point? {
+            let slopeV = vLine[0]
+            let interceptV = vLine[1]
+            let topY = vLine[2]
+            let botY = vLine[3]
+            
+            let x: Double
+            let y: Double
+            
+            if slopeV == Double.infinity || interceptV == -1.0 {
+                x = xRef
+                if m == Double.infinity { return nil }
+                y = m * x + b
+            } else if m == Double.infinity {
+                x = b
+                y = slopeV * x + interceptV
+            } else if abs(m - slopeV) < 1e-6 {
+                return nil
+            } else {
+                x = (interceptV - b) / (m - slopeV)
+                y = m * x + b
+            }
+            
+            let yMin = min(topY, botY)
+            let yMax = max(topY, botY)
+            
+            if yMin > y || y > yMax {
+                return nil
+            }
+            
+            return Point(x: x, y: y)
+        }
+        
+        guard let stringPoints = stringPoints else { return 1 }
+        
+        let xLeft = stringPoints[0].x
+        let xRight = stringPoints[1].x
+        
+        var pt1 = getIntersection(vLine: verticalOne, xRef: xLeft)
+        var pt2 = getIntersection(vLine: verticalTwo, xRef: xRight)
+        
+        if pt1 == nil && pt2 == nil {
+            print("BOW: INVALID INTERSECTION")
+            return 1
+        }
+        if pt1 == nil { pt1 = pt2 }
+        if pt2 == nil { pt2 = pt1 }
+        
+        return bowHeightIntersection(intersectionPoints: [pt1!, pt2!], verticalLines: [verticalOne, verticalTwo])
+    }
+    
+    private func bowHeightIntersection(intersectionPoints: [Point], verticalLines: [[Double]]) -> Int {
+        let topZonePercentage = 0.15
+        let bottomZonePercentage = 0.15
+        
+        let verticalOne = verticalLines[0]
+        let verticalTwo = verticalLines[1]
+        
+        let topY1 = verticalOne[2]
+        let topY2 = verticalTwo[2]
+        let botY1 = verticalOne[3]
+        let botY2 = verticalTwo[3]
+        
+        let height = abs(((botY1 - topY1) + (botY2 - topY2)) / 2.0)
+        if height == 0.0 { return 0 }
+        
+        let avgTopY = (topY1 + topY2) / 2.0
+        let avgBotY = (botY1 + botY2) / 2.0
+        
+        let tooHighThreshold = avgTopY + height * topZonePercentage
+        let tooLowThreshold = avgBotY - height * bottomZonePercentage
+        
+        let intersectionY = intersectionPoints.map { $0.y }.reduce(0, +) / Double(intersectionPoints.count)
+        
+        if intersectionY <= tooHighThreshold {
+            return 2
+        }
+        
+        if intersectionY >= tooLowThreshold {
+            return 3
+        }
+        
+        return 0
+    }
+    
+    private func degrees(radians: Double) -> Double {
+        return radians * (180.0 / Double.pi)
+    }
+    
+    private func bowAngle(bowLine: [Double], verticalLines: [[Double]]) -> Int {
+        let maxAngle = 15.0
+        
+        let mBow = bowLine[0]
+        let m1 = verticalLines[0][0]
+        let m2 = verticalLines[1][0]
+        
+        let angleOne = abs(degrees(radians: atan(abs(mBow - m2) / (1 + mBow * m2))))
+        let angleTwo = abs(degrees(radians: atan(abs(m1 - mBow) / (1 + m1 * mBow))))
+        
+        let minAngle = abs(90 - min(angleOne, angleTwo))
+        
+        return minAngle > maxAngle ? 1 : 0
+    }
+    
+    func classify(results: YoloResults) -> ReturnBow {
+        var classResults = ReturnBow(classification: nil, bow: nil, string: nil, angle: nil)
+        var mutableResults = results
+        
+        if mutableResults.stringResults != nil {
+            stringRepeat = 0
+            stringPoints = mutableResults.stringResults
+        } else if stringRepeat < 5, let stringPoints = stringPoints {
+            classResults.classification = -1
+            stringRepeat += 1
+            mutableResults.stringResults = stringPoints
+        } else {
+            stringPoints = nil
+        }
+        
+        if mutableResults.bowResults != nil {
+            bowRepeat = 0
+            bowPoints = mutableResults.bowResults
+        } else if bowRepeat < 5, let bowPoints = bowPoints {
+            classResults.classification = -1
+            bowRepeat += 1
+            mutableResults.bowResults = bowPoints
+        } else {
+            bowPoints = nil
+        }
+        
+        if stringPoints == nil && bowPoints == nil {
+            classResults.classification = -2
+            return classResults
+        }
+        
+        if mutableResults.stringResults == nil {
+            classResults.classification = -1
+            classResults.bow = mutableResults.bowResults
+            return classResults
+        } else if mutableResults.bowResults == nil {
+            classResults.classification = -1
+            classResults.string = mutableResults.stringResults
+            return classResults
+        } else {
+            classResults.string = mutableResults.stringResults
+            classResults.bow = mutableResults.bowResults
+            updatePoints(stringBox: mutableResults.stringResults!, bowBox: mutableResults.bowResults!)
+            let midlines = getMidline()
+            let vertLines = getVerticalLines()
+            let intersectPoints = intersectsVertical(linearLine: midlines, verticalLines: vertLines)
+            classResults.angle = bowAngle(bowLine: midlines, verticalLines: vertLines)
+            classResults.classification = intersectPoints
+            print("BOW: \(String(describing: classResults.classification))")
+            return classResults
+        }
+    }
+}
+
+// Extensions
+extension Data {
+    func toArray<T>(type: T.Type) -> [T] where T: ExpressibleByIntegerLiteral {
+        var array = [T](repeating: 0, count: count / MemoryLayout<T>.stride)
+        _ = array.withUnsafeMutableBytes { copyBytes(to: $0) }
+        return array
+    }
+}
+
+extension UIImage {
+    func resize(to size: CGSize) -> UIImage? {
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        defer { UIGraphicsEndImageContext() }
+        draw(in: CGRect(origin: .zero, size: size))
+        return UIGraphicsGetImageFromCurrentImageContext()
+    }
+    
+    // Convert UIImage to CVPixelBuffer for ML
+    func pixelBuffer() -> CVPixelBuffer? {
+        let width = Int(size.width)
+        let height = Int(size.height)
+        
+        let attributes: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true
+        ]
+        
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32ARGB,
+            attributes as CFDictionary,
+            &pixelBuffer
+        )
+        
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            return nil
+        }
+        
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        
+        let pixelData = CVPixelBufferGetBaseAddress(buffer)
+        let rgbColorSpace = CGColorSpaceCreateDeviceRGB()
+        
+        guard let context = CGContext(
+            data: pixelData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+            space: rgbColorSpace,
+            bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+        ) else {
+            return nil
+        }
+        
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1.0, y: -1.0)
+        
+        UIGraphicsPushContext(context)
+        draw(in: CGRect(x: 0, y: 0, width: width, height: height))
+        UIGraphicsPopContext()
+        
+        return buffer
+    }
+}//
+//  Detector.swift
+//  Evaluator-Video-Test
+//
+//  Created by Sivamurugan Velmurugan on 1/28/26.
+//
+

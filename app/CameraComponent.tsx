@@ -193,8 +193,13 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       // load history session
       const sessions = await CameraxModule.getRecentSessions(userId, TOTAL_SESSIONS);
 
-      if (sessions && sessions.length > 0) {
-        setHistorySessions(sessions as SummaryData[]);
+        const normalizedSessions = sessions.map((s: any) => ({
+          ...s,
+          userId: s.userId || s.user_id,
+        }));
+
+      if (normalizedSessions && normalizedSessions.length > 0) {
+        setHistorySessions(normalizedSessions as SummaryData[]);
         setHistoryVisible(true);
       } else {
         setHistorySessions([]);

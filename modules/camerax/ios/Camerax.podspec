@@ -13,6 +13,9 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
+  s.dependency 'TensorFlowLiteSwift', '~> 2.14.0'
+  s.dependency 'TensorFlowLiteSwift/CoreML', '~> 2.14.0'
+  s.dependency 'TensorFlowLiteSwift/Metal', '~> 2.14.0'
 
   # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {
