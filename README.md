@@ -28,7 +28,7 @@
 - For physical device: Enable Developer Options and USB Debugging
 
 ## Setup Instructions
-1. Git pull from ```UI_branch_new```
+1. Git pull from ```main```
 2. Install packages by running ```npm install```
 3. Connect to Android device - Start Virtual device or connect to physical device via USB
    
