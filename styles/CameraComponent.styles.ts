@@ -564,6 +564,24 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // ===== Instrument Mode Badge =====
+  instrumentModeBadge: {
+    position: 'absolute',
+    top: 100,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    zIndex: 2500,
+  },
+
+  instrumentModeBadgeText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
   // ===== Exit Confirmation Modal =====
   exitModalContent: {
     width: '85%',

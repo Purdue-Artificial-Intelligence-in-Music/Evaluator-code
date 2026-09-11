@@ -44,6 +44,9 @@ export default function HomePage() {
   // Session History flag
   const [openHistoryOnCamera, setOpenHistoryOnCamera] = useState(false);
 
+  // what mode user selects
+  const [instrumentMode, setInstrumentMode] = useState<'cello' | 'violinViola'>('cello');
+
   const requestCameraPermission = async () => {
     const status = await Camera.requestCameraPermission();
     if (status === 'granted') {
@@ -248,6 +251,16 @@ export default function HomePage() {
       </View>
 
       <TouchableOpacity
+        onPress={() =>
+          setInstrumentMode(prev => prev === 'cello' ? 'violinViola' : 'cello')
+        }
+      >
+        <Text>
+          Instrument Mode: {instrumentMode === 'cello' ? 'Cello' : 'Violin/Viola'}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         onPress={pickVideo}
         style={{
           width: 320,    // smaller width
@@ -342,6 +355,7 @@ export default function HomePage() {
             onClose={closeCamera}
             initialHistoryOpen={openHistoryOnCamera}
             initialSetupOpen={true}
+            instrumentMode={instrumentMode}
           />
         </View>
       ) : null}
@@ -515,5 +529,20 @@ const styles = StyleSheet.create({
     paddingRight: 30,
     paddingTop: 5,
     marginBottom: 5,
+  },
+  instrumentModeButton: {
+    width: 320,
+    height: 50,
+    marginVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#222',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  instrumentModeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
