@@ -19,7 +19,7 @@ import { SafeAreaView, Button, Text, Image, StyleSheet, View, Dimensions, Scroll
 import { ResizeMode, Video } from 'expo-av';
 import * as ImagePickerExpo from 'expo-image-picker';
 
-import { Camera } from 'react-native-vision-camera';
+import { Camera } from 'expo-camera';
 
 import * as FileSystem from 'expo-file-system';
 
@@ -45,7 +45,7 @@ export default function HomePage() {
   const [openHistoryOnCamera, setOpenHistoryOnCamera] = useState(false);
 
   const requestCameraPermission = async () => {
-    const status = await Camera.requestCameraPermission();
+    const { status } = await Camera.requestCameraPermissionsAsync();
     if (status === 'granted') {
       setHasPermission(true);
     } else {
