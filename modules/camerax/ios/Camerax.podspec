@@ -16,6 +16,7 @@ Pod::Spec.new do |s|
   s.dependency 'TensorFlowLiteSwift', '~> 2.14.0'
   s.dependency 'TensorFlowLiteSwift/CoreML', '~> 2.14.0'
   s.dependency 'TensorFlowLiteSwift/Metal', '~> 2.14.0'
+  s.dependency 'MediaPipeTasksVision'
 
   # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {
@@ -23,4 +24,5 @@ Pod::Spec.new do |s|
   }
 
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  s.resources = "assets/*.{tflite,task}"
 end

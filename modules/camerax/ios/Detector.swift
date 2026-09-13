@@ -12,15 +12,6 @@ protocol DetectorListener: AnyObject {
 }
 
 class Detector {
-    // VARS FOR TESTING AND OUTPUTTING CSV
-    var prev_bow_w: Float = 0
-    var prev_bow_h: Float = 0
-    var prev_string_w: Float = 0
-    var prev_string_h: Float = 0
-    private var frame_num = 0
-    private let CSV_HEADER = "FRAME, BOW, STRING, BOW_W_D, BOW_H_D, STRING_W_D, STRING_H_D, TIME_D"
-    private var CSV_OUT = ""
-    // END VARS
     private var interpreter: Interpreter
     private weak var listener: DetectorListener?
     private var labels: [String] = []
@@ -239,16 +230,6 @@ class Detector {
         guard let inputData = preprocessImage(pixelBuffer: pixelBuffer) else {
             return results
         }
-        var bow = false
-        var string = false
-        var bow_w_d: Float = 0.0
-        var bow_h_d: Float = 0.0
-        var string_w_d: Float = 0.0
-        var string_h_d: Float = 0.0
-        //let clock = ContinuousClock() // only availabe in iOS 16.0 or newer
-        //let duration = clock.measure {
-        let startTime = Date()  // work in iOS 15.1 (default)
-        
             // Run inference
             do {
                 
@@ -261,8 +242,6 @@ class Detector {
                 
                 let bestBoxes = newBestBox(array: floatArray)
                 
-                var bowConf: Float = 0
-                var stringConf: Float = 0
                 let ogWidth = Float(frame.size.width)
                 let ogHeight = Float(frame.size.height)
                 let newWidth = Float(resizedImage.size.width)
@@ -285,31 +264,15 @@ class Detector {
                                            y: $0.y * Double(invScale)) }
                 }
 
+                var bowConf: Float = 0
+                var stringConf: Float = 0
                 for box in bestBoxes {
                     if box.cls == 0 && box.conf > bowConf {
                         results.bowResults = mapBoxToFrame(box)
                         bowConf = box.conf
-                        bow = true
-                        let scaledW = box.width * invScale
-                        let scaledH = box.height * invScale
-                        if (frame_num != 0) {
-                            bow_w_d = prev_bow_w - scaledW
-                            bow_h_d = prev_bow_h - scaledH
-                        }
-                        prev_bow_w = scaledW
-                        prev_bow_h = scaledH
                     } else if box.cls == 1 && box.conf > stringConf {
                         results.stringResults = sortStringPoints(pts: mapBoxToFrame(box))
                         stringConf = box.conf
-                        string = true
-                        let scaledW = box.width * invScale
-                        let scaledH = box.height * invScale
-                        if (frame_num != 0) {
-                            string_w_d = prev_string_w - scaledW
-                            string_h_d = prev_string_h - scaledH
-                        }
-                        prev_string_w = scaledW
-                        prev_string_h = scaledH
                     }
                 }
                 
@@ -326,15 +289,6 @@ class Detector {
             } catch {
                 print("Inference error: \(error)\n")
             }
-        //}
-        let duration = Date().timeIntervalSince(startTime)
-        // FRAME, BOW, STRING, BOW_W_D, BOW_H_D, STRING_W_D, STRING_H_D, TIME_D
-        CSV_OUT += "\n\(frame_num), \(bow), \(string), \(bow_w_d), \(bow_h_d), \(string_w_d), \(string_h_d), \(duration)"
-        frame_num += 1
-        if (frame_num == 120) {
-            print(CSV_HEADER + CSV_OUT)
-            exit(EXIT_SUCCESS)
-        }
         return results
     }
     
