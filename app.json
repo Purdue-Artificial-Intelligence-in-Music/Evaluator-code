@@ -4,7 +4,7 @@
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/adaptive-icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -18,7 +18,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera"
       },
-      "bundleIdentifier": "com.junyong.evaluator"
+      "bundleIdentifier": "com.paolowang.evaluatorapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -38,7 +38,7 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "react-native-vision-camera"
+      "./plugins/withTfliteDuplicateSymbolFix"
     ],
     "experiments": {
       "typedRoutes": true
