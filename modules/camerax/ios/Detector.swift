@@ -108,7 +108,7 @@ class Detector {
     // Use NPU, then GPU, then default to CPU
     private static func createInterpreterWithFallbacks() throws -> Interpreter {
         guard let modelPath = Bundle.main.path(
-            forResource: "version36_small",
+            forResource: "try",
             ofType: "tflite"
         ) else {
             throw NSError(
