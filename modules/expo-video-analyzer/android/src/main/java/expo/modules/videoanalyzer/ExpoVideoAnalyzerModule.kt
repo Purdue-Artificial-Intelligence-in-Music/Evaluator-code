@@ -44,7 +44,17 @@ class ExpoVideoAnalyzerModule : Module() {
     var inputMutexes: Array<Mutex>? = null
     val outputMutex = Mutex()
     val readingBitmapsMutex = Mutex()
-    private val profile = Profile()
+    //private val profile = Profile()
+
+    // Initialize Profile lazily because the React context may not be
+    // available when the Expo module object is first created.
+    private val profile by lazy {
+        val context = appContext.reactContext
+            ?: throw IllegalStateException("React context is unavailable")
+
+        Profile(context.applicationContext)
+    }
+
     private var userId: String = "default_user"
 
     override fun definition() = ModuleDefinition {

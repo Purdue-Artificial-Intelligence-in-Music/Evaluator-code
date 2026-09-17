@@ -78,7 +78,10 @@ class CameraxView(
 
     private lateinit var handLandmarkerHelper: HandLandmarkerHelper
 
-    private val profile = Profile()
+    //private val profile = Profile()
+    // Pass the application context so Profile can safely access
+    // the app-specific external storage directory.
+    private val profile = Profile(context.applicationContext)
     private var userId: String = "default_user"
     //private val userId = "session" // You can dynamically change this per user
 

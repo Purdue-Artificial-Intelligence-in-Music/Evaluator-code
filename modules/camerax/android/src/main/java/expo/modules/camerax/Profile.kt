@@ -9,7 +9,17 @@ import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import android.util.Log
-class Profile {
+//added import since detectionbox not shown
+import android.content.Context
+import android.os.Environment
+import java.io.IOException
+
+
+// Context is required to access app-specific external storage.
+// The previous public Documents path can fail on newer Android versions
+// because of scoped storage restrictions.
+//class Profile {
+class Profile(private val context: Context) {
 
     companion object {
         private var ts: String = ""
@@ -67,7 +77,7 @@ class Profile {
 
     private var ts: String = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
     private var id: String = ""
-
+/*
     fun createNewID(userId: String) {
         if (userId !in sessionDict) {
             sessionDict[userId] = mutableListOf()
@@ -78,6 +88,30 @@ class Profile {
             )
             if (!baseDir.exists()) baseDir.mkdirs()
 
+    */
+    fun createNewID(userId: String) {
+        if (userId !in sessionDict) {
+            sessionDict[userId] = mutableListOf()
+
+            // Store session files in the app-specific Documents directory.
+            // This avoids scoped storage permission errors when writing directly
+            // to the device's public Documents directory.
+            val externalDir =
+                context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+                    ?: throw IOException("External files directory is unavailable")
+
+            val baseDir = File(externalDir, "sessions")
+
+            // Ensure that the sessions directory exists before creating JSON files.
+            if (!baseDir.exists() && !baseDir.mkdirs()) {
+                throw IOException(
+                    "Failed to create sessions directory: ${baseDir.absolutePath}"
+                )
+            }
+
+
+
+    //========================= Nothing Changed
             val now = Date()
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(now)
             val timestampFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(now)
@@ -188,12 +222,25 @@ class Profile {
 
     private fun saveSummaryFile(userId: String, summary: SessionSummary) {
         try {
+            /*
             val baseDir = File(
                 android.os.Environment.getExternalStoragePublicDirectory(
                     android.os.Environment.DIRECTORY_DOCUMENTS
                 ), "sessions"
             )
             if (!baseDir.exists()) baseDir.mkdirs()
+            */
+            val externalDir =
+                context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+                    ?: throw IOException("External files directory is unavailable")
+
+            val baseDir = File(externalDir, "sessions")
+
+            if (!baseDir.exists() && !baseDir.mkdirs()) {
+                throw IOException(
+                    "Failed to create sessions directory: ${baseDir.absolutePath}"
+                )
+            }
 
             val timestamp = sessionTimestamps[userId] ?: SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val summaryFile = File(baseDir, "session_${userId}_${timestamp}_summary.json")
