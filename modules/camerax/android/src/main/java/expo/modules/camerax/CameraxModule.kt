@@ -8,17 +8,9 @@ import org.json.JSONObject
 import java.io.File
 
 class CameraxModule : Module() {
-    private var s3Uploader: S3Uploader? = null
+
     override fun definition() = ModuleDefinition {
         Name("Camerax")
-        OnCreate {
-            val isConfigured = BuildConfig.COGNITO_IDENTITY_POOL_ID.isNotBlank() &&
-                    BuildConfig.S3_BUCKET_NAME.isNotBlank() &&
-                    BuildConfig.AWS_REGION.isNotBlank()
-
-            s3Uploader = if (isConfigured) S3Uploader(appContext.reactContext!!) else null
-            Log.d("S3Upload", if (isConfigured) "S3 configured" else "S3 not configured, uploads disabled")
-        }
         View(CameraxView::class) {
             Prop("userId") { view: CameraxView, userId: String ->
                 view.setUserId(userId)
@@ -26,18 +18,6 @@ class CameraxModule : Module() {
 
             Prop("detectionEnabled") { view: CameraxView, enabled: Boolean ->
                 view.setDetectionEnabled(enabled)
-                if (!enabled) {
-                    val userId = view.getUserId()
-                    val detailJson = Profile.getDetailJson(userId)
-                    val summaryJson = Profile.getSummaryJson(userId)
-                    val timestamp = Profile.getTimeStamp()
-
-                    Thread {
-                        s3Uploader?.uploadSessionData(userId, timestamp, detailJson, summaryJson) { success, msg ->
-                            Log.d("S3Upload", if (success) " $msg" else "$msg")
-                        }
-                    }.start()
-                }
             }
 
             Prop("lensType") { view: CameraxView, lensType: String ->
@@ -169,48 +149,7 @@ class CameraxModule : Module() {
 
         return images
     }
-    private fun uploadSessionToS3Impl(
-        userId: String,
-        timestamp: String,
-        detailJson: String?,
-        summaryJson: String?
-    ): Map<String, Any> {
-        return try {
-            val context = appContext.reactContext ?: throw Exception("Context not available")
-            val s3Uploader = S3Uploader(context)
 
-            var uploadSuccess = false
-            var uploadMessage = ""
-
-            // Use a CountDownLatch to wait for async upload to complete
-            val latch = java.util.concurrent.CountDownLatch(1)
-
-            s3Uploader.uploadSessionData(
-                userId = userId,
-                timestamp = timestamp,
-                detailJson = detailJson,
-                summaryJson = summaryJson
-            ) { success, message ->
-                uploadSuccess = success
-                uploadMessage = message
-                latch.countDown()
-            }
-
-            // Wait for upload to complete (with 30 second timeout)
-            latch.await(30, java.util.concurrent.TimeUnit.SECONDS)
-
-            mapOf(
-                "success" to uploadSuccess,
-                "message" to uploadMessage
-            )
-        } catch (e: Exception) {
-            Log.e("S3Upload", "Upload error: ${e.message}", e)
-            mapOf(
-                "success" to false,
-                "message" to "Error: ${e.message}"
-            )
-        }
-    }
     private fun normalizeTimestampToFolderName(timestamp: String): String {
         try {
             // input format: "2025-12-09 01:13:48"
