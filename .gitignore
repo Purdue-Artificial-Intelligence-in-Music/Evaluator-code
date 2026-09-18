@@ -45,3 +45,5 @@ android/app/*firebase*-service-account.json
 android/app/*firebase*-adminsdk-*.json
 
 modules/camerax/android/arm64-v8a/
+# Local Qualcomm QNN runtime binaries
+modules/camerax/android/src/main/jniLibs/
