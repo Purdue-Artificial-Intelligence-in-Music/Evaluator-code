@@ -10,6 +10,32 @@ import java.io.File
 class CameraxModule : Module() {
 
     override fun definition() = ModuleDefinition {
+
+        // Task 1A: Run violin bow classifier with mock coordinates
+        val mockBowPoints = listOf(
+            ViolinBowClassifier.Point(40.0, 6.0),
+            ViolinBowClassifier.Point(60.0, 50.0),
+            ViolinBowClassifier.Point(48.0, 0.0),
+            ViolinBowClassifier.Point(66.0, 42.0)
+        )
+
+        val mockStringPoints = listOf(
+            ViolinBowClassifier.Point(5.0, 15.0),
+            ViolinBowClassifier.Point(50.0, 5.0),
+            ViolinBowClassifier.Point(55.0, 22.0),
+            ViolinBowClassifier.Point(10.0, 33.0)
+        )
+
+        val result = ViolinBowClassifier.classify(
+            mockBowPoints,
+            mockStringPoints
+        )
+
+        Log.d(
+            "ViolinBowClassifier",
+            "Position=${result.position}, Angle=${result.angle}"
+        )
+
         Name("Camerax")
         View(CameraxView::class) {
             Prop("userId") { view: CameraxView, userId: String ->
