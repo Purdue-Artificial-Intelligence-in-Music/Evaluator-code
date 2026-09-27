@@ -116,8 +116,8 @@ class OverlayView @JvmOverloads constructor(
         const val CLASS_PARTIAL = -1
         const val CLASS_CORRECT = 0
         const val CLASS_OUTSIDE = 1
-        const val CLASS_TOO_HIGH = 2
-        const val CLASS_TOO_LOW = 3
+        const val CLASS_TOO_FAR_LEFT = 2
+        const val CLASS_TOO_FAR_RIGHT = 3
 
         const val ANGLE_RIGHT = 0
         const val ANGLE_WRONG = 1
@@ -126,15 +126,15 @@ class OverlayView @JvmOverloads constructor(
         val CLASSIFICATION_LABELS = mapOf(
             CLASS_NONE to "No detection",
             CLASS_PARTIAL to "Partial detection",
-            CLASS_CORRECT to "Correct Bow Placement",
-            CLASS_OUTSIDE to "Bow Outside Zone",
-            CLASS_TOO_LOW to "Bow Too Low",
-            CLASS_TOO_HIGH to "Bow Too High"
+            CLASS_CORRECT to "Good Bow Position",
+            CLASS_OUTSIDE to "Bow Fully Outside",
+            CLASS_TOO_FAR_LEFT to "Bow Too Far Left",
+            CLASS_TOO_FAR_RIGHT to "Bow Too Far Right"
         )
 
         val ANGLE_LABELS = mapOf(
-            ANGLE_RIGHT to "Correct Bow Angle",
-            ANGLE_WRONG to "Incorrect Bow Angle"
+            ANGLE_RIGHT to "Good Bow Angle",
+            ANGLE_WRONG to "Bow Too Angled"
         )
 
         const val LANDMARK_STROKE_WIDTH = 8f
@@ -369,15 +369,15 @@ class OverlayView @JvmOverloads constructor(
             val classificationLabels = mapOf(
                 0 to "",  // Correct - don't display
                 1 to "Keep the bow in zone",    // Bow outside zone
-                2 to "Lower the bow",    // Bow too high
-                3 to "Lift the bow"    // Bow too low
+                2 to "Move the bow to the right",    // Bow too left
+                3 to "Move the bow to the left"    // Bow too right
             )
 
             val fileLabelsBow = mapOf(
                 0 to "correct_bow",  // Correct
                 1 to "bow_outside_zone",    // Bow outside zone
-                2 to "bow_too_high",    // Bow too high
-                3 to "bow_too_low"    // Bow too low
+                2 to "bow_too_far_left",    // Bow too left
+                3 to "bow_too_far_right"    // Bow too right
             )
 
             val angleLabels = mapOf(
