@@ -5,6 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { styles } from '../styles/CameraComponent.styles';
 import { ICONS } from '../styles/CameraComponent.styles';
 import LearnPosture from './LearnPosture'; // adjust path as needed
+//for landscape orientation
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 const CameraxView = requireNativeViewManager('Camerax');
 const CameraxModule = requireNativeModule('Camerax');
@@ -127,6 +129,37 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     all: []
   });
   const [isLoadingImages, setIsLoadingImages] = useState(false);
+
+  // Use landscape only for the live camera screen.
+  // History and the rest of the app remain in portrait.
+  useEffect(() => {
+    const updateOrientation = async () => {
+      try {
+        if (initialHistoryOpen) {
+          await ScreenOrientation.lockAsync(
+            ScreenOrientation.OrientationLock.PORTRAIT_UP
+          );
+        } else {
+          await ScreenOrientation.lockAsync(
+            ScreenOrientation.OrientationLock.LANDSCAPE
+          );
+        }
+      } catch (error) {
+        console.error('Failed to update screen orientation:', error);
+      }
+    };
+
+    updateOrientation();
+
+    // Restore portrait when CameraComponent closes/unmounts.
+    return () => {
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP
+      ).catch((error) => {
+        console.error('Failed to restore portrait orientation:', error);
+      });
+    };
+  }, [initialHistoryOpen]);
 
   useEffect(() => {
     if (initialHistoryOpen && userId !== 'default_user') {
