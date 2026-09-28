@@ -92,6 +92,7 @@ dependencies {
   implementation files(
           "/Users/junyong/QualcommSDK/qairt/2.38.0.250901/lib/android/qtld-release.aar"
   )
+  testImplementation 'junit:junit:4.13.2'
 
   // CameraX dependencies
   implementation("androidx.camera:camera-core:1.4.2")
