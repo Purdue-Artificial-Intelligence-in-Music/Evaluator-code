@@ -773,18 +773,61 @@ class OverlayView @JvmOverloads constructor(
         invalidate()
     }
 
+    /**
+    * Calculates the scale and offsets needed to align MediaPipe hand
+    * landmarks with the CameraX preview.
+    *
+    * PreviewView uses FIT_CENTER, so the camera image may have empty
+    * space on the left/right or top/bottom. The landmark overlay must
+    * include the same offsets.
+    */
+    private fun updateHandTransform() {
+        if (imageWidth <= 0 || imageHeight <= 0 || width <= 0 || height <= 0) {
+            return
+        }
+
+        val scaleX = width.toFloat() / imageWidth.toFloat()
+        val scaleY = height.toFloat() / imageHeight.toFloat()
+
+        // PreviewView uses FIT_CENTER
+        handsScaleFactor = min(scaleX, scaleY)
+
+        val displayedImageWidth = imageWidth * handsScaleFactor
+        val displayedImageHeight = imageHeight * handsScaleFactor
+
+        // Center the landmark overlay within the camera preview
+        xOffset = (width - displayedImageWidth) / 2f
+        yOffset = (height - displayedImageHeight) / 2f
+
+        Log.d(
+            "HandOverlay",
+            "view=${width}x$height, " +
+                "image=${imageWidth}x$imageHeight, " +
+                "scale=$handsScaleFactor, " +
+                "offset=($xOffset, $yOffset)"
+        )
+    }
+
+    /**
+    * Recalculate the transform whenever the OverlayView changes size,
+    * such as when the camera screen rotates to landscape.
+    */
+    override fun onSizeChanged(
+        width: Int,
+        height: Int,
+        oldWidth: Int,
+        oldHeight: Int
+    ) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        updateHandTransform()
+    }
+
     fun setImageDimensions(imgWidth: Int, imgHeight: Int) {
-
-
         imageWidth = imgWidth
         imageHeight = imgHeight
 
-        val scaleX = this.width.toFloat() / imageWidth.toFloat()
-        val scaleY = this.height.toFloat() / imageHeight.toFloat()
-
-        //need to be updated for non-live feed?
-        handsScaleFactor = min(scaleX, scaleY)
-        android.util.Log.d("HAND STUFF", imageWidth.toString() + " " + imageHeight.toString() + " " + handsScaleFactor.toString())
+        updateHandTransform()
+        postInvalidate()
     }
 
     fun clear() {

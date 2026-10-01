@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { View, TouchableOpacity, Modal, Text, ScrollView, Button, TextInput, Alert, Image, Dimensions } from 'react-native';
 import { requireNativeViewManager, requireNativeModule } from 'expo-modules-core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,6 +7,7 @@ import { ICONS } from '../styles/CameraComponent.styles';
 import LearnPosture from './LearnPosture'; // adjust path as needed
 //for landscape orientation
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { useNavigation } from 'expo-router';
 
 const CameraxView = requireNativeViewManager('Camerax');
 const CameraxModule = requireNativeModule('Camerax');
@@ -160,6 +161,25 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       });
     };
   }, [initialHistoryOpen]);
+
+  // Hide header when open camera
+  const navigation = useNavigation();
+
+  useLayoutEffect(() => {
+    if (!initialHistoryOpen) {
+      navigation.setOptions({
+        headerShown: false,
+      });
+    }
+
+    return () => {
+      navigation.setOptions({
+        headerShown: true,
+        title: 'Evaluator',
+      });
+    };
+  }, [navigation, initialHistoryOpen]);
+
 
   useEffect(() => {
     if (initialHistoryOpen && userId !== 'default_user') {
@@ -1217,12 +1237,10 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
           {/* setup instructions */}
           <View style={styles.instructionsCard}>
-            <Text style={styles.cardTitle}>Set up your camera & cello</Text>
+            <Text style={styles.cardTitle}>Set up your camera & violin</Text>
             <View style={{ height: 6 }} />
-            <Bullet>Place phone upright (portrait), ~1-2 ft (30-60 cm) away</Bullet>
-            <Bullet>Center yourself and the cello inside the outline</Bullet>
-            <Bullet>Keep the bridge near the dotted line</Bullet>
-            <Bullet>Point your cello towards the camera</Bullet>
+            <Bullet>Place phone upright (landscape), ~1-2 ft (30-60 cm) away</Bullet>
+            <Bullet>Center yourself and the violin inside the outline</Bullet>
 
             {/* Start detection button inside setup overlay section */}
             {isStartDetectionVisible && <TouchableOpacity
