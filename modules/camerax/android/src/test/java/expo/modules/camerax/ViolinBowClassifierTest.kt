@@ -119,6 +119,63 @@ class ViolinBowClassifierTest {
             result.position
         )
     }
+
+    @Test
+    fun bowExactlyAtLeftBoundary_returnsTooFarLeft() {
+        val bowPoints = listOf(
+            ViolinBowClassifier.Point(9.0, 0.0),
+            ViolinBowClassifier.Point(11.0, 0.0),
+            ViolinBowClassifier.Point(9.0, 100.0),
+            ViolinBowClassifier.Point(11.0, 100.0)
+        )
+
+        val stringPoints = listOf(
+            ViolinBowClassifier.Point(0.0, 30.0),
+            ViolinBowClassifier.Point(100.0, 30.0),
+            ViolinBowClassifier.Point(0.0, 70.0),
+            ViolinBowClassifier.Point(100.0, 70.0)
+        )
+
+        val result = ViolinBowClassifier.classify(
+            bowPoints,
+            stringPoints
+        )
+
+        assertEquals(
+            "Bow exactly at the left boundary should be classified as too far left",
+            2,
+            result.position
+        )
+    }
+
+    @Test
+    fun bowExactlyAtRightBoundary_returnsTooFarRight() {
+        val bowPoints = listOf(
+            ViolinBowClassifier.Point(89.0, 0.0),
+            ViolinBowClassifier.Point(91.0, 0.0),
+            ViolinBowClassifier.Point(89.0, 100.0),
+            ViolinBowClassifier.Point(91.0, 100.0)
+        )
+
+        val stringPoints = listOf(
+            ViolinBowClassifier.Point(0.0, 30.0),
+            ViolinBowClassifier.Point(100.0, 30.0),
+            ViolinBowClassifier.Point(0.0, 70.0),
+            ViolinBowClassifier.Point(100.0, 70.0)
+        )
+
+        val result = ViolinBowClassifier.classify(
+            bowPoints,
+            stringPoints
+        )
+
+        assertEquals(
+            "Bow exactly at the right boundary should be classified as too far right",
+            3,
+            result.position
+        )
+    }
+
     //18.3 degrees
     @Test
     fun bowAngleNear20Degrees_returnsGoodAngle() {
@@ -254,11 +311,46 @@ class ViolinBowClassifierTest {
             0,
             result.position
         )
+
+        assertEquals(
+            "A vertical bow against horizontal strings should be classified as too angled",
+            1,
+            result.angle
+        )
     }
+
+    @Test
+    fun nearlyParallelBowAndStrings_returnsGoodAngle() {
+        val bowPoints = listOf(
+            ViolinBowClassifier.Point(0.0, -1.0),
+            ViolinBowClassifier.Point(0.0, 1.0),
+            ViolinBowClassifier.Point(100.0, 9.0),
+            ViolinBowClassifier.Point(100.0, 11.0)
+        )
+
+        val stringPoints = listOf(
+            ViolinBowClassifier.Point(0.0, 30.0),
+            ViolinBowClassifier.Point(100.0, 40.0),
+            ViolinBowClassifier.Point(0.0, 70.0),
+            ViolinBowClassifier.Point(100.0, 80.0)
+        )
+
+        val result = ViolinBowClassifier.classify(
+            bowPoints,
+            stringPoints
+        )
+
+        assertEquals(
+            "A bow nearly parallel to the strings should have a good angle",
+            0,
+            result.angle
+        )
+    }
+
     //For invalid inputs, I mainly tested cases where the classifier
     // receives fewer than the expected four bow or string points. two cases
     //first one is 3 points in bow
-    @Test(expected = IndexOutOfBoundsException::class)
+    @Test(expected = IllegalArgumentException::class)
     fun missingBowPoint_throwsException() {
         val bowPoints = listOf(
             ViolinBowClassifier.Point(45.0, 0.0),
@@ -277,7 +369,7 @@ class ViolinBowClassifierTest {
         )
     }
     //second one is 3 points in string
-    @Test(expected = IndexOutOfBoundsException::class)
+    @Test(expected = IllegalArgumentException::class)
     fun missingStringPoint_throwsException() {
         val bowPoints = listOf(
             ViolinBowClassifier.Point(45.0, 0.0),

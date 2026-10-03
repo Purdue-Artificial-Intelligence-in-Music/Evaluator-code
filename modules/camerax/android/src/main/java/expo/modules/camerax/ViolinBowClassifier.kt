@@ -20,6 +20,14 @@ object ViolinBowClassifier {
         maxAngle: Double = 20.0
     ): ClassificationResult {
 
+        require(bowPoints.size == 4) {
+            "bowPoints must contain exactly 4 points"
+        }
+
+        require(stringPoints.size == 4) {
+            "stringPoints must contain exactly 4 points"
+        }
+
         val sortedBowPoints = sortBowPoints(bowPoints)
         val sortedStringPoints = sortStringPoints(stringPoints)
 
@@ -314,24 +322,15 @@ object ViolinBowClassifier {
         val horizontalOne = horizontalLines[0]
         val horizontalTwo = horizontalLines[1]
 
-        val topX1 = horizontalOne[2]
-        val topX2 = horizontalTwo[2]
-        val bottomX1 = horizontalOne[3]
-        val bottomX2 = horizontalTwo[3]
+        val topWidth = abs(horizontalOne[3] - horizontalOne[2])
 
-        val width = abs(
-            ((topX1 - topX2) + (bottomX1 - bottomX2)) / 2.0
-        )
+        val bottomWidth = abs(horizontalTwo[3] - horizontalTwo[2])
 
-        if (width == 0.0) {
-            return 0
-        }
+        val width = (topWidth + bottomWidth) / 2.0
 
-        val averageLeftX =
-            (topX1 + bottomX1) / 2.0
+        val averageLeftX = (horizontalOne[2] + horizontalTwo[2]) / 2.0
 
-        val averageRightX =
-            (topX2 + bottomX2) / 2.0
+        val averageRightX = (horizontalOne[3] + horizontalTwo[3]) / 2.0
 
         val tooLeftThreshold =
             averageLeftX + width * leftZonePercentage
@@ -370,28 +369,45 @@ object ViolinBowClassifier {
         val slopeOne = horizontalLines[0][0]
         val slopeTwo = horizontalLines[1][0]
 
-        val angleOne = abs(
-            degrees(
-                atan(
-                    abs(bowSlope - slopeTwo) /
-                            (1 + bowSlope * slopeTwo)
-                )
-            )
+        fun directionAngle(slope: Double): Double {
+            return if (slope.isInfinite()) {
+                90.0
+            } else {
+                degrees(atan(slope))
+            }
+        }
+
+        fun normalizedAngleDifference(
+            angleOne: Double,
+            angleTwo: Double
+        ): Double {
+            val difference = abs(angleOne - angleTwo) % 180.0
+            return min(difference, 180.0 - difference)
+        }
+
+        val bowDirection = directionAngle(bowSlope)
+        val stringDirectionOne = directionAngle(slopeOne)
+        val stringDirectionTwo = directionAngle(slopeTwo)
+
+        if (
+            !bowDirection.isFinite() ||
+            !stringDirectionOne.isFinite() ||
+            !stringDirectionTwo.isFinite()
+        ) {
+            return 1
+        }
+
+        val angleOne = normalizedAngleDifference(
+            bowDirection,
+            stringDirectionOne
         )
 
-        val angleTwo = abs(
-            degrees(
-                atan(
-                    abs(slopeOne - bowSlope) /
-                            (1 + slopeOne * bowSlope)
-                )
-            )
+        val angleTwo = normalizedAngleDifference(
+            bowDirection,
+            stringDirectionTwo
         )
 
-        val minimumAngle = min(
-            abs(90 - min(angleOne, angleTwo)),
-            min(angleOne, angleTwo)
-        )
+        val minimumAngle = min(angleOne, angleTwo)
 
         return if (minimumAngle > maxAngle) {
             1
