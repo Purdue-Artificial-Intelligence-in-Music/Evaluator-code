@@ -697,7 +697,6 @@ class HandLandmarkerHelper(
         try {
             if (poseTFLite == null) {
                 if (isClosed) return "Error: Helper is closed."
-                Log.d(TAG, "Initializing pose TFLite interpreter.")
                 val model = loadModelFile("keypoint_classifier (1).tflite")
                 poseTFLite = Interpreter(model)
             }
@@ -748,9 +747,6 @@ class HandLandmarkerHelper(
 
             }
 
-            Log.d("TFLITE", "Pose raw scores: ${results.joinToString(", ")}")
-            Log.d("TFLITE", "Predicted pose class: $finalIndex with confidence: $finalScore")
-
             return "Prediction: $finalIndex (Confidence: %.2f)".format(finalScore)
         } catch (e: Exception) {
             Log.e("TFLITE", "Error during pose inference", e)
@@ -762,7 +758,6 @@ class HandLandmarkerHelper(
         try {
             if (handTFLite == null) {
                 if (isClosed) return "Error: Helper is closed."
-                Log.d(TAG, "Initializing hand TFLite interpreter.")
                 val model = loadModelFile("2_19_hands.tflite")
                 handTFLite = Interpreter(model)
             }
