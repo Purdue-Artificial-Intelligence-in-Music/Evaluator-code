@@ -106,7 +106,6 @@ class Detector (
     // add setter for MaxAngle
     fun setMaxAngle(angle: Int) {
         maxAngle = angle.coerceIn(0, 90)
-        Log.d("MaxAngle", "Max angle set to: $maxAngle")
     }
 
 
@@ -283,12 +282,7 @@ class Detector (
         )
 
         // Inference
-        val t0 = SystemClock.uptimeMillis()
         interpreter.run(imageBuffer, output.buffer)
-        val inferMs = SystemClock.uptimeMillis() - t0
-        Log.d(TAG, "inference ${inferMs}ms")
-        Log.i("Time Comparing", "Bow YOLO: inference ${inferMs}ms")
-
         // Handle output layout: [1, 7, N] vs [1, N, 7] (e.g., 8400)
         val outShape = interpreter.getOutputTensor(0).shape()
         val raw = output.floatArray
@@ -304,22 +298,6 @@ class Detector (
         // Parse best boxes from [1, 7, N]
         val bestBoxes = newBestBox(parsed, N)
 
-        // Log a peek
-        Log.d(
-            "CheckDelBox",
-            buildString {
-                append("POSTPROCESS BOXES (${bestBoxes.size}) →\n")
-                bestBoxes.take(5).forEachIndexed { i, b ->
-                    append(
-                        "[$i] cls=${b.cls}, conf=${b.conf.f2()}, " +
-                                "x=${b.x.f2()}, y=${b.y.f2()}, w=${b.width.f2()}, h=${b.height.f2()}, ang=${b.angle.f2()}\n"
-                    )
-                }
-                if (bestBoxes.size > 5) append("... (${bestBoxes.size - 5} more)\n")
-            }
-        )
-
-
         var bowConf = 0f
         var stringConf = 0f
 
@@ -328,37 +306,20 @@ class Detector (
         //val ogWidth = 1
         //val ogHeight = 1
 
-        //Log.d("BOXES123", bestBoxes.size.toString())
         for (box in bestBoxes) {
-
             if (box.cls == 0 && box.conf > bowConf) {
-                Log.d("BOX INITAL BOW", box.toString())
                 results.bowResults = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList()
                 bowConf = box.conf
-                Log.d("BOX BOW", results.bowResults.toString())
-
             } else if (box.cls == 1 && box.conf > stringConf) {
-                Log.d("BOX INITAL STRING", box.toString())
                 results.stringResults = sortStringPoints(rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList())
                 stringConf = box.conf
-                Log.d("BOX STRING", results.stringResults.toString())
             }
         }
-        //println("TRUE INFERENCE TIME: $inferenceTime")
-        //println("NUMBER OF BOXES: ${bestBoxes.size}")
-        //println("bow conf, string conf: $bowConf, $stringConf")
 
         if (results.bowResults == null && results.stringResults == null) {
-            // No Detections Found
             listener?.noDetect()
-            Log.d("BOW RESULTS", "NO DETECTIONS")
         } else {
-            // Detected Correctly!
-            Log.d("BOXES123", "SOMETHING DETECTED")
-            //println(results)
-            // Update y-box averages
             listener?.detected(results, frame.width, frame.height)
-            //print(results)
         }
         return results
     }
@@ -588,7 +549,6 @@ class Detector (
 
         val halfW = (w) / 2
         val halfH = (h) / 2
-        println("ANGLE $angleRad")
         val cosA = cos(angleRad)
         val sinA = sin(angleRad)
 
@@ -662,7 +622,6 @@ class Detector (
     ) {
         bowPoints = bowBox //change bow points to mutable list
         this.stringPoints = updateStringPoints(stringBox)
-        Log.d("sorted points", stringPoints.toString())
     }
 
     /*
@@ -670,7 +629,6 @@ class Detector (
      * Returns the stringBox with locked top values if outside of threshold
      */
     fun updateStringPoints(stringBox: MutableList<Point>): MutableList<Point> {
-        Log.d("String Box Lock", "New Detection")
         val sortedString = sortStringPoints(stringBox)
 
         // Height of string box
@@ -693,15 +651,11 @@ class Detector (
 
         val medianDelta = currentMedian()
 
-        //Log.d("String Box Lock", "Delta_Y: $delta_y")
-        //Log.d("String Box Lock", "Median Delta_Y: $medianDelta")
-
         // Lock if deviation too large
         if (kotlin.math.abs(medianDelta - delta_y) > MAX_Y_DELTA_THRESHOLD) {
             // Lock top points using median height
             sortedString[0].y = sortedString[3].y - medianDelta
             sortedString[1].y = sortedString[2].y - medianDelta
-            Log.d("String Box Lock", "Deviation too large. Locked box to median_delta")
         }
 
         // Lock if bow is covering top of string box
@@ -712,8 +666,7 @@ class Detector (
             val top_avg_bow_y = (sortedBow[0].y + sortedBow[1].y) / 2
             val top_avg_str_y = (sortedString[0].y + sortedString[1].y) / 2
             val bot_avg_bow_y = (sortedBow[2].y + sortedBow[3].y) / 2
-            //Log.d("String Box Lock", "y-vals Bow: (" + top_avg_bow_y.toString() + "," +  bot_avg_bow_y.toString() + ") String: " + top_avg_str_y.toString())
-            //Log.d("String Box Lock", "x-vals Bow: (" + sortedBow[0].x.toString() + "," + sortedBow[1].x.toString() + ") String: (" + sortedString[0].x.toString() + "," + sortedString[1].x.toString() + ")")
+
             // Top of image is lower y value, bottom is higher
 
             if ((top_avg_bow_y <= top_avg_str_y) &&
@@ -722,7 +675,6 @@ class Detector (
                     // Lock top points using median height
                     sortedString[0].y = sortedString[3].y - medianDelta
                     sortedString[1].y = sortedString[2].y - medianDelta
-                    Log.d("String Box Lock", "Bow Covering. Locked box to median_delta")
                 }
             }
         }
@@ -791,7 +743,6 @@ class Detector (
     }
 
     private fun getVerticalLines(): MutableList<MutableList<Double>> {
-        System.out.println(stringPoints)
         // Extracting corner points
         val topLeft = stringPoints!![0]
         val topRight = stringPoints!![1]
@@ -849,7 +800,6 @@ class Detector (
         linearLine: MutableList<Double>,
         verticalLines: MutableList<MutableList<Double>>
     ): Int {
-        //println("linear: $linearLine\nvertical: $verticalLines")
 
         // Midline parameters
         val m = linearLine[0] // slope of the midline
@@ -889,7 +839,6 @@ class Detector (
             val yMax = maxOf(topY, botY)
 
             if (yMin > y || y > yMax) {
-                //println("Intersection y=$y is outside vertical range ($yMin, $yMax)")
                 return null
             }
 
@@ -904,11 +853,8 @@ class Detector (
         // Calculate intersections of midline with both vertical string lines
         var pt1 = getIntersection(verticalOne, xLeft)
         var pt2 = getIntersection(verticalTwo, xRight)
-        Log.d("INTERSECTION", pt1.toString() + " " + pt2.toString())
 
         if (pt1 == null || pt2 == null) {
-            //println("One or both intersections invalid")
-            Log.d("BOW", "INVALID INTERSECTION")
             return 1
         }
 //        if (pt1 == null) {
@@ -1005,8 +951,6 @@ class Detector (
         val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
 
         val min_angle: Double = min(abs(90 - min(angle_one, angle_two)), min(angle_one, angle_two))
-        Log.d("angle1", min_angle.toString())
-        //println("ANGLE: $min_angle")
         return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
     }
 
@@ -1077,7 +1021,6 @@ class Detector (
                 classResults.angle = -1
             }
             classResults.classification = intersect_points
-            Log.d("BOW", classResults.classification.toString())
             return classResults
         }
     }

@@ -196,7 +196,6 @@ class OverlayView @JvmOverloads constructor(
     }
 
     fun returnDims() : Pair<Int, Int> {
-        println("NEW WIDTH AND HEIGHT: $width, $height")
         return Pair(width, height)
     }
     fun getBowDims(width: Int, height: Int) {
@@ -232,32 +231,6 @@ class OverlayView @JvmOverloads constructor(
         if (results?.classification != -2) {
             val stringBox = results?.string
             val bowBox = results?.bow
-            Log.d("CheckDelCoords", "stringBox value: $stringBox")
-
-            Log.d("CheckDelCoords", "bowBox value: $bowBox")
-            if (stringBox != null) {
-                stringBox.forEachIndexed { index, point ->
-                    val x = point.x.toFloat()
-                    val y = point.y.toFloat()
-                    if (x > 1 || y > 1) {
-                        Log.d("CheckDelStringBoxCoords", "Point[$index] has coords > 1: x=$x, y=$y - NEEDS DIVISION BY 640")
-                    } else {
-                        Log.d("CheckDelStringBoxCoords", "Point[$index] is normalized: x=$x, y=$y")
-                    }
-                }
-            }
-
-            if (bowBox != null) {
-                bowBox.forEachIndexed { index, point ->
-                    val x = point.x.toFloat()
-                    val y = point.y.toFloat()
-                    if (x > 1 || y > 1) {
-                        Log.d("CheckDelBowBoxCoords", "Point[$index] has coords > 1: x=$x, y=$y - NEEDS DIVISION BY 640")
-                    } else {
-                        Log.d("CheckDelBowBoxCoords", "Point[$index] is normalized: x=$x, y=$y")
-                    }
-                }
-            }
             // Determine if there's an issue
             val hasIssue = (results?.classification != null && results?.classification != 0) ||
                     (results?.angle != null && results?.angle == 1)
@@ -799,13 +772,6 @@ class OverlayView @JvmOverloads constructor(
         xOffset = (width - displayedImageWidth) / 2f
         yOffset = (height - displayedImageHeight) / 2f
 
-        Log.d(
-            "HandOverlay",
-            "view=${width}x$height, " +
-                "image=${imageWidth}x$imageHeight, " +
-                "scale=$handsScaleFactor, " +
-                "offset=($xOffset, $yOffset)"
-        )
     }
 
     /**
@@ -862,7 +828,6 @@ class OverlayView @JvmOverloads constructor(
         val outFile = File(baseDir, if (filename.endsWith(".png")) filename else "$filename.png")
 
         if (outFile.exists()) {
-            Log.d("SaveOverlay", "File already exists, skipping save: ${outFile.absolutePath}")
             return
         }
 
@@ -872,7 +837,6 @@ class OverlayView @JvmOverloads constructor(
                 // Use PNG format - more efficient for screenshots with sharp edges
                 overlayBitmap?.compress(Bitmap.CompressFormat.PNG, 95, fos)
             }
-            Log.d("SaveOverlay", "Saved overlay to: ${outFile.absolutePath}")
         } catch (e: Exception) {
             e.printStackTrace()
         }
