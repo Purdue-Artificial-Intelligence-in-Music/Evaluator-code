@@ -33,7 +33,10 @@ import java.nio.ByteBuffer
 
 class Detector (
     private val context: Context,
-    private val listener: DetectorListener? = null
+    private val listener: DetectorListener? = null,
+    private val modelAsset: String = DEFAULT_MODEL_ASSET,
+    // Converts raw model outputs into a ViolinDetection; swap this when the model changes.
+    private val parser: ModelOutputParser = LegacyObbParser()
 ){
 
     private var interpreter: Interpreter
@@ -42,8 +45,6 @@ class Detector (
 
     private var tensorWidth = 0
     private var tensorHeight = 0
-    private var numChannel = 0
-    private var numElements = 0
     val modelReadyLatch = CountDownLatch(1)
     private var bowRepeat = 0
     private var stringRepeat = 0
@@ -146,20 +147,33 @@ class Detector (
 
     companion object {
         private const val TAG = "CheckDel"
-        private const val MODEL_ASSET = "try.tflite" // <-- set your model file name here
+        const val DEFAULT_MODEL_ASSET = "try.tflite" // <-- set your model file name here
         private const val INPUT_MEAN = 0f
         private const val INPUT_STANDARD_DEVIATION = 255f
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
-        private const val CONFIDENCE_THRESHOLD = 0.6F
+
+        // Current preprocessing: frame stretched to 360x640 at the top-left of a 640x640 input.
+        private const val PREPROCESS_CONTENT_WIDTH = 360
+        private const val PREPROCESS_CONTENT_HEIGHT = 640
+        private const val PREPROCESS_TENSOR_SIZE = 640
+        private val PREPROCESS_LETTERBOX = LetterboxInfo(
+            tensorWidth = PREPROCESS_TENSOR_SIZE,
+            tensorHeight = PREPROCESS_TENSOR_SIZE,
+            contentWidth = PREPROCESS_CONTENT_WIDTH.toFloat(),
+            contentHeight = PREPROCESS_CONTENT_HEIGHT.toFloat()
+        )
+
+        // classify(), OverlayView and Profile still expect box points in a 0..640 space
+        // on both axes, so normalized detections are scaled back by this factor.
+        private const val LEGACY_POINT_SCALE = 640.0
     }
 
     init {
         interpreter = createInterpreterWithFallbacks(context)
 
-        // Cache tensor shapes (NHWC or NCHW)
+        // Cache input tensor shape (NHWC or NCHW). Output layout is the parser's concern.
         val inputShape = interpreter.getInputTensor(0)?.shape()
-        val outputShape = interpreter.getOutputTensor(0)?.shape()
 
         if (inputShape != null && inputShape.size >= 4) {
             if (inputShape[1] == 3) {           // NCHW: [1,3,H,W]
@@ -171,16 +185,11 @@ class Detector (
             }
         }
 
-        if (outputShape != null && outputShape.size == 3) {
-            numChannel = outputShape[1]
-            numElements = outputShape[2]
-        }
-
         modelReadyLatch.countDown()
     }
     private fun createInterpreterWithFallbacks(context: Context): org.tensorflow.lite.Interpreter {
         // use the correct TFLite FileUtil and cast to ByteBuffer to solve ambiguity
-        val modelBuffer: java.nio.ByteBuffer = org.tensorflow.lite.support.common.FileUtil.loadMappedFile(context, MODEL_ASSET)
+        val modelBuffer: java.nio.ByteBuffer = org.tensorflow.lite.support.common.FileUtil.loadMappedFile(context, modelAsset)
 
         // 1) Qualcomm NPU (QNN/HTP) attempt
         val skelDir = tryLoadQnnAndPickSkelDir()
@@ -260,15 +269,15 @@ class Detector (
     fun detect(frame: Bitmap, sourceWidth: Int = 1, sourceHeight: Int = 1): YoloResults {
         val results = YoloResults(null, null)
 
-        if (tensorWidth == 0 || tensorHeight == 0 || numChannel == 0 || numElements == 0) {
+        if (tensorWidth == 0 || tensorHeight == 0 || interpreter.outputTensorCount == 0) {
             Log.e(TAG, "MODEL ERROR: invalid tensor shapes")
             return results
         }
 
         // Resize → normalize → cast
         //val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
-        val resizedNew = Bitmap.createScaledBitmap(frame, 360, 640, false)
-        val padded = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        val resizedNew = Bitmap.createScaledBitmap(frame, PREPROCESS_CONTENT_WIDTH, PREPROCESS_CONTENT_HEIGHT, false)
+        val padded = Bitmap.createBitmap(PREPROCESS_TENSOR_SIZE, PREPROCESS_TENSOR_SIZE, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(padded)
         canvas.drawBitmap(resizedNew, 0f, 0f, null)
 
@@ -276,74 +285,35 @@ class Detector (
         val processed = imageProcessor.process(tensorImage)
         val imageBuffer = processed.buffer
 
-        // Model output buffer
-        val output = TensorBuffer.createFixedSize(
-            intArrayOf(1, numChannel, numElements),
-            OUTPUT_IMAGE_TYPE
-        )
+        // One output buffer per output tensor, sized from the interpreter's own shapes
+        val outputBuffers = (0 until interpreter.outputTensorCount).associateWith { i ->
+            TensorBuffer.createFixedSize(interpreter.getOutputTensor(i).shape(), OUTPUT_IMAGE_TYPE)
+        }
 
         // Inference
         val t0 = SystemClock.uptimeMillis()
-        interpreter.run(imageBuffer, output.buffer)
+        interpreter.runForMultipleInputsOutputs(arrayOf<Any>(imageBuffer), outputBuffers.mapValues { it.value.buffer })
         val inferMs = SystemClock.uptimeMillis() - t0
         Log.d(TAG, "inference ${inferMs}ms")
         Log.i("Time Comparing", "Bow YOLO: inference ${inferMs}ms")
 
-        // Handle output layout: [1, 7, N] vs [1, N, 7] (e.g., 8400)
-        val outShape = interpreter.getOutputTensor(0).shape()
-        val raw = output.floatArray
-
-        val (C, N, parsed) = if (outShape.size == 3 && outShape[1] == 8400 && outShape[2] == 7) {
-            // Flattened [1, 8400, 7] → [1, 7, 8400]
-            Triple(7, 8400, transposeN7To7N(raw, N = outShape[1], C = outShape[2]))
-        } else {
-            // Assume [1, 7, N]
-            Triple(outShape[1], outShape[2], raw)
+        val outputs = outputBuffers.mapValues { (i, buffer) ->
+            OutputTensor(interpreter.getOutputTensor(i).shape(), buffer.floatArray)
         }
-
-        // Parse best boxes from [1, 7, N]
-        val bestBoxes = newBestBox(parsed, N)
-
-        // Log a peek
+        val detection = try {
+            parser.parse(outputs, PREPROCESS_LETTERBOX)
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "MODEL ERROR: ${e.message}")
+            return results
+        }
         Log.d(
             "CheckDelBox",
-            buildString {
-                append("POSTPROCESS BOXES (${bestBoxes.size}) →\n")
-                bestBoxes.take(5).forEachIndexed { i, b ->
-                    append(
-                        "[$i] cls=${b.cls}, conf=${b.conf.f2()}, " +
-                                "x=${b.x.f2()}, y=${b.y.f2()}, w=${b.width.f2()}, h=${b.height.f2()}, ang=${b.angle.f2()}\n"
-                    )
-                }
-                if (bestBoxes.size > 5) append("... (${bestBoxes.size - 5} more)\n")
-            }
+            "DETECTION → bow=${detection.bow != null} (conf=${detection.bowConfidence.f2()}), " +
+                    "string=${detection.strings != null} (conf=${detection.stringConfidence.f2()})"
         )
 
-
-        var bowConf = 0f
-        var stringConf = 0f
-
-        val ogWidth = frame.width.toFloat()
-        val ogHeight = frame.height.toFloat()
-        //val ogWidth = 1
-        //val ogHeight = 1
-
-        //Log.d("BOXES123", bestBoxes.size.toString())
-        for (box in bestBoxes) {
-
-            if (box.cls == 0 && box.conf > bowConf) {
-                Log.d("BOX INITAL BOW", box.toString())
-                results.bowResults = rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList()
-                bowConf = box.conf
-                Log.d("BOX BOW", results.bowResults.toString())
-
-            } else if (box.cls == 1 && box.conf > stringConf) {
-                Log.d("BOX INITAL STRING", box.toString())
-                results.stringResults = sortStringPoints(rotatedRectToPoints(box.x, box.y, box.width, box.height, box.angle, ogWidth, ogHeight).toMutableList())
-                stringConf = box.conf
-                Log.d("BOX STRING", results.stringResults.toString())
-            }
-        }
+        results.bowResults = detection.bow?.toLegacyPoints()
+        results.stringResults = detection.strings?.let { sortStringPoints(it.toLegacyPoints()) }
         //println("TRUE INFERENCE TIME: $inferenceTime")
         //println("NUMBER OF BOXES: ${bestBoxes.size}")
         //println("bow conf, string conf: $bowConf, $stringConf")
@@ -363,21 +333,6 @@ class Detector (
         return results
     }
 
-
-    private fun transposeN7To7N(src: FloatArray, N: Int = 8400, C: Int = 7): FloatArray {
-        val dst = FloatArray(C * N)
-        var n = 0
-        while (n < N) {
-            val base = n * C
-            var c = 0
-            while (c < C) {
-                dst[c * N + n] = src[base + c]
-                c++
-            }
-            n++
-        }
-        return dst
-    }
 
     fun drawPointsOnBitmap(
         bitmap: Bitmap,
@@ -571,90 +526,8 @@ class Detector (
 
 
 
-    private fun rotatedRectToPoints(cx: Float, cy: Float, w: Float, h: Float, angleRad: Float, frameWidth: Float, frameHeight: Float): List<Point> {
-//        val normalizedAngle = angleRad % Math.PI
-//        val swap = normalizedAngle >= Math.PI /2
-//        var newW = 0f
-//        var newH = 0f
-//        if (swap) {
-//            newW = h
-//            newH = w
-//        } else {
-//            newW = w
-//            newH = h
-//        }
-//        val newAngle = (angleRad % (Math.PI/2)).toFloat()
-
-
-        val halfW = (w) / 2
-        val halfH = (h) / 2
-        println("ANGLE $angleRad")
-        val cosA = cos(angleRad)
-        val sinA = sin(angleRad)
-
-        //val xMult =
-        //val topRightX = cx * frameWidth +
-        val corners = listOf(
-            Pair(-halfW, -halfH),
-            Pair(halfW, -halfH),
-            Pair(halfW, halfH),
-            Pair(-halfW, halfH)
-        )
-        return corners.map { (x, y) ->
-
-            val xRot = x * cosA - y * sinA + cx
-            val yRot = x * sinA + y * cosA + cy
-
-            //Point(xRot.toDouble() * frameWidth, yRot.toDouble() * frameHeight)
-            Point((xRot).toDouble() * 640f/360f, (yRot).toDouble())
-        }
-
-
-
-        //val topRightX = cx * frameWidth + halfH * sinA + halfW * cosA
-    }
-
-    private fun newBestBox(array: FloatArray, N: Int): List<OrientedBoundingBox> {
-        val out = mutableListOf<OrientedBoundingBox>()
-
-        for (r in 0 until N) {
-            val stringCnf = array[5 * N + r]
-            val bowCnf = array[4 * N + r]
-            val cls = if (stringCnf > bowCnf) 1 else 0
-            var cnf = max(stringCnf, bowCnf)
-            if (cls == 0) {
-                cnf += 0.3f
-            }
-
-            if (cnf > CONFIDENCE_THRESHOLD) {
-                val x = array[0 * N + r]
-                val y = array[1 * N + r]
-                val w = array[2 * N + r]
-                val h = array[3 * N + r]
-                val angle = array[6 * N + r]
-
-                out.add(
-                    OrientedBoundingBox(
-                        x = x, y = y, height = h, width = w,
-                        conf = cnf, cls = cls, angle = angle
-                    )
-                )
-            }
-        }
-
-        return out
-    }
-
-
-    data class OrientedBoundingBox(
-        val x: Float,
-        val y: Float,
-        val height: Float,
-        val width: Float,
-        val conf: Float,
-        val cls: Int,
-        val angle: Float
-    )
+    private fun Quad.toLegacyPoints(): MutableList<Point> =
+        corners.map { Point(it.x * LEGACY_POINT_SCALE, it.y * LEGACY_POINT_SCALE) }.toMutableList()
 
     fun updatePoints(
         stringBox: MutableList<Point>,
