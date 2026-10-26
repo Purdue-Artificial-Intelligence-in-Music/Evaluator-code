@@ -13,10 +13,18 @@ const CameraxView = requireNativeViewManager('Camerax');
 const CameraxModule = requireNativeModule('Camerax');
 
 interface SummaryData {
+  positionBreakdown?: {
+    Good?: number;
+    Outside?: number;
+    Left?: number;
+    Right?: number;
+    Unknown?: number;
+  };
   heightBreakdown?: {
     Top?: number;
     Middle?: number;
     Bottom?: number;
+    Outside?: number;
     Unknown?: number;
   };
   angleBreakdown?: {
@@ -420,7 +428,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
   const handleSessionEnd = async (event: any) => {
     const {
-      heightBreakdown,
+      positionBreakdown,
       angleBreakdown,
       handPresenceBreakdown,
       handPostureBreakdown,
@@ -447,7 +455,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     }
 
     const newSummaryData = {
-      heightBreakdown,
+      positionBreakdown,
       angleBreakdown,
       handPresenceBreakdown,
       handPostureBreakdown,
@@ -562,14 +570,21 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
     }
 
     // Normalized metric values for Bow Height
-    const heightTopRaw = data.heightBreakdown?.Top ?? 0;
-    const heightMiddleRaw = data.heightBreakdown?.Middle ?? 0;
-    const heightBottomRaw = data.heightBreakdown?.Bottom ?? 0;
-    const [heightTopPct, heightMiddlePct, heightBottomPct] = normalizePercentages([
-      heightTopRaw,
-      heightMiddleRaw,
-      heightBottomRaw,
-    ]);
+    // New Bow Position statistics
+    const isNewPositionData = data.positionBreakdown !== undefined;
+
+    const positionGoodPct = data.positionBreakdown?.Good ?? 0;
+    const positionOutsidePct = data.positionBreakdown?.Outside ?? 0;
+    const positionLeftPct = data.positionBreakdown?.Left ?? 0;
+    const positionRightPct = data.positionBreakdown?.Right ?? 0;
+    const positionUnknownPct = data.positionBreakdown?.Unknown ?? 0;
+
+    // Legacy Bow Height statistics
+    const heightTopPct = data.heightBreakdown?.Top ?? 0;
+    const heightMiddlePct = data.heightBreakdown?.Middle ?? 0;
+    const heightBottomPct = data.heightBreakdown?.Bottom ?? 0;
+    const heightOutsidePct = data.heightBreakdown?.Outside ?? 0;
+    const heightUnknownPct = data.heightBreakdown?.Unknown ?? 0;
 
     // Normalized metric values for Bow Angle
     const angleCorrectRaw = data.angleBreakdown?.Correct ?? 0;
@@ -611,33 +626,86 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
     return (
       <>
+
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>Bow Contact Point</Text>
-            <TouchableOpacity
-              style={styles.viewMoreButton}
-              onPress={() => openDetail('bowHeight')}
-            >
-              <Text style={styles.viewMoreButtonText}>View more</Text>
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>
+              {isNewPositionData ? 'Bow Position' : 'Bow Contact Point'}
+            </Text>
+            {!isNewPositionData && (
+              <TouchableOpacity
+                style={styles.viewMoreButton}
+                onPress={() => openDetail('bowHeight')}
+              >
+                <Text style={styles.viewMoreButtonText}>View more</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          <View style={styles.metricRow}>
-            <Image source={ICONS.tick_square} style={styles.metricDotGood} />
-            <Text style={styles.metricLabel}>Good</Text>
-            <Text style={styles.metricPercent}>{heightMiddlePct.toFixed(0)}%</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Too close to fingerboard</Text>
-            <Text style={styles.wrongMetricPercent}>{heightTopPct.toFixed(0)}%</Text>
-          </View>
-          <View style={styles.metricRow}>
-            <Image source={ICONS.wrong} style={styles.metricDotWarning} />
-            <Text style={styles.metricLabel}>Too close to the bridge</Text>
-            <Text style={styles.wrongMetricPercent}>{heightBottomPct.toFixed(0)}%</Text>
-          </View>
+          {isNewPositionData ? (
+            <>
+              <View style={styles.metricRow}>
+                <Image source={ICONS.tick_square} style={styles.metricDotGood} />
+                <Text style={styles.metricLabel}>Good</Text>
+                <Text style={styles.metricPercent}>{positionGoodPct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Image source={ICONS.wrong} style={styles.metricDotWarning} />
+                <Text style={styles.metricLabel}>Outside</Text>
+                <Text style={styles.wrongMetricPercent}>{positionOutsidePct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Image source={ICONS.wrong} style={styles.metricDotWarning} />
+                <Text style={styles.metricLabel}>Too far left</Text>
+                <Text style={styles.wrongMetricPercent}>{positionLeftPct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Image source={ICONS.wrong} style={styles.metricDotWarning} />
+                <Text style={styles.metricLabel}>Too far right</Text>
+                <Text style={styles.wrongMetricPercent}>{positionRightPct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>Unknown</Text>
+                <Text style={styles.metricPercent}>{positionUnknownPct.toFixed(0)}%</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.metricRow}>
+                <Image source={ICONS.tick_square} style={styles.metricDotGood} />
+                <Text style={styles.metricLabel}>Good</Text>
+                <Text style={styles.metricPercent}>{heightMiddlePct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Image source={ICONS.wrong} style={styles.metricDotWarning} />
+                <Text style={styles.metricLabel}>Too close to fingerboard</Text>
+                <Text style={styles.wrongMetricPercent}>{heightTopPct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Image source={ICONS.wrong} style={styles.metricDotWarning} />
+                <Text style={styles.metricLabel}>Too close to the bridge</Text>
+                <Text style={styles.wrongMetricPercent}>{heightBottomPct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>Outside</Text>
+                <Text style={styles.wrongMetricPercent}>{heightOutsidePct.toFixed(0)}%</Text>
+              </View>
+
+              <View style={styles.metricRow}>
+                <Text style={styles.metricLabel}>Unknown</Text>
+                <Text style={styles.metricPercent}>{heightUnknownPct.toFixed(0)}%</Text>
+              </View>
+            </>
+          )}
         </View>
+
 
         <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>

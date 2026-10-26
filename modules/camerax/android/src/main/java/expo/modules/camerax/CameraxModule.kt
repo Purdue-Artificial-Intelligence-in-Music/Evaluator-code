@@ -82,11 +82,11 @@ class CameraxModule : Module() {
 
     private fun getRecentSessionsImpl(userId: String, count: Int): List<Map<String, Any>> {
         try {
-            val sessionsDir = File(
-                Environment.getExternalStoragePublicDirectory(
-                    Environment.DIRECTORY_DOCUMENTS
-                ), "sessions"
-            )
+            val externalDir =
+                appContext.reactContext?.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+                    ?: return emptyList()
+
+            val sessionsDir = File(externalDir, "sessions")
 
             Log.d("SessionHistory", "Sessions directory path: ${sessionsDir.absolutePath}")
 
@@ -209,11 +209,23 @@ class CameraxModule : Module() {
             result["durationFormatted"] = durationFormatted
             Log.d("SessionHistory", "Duration: ${durationFormatted} (${durationSeconds}s)")
 
+            // Bow Position Breakdown
+            val positionBreakdown = parseBreakdown(jsonObject.optJSONObject("positionBreakdown"))
+
+            if (positionBreakdown.isNotEmpty()) {
+                result["positionBreakdown"] = positionBreakdown
+                Log.d(
+                    "SessionHistory",
+                    "Position breakdown: ${positionBreakdown.size} items"
+                )
+            }
+
+            // Keep old session history data compatible
             // Height Breakdown
             val heightBreakdown = parseBreakdown(jsonObject.optJSONObject("heightBreakdown"))
             if (heightBreakdown.isNotEmpty()) {
                 result["heightBreakdown"] = heightBreakdown
-                Log.d("SessionHistory", "Height breakdown: ${heightBreakdown.size} items")
+                Log.d("SessionHistory", "Legacy height breakdown: ${heightBreakdown.size} items")
             }
 
             // Angle Breakdown

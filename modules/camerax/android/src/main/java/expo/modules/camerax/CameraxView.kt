@@ -211,7 +211,7 @@ class CameraxView(
     private fun sendDetailedSummary(summary: Profile.SessionSummary) {
         try {
             val summaryMap = mapOf(
-                "heightBreakdown" to summary.heightBreakdown,
+                "positionBreakdown" to summary.positionBreakdown,
                 "angleBreakdown" to summary.angleBreakdown,
                 "handPresenceBreakdown" to summary.handPresenceBreakdown,
                 "handPostureBreakdown" to summary.handPostureBreakdown,
@@ -526,7 +526,9 @@ class CameraxView(
                 }
             }
         }*/
-        latestBowResults = Detector.returnBow(-2, null, null, 0)
+        latestBowResults = Detector.returnBow(
+            BowPosition.NONE.code, null, null, BowAngle.UNKNOWN.code
+        )
         updateOverlay()
         onNoDetection(mapOf("message" to "No objects detected"))
     }

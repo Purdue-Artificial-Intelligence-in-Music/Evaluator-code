@@ -49,7 +49,7 @@ class Profile(private val context: Context) {
     }
 
     data class SessionSummary(
-        val heightBreakdown: Map<String, Double>,
+        val positionBreakdown: Map<String, Double>,
         val angleBreakdown: Map<String, Double>,
         val handPresenceBreakdown: Map<String, Double>,
         val handPostureBreakdown: Map<String, Double>,
@@ -68,7 +68,7 @@ class Profile(private val context: Context) {
     private val sessionStartTimes: MutableMap<String, Long> = mutableMapOf() // store session start time in milliseconds
 
     // Accumulation counter used for session summary
-    private val accumulatedHeightCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
+    private val accumulatedPositionCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
     private val accumulatedAngleCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
     private val accumulatedHandCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
     private val accumulatedPoseCounts: MutableMap<String, MutableMap<String, Int>> = mutableMapOf()
@@ -123,7 +123,13 @@ class Profile(private val context: Context) {
             sessionStartTimes[userId] = now.time // Store start time in milliseconds
 
             // initialize counters
-            accumulatedHeightCounts[userId] = mutableMapOf("Top" to 0, "Middle" to 0, "Bottom" to 0, "Outside" to 0, "Unknown" to 0)
+            accumulatedPositionCounts[userId] = mutableMapOf(
+                "Good" to 0,
+                "Outside" to 0,
+                "Left" to 0,
+                "Right" to 0,
+                "Unknown" to 0
+            )
             accumulatedAngleCounts[userId] = mutableMapOf("Correct" to 0, "Wrong" to 0, "Unknown" to 0)
             accumulatedHandCounts[userId] = mutableMapOf("Detected" to 0, "None" to 0)
             accumulatedPoseCounts[userId] = mutableMapOf("Detected" to 0, "None" to 0)
@@ -192,7 +198,6 @@ class Profile(private val context: Context) {
         // Create session summary file with duration
         val sessionStartTimestamp = sessionTimestampsFormatted[userId]
             ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-        
         // Calculate session duration
         val startTimeMs = sessionStartTimes[userId] ?: System.currentTimeMillis()
         val endTimeMs = System.currentTimeMillis()
@@ -210,7 +215,7 @@ class Profile(private val context: Context) {
         sessionTimestamps.remove(userId)
         sessionTimestampsFormatted.remove(userId)
         sessionStartTimes.remove(userId)
-        accumulatedHeightCounts.remove(userId)
+        accumulatedPositionCounts.remove(userId)
         accumulatedAngleCounts.remove(userId)
         accumulatedHandCounts.remove(userId)
         accumulatedPoseCounts.remove(userId)
@@ -280,37 +285,52 @@ class Profile(private val context: Context) {
         val bowFrames = session.filterIsInstance<returnBow>()
         val combinedFrames = session.filterIsInstance<CombinedResultBundle>()
 
-        var heightBreakdown: Map<String, Double> = emptyMap()
+        var positionBreakdown: Map<String, Double> = emptyMap()
         var angleBreakdown: Map<String, Double> = emptyMap()
 
         if (bowFrames.isNotEmpty()) {
             val total = bowFrames.size.toDouble()
-            val heightCounts = mutableMapOf("Top" to 0, "Middle" to 0, "Bottom" to 0, "Outside" to 0, "Unknown" to 0)
+            val positionCounts = mutableMapOf(
+                "Good" to 0,
+                "Outside" to 0,
+                "Left" to 0,
+                "Right" to 0,
+                "Unknown" to 0
+            )
             val angleCounts = mutableMapOf("Correct" to 0, "Wrong" to 0, "Unknown" to 0)
 
+
             bowFrames.forEach { frame ->
-                when (frame.classification) {
-                    2 -> heightCounts["Top"] = heightCounts["Top"]!! + 1
-                    0 -> heightCounts["Middle"] = heightCounts["Middle"]!! + 1
-                    3 -> heightCounts["Bottom"] = heightCounts["Bottom"]!! + 1
-                    1 -> heightCounts["Outside"] = heightCounts["Outside"]!! + 1
-                    else -> heightCounts["Unknown"] = heightCounts["Unknown"]!! + 1
+                val positionKey = when (frame.positionResult) {
+                    BowPosition.GOOD -> "Good"
+                    BowPosition.OUTSIDE -> "Outside"
+                    BowPosition.LEFT -> "Left"
+                    BowPosition.RIGHT -> "Right"
+                    else -> "Unknown"
                 }
-                when (frame.angle) {
-                    0 -> angleCounts["Correct"] = angleCounts["Correct"]!! + 1
-                    1 -> angleCounts["Wrong"] = angleCounts["Wrong"]!! + 1
-                    else -> angleCounts["Unknown"] = angleCounts["Unknown"]!! + 1
+
+                positionCounts[positionKey] =
+                    positionCounts.getOrDefault(positionKey, 0) + 1
+
+                val angleKey = when (frame.angleResult) {
+                    BowAngle.GOOD -> "Correct"
+                    BowAngle.TOO_ANGLED -> "Wrong"
+                    else -> "Unknown"
                 }
+
+                angleCounts[angleKey] =
+                    angleCounts.getOrDefault(angleKey, 0) + 1
             }
+
             // Record the counts
-            heightCounts.forEach { (key, value) ->
-                accumulatedHeightCounts[userId]!![key] = accumulatedHeightCounts[userId]!!.getOrDefault(key, 0) + value
+            positionCounts.forEach { (key, value) ->
+                accumulatedPositionCounts[userId]!![key] = accumulatedPositionCounts[userId]!!.getOrDefault(key, 0) + value
             }
             angleCounts.forEach { (key, value) ->
                 accumulatedAngleCounts[userId]!![key] = accumulatedAngleCounts[userId]!!.getOrDefault(key, 0) + value
             }
 
-            heightBreakdown = heightCounts.mapValues { (it.value / total) * 100 }
+            positionBreakdown = positionCounts.mapValues { (it.value / total) * 100 }
             angleBreakdown = angleCounts.mapValues { (it.value / total) * 100 }
         }
 
@@ -379,7 +399,7 @@ class Profile(private val context: Context) {
         }
 
         return SessionSummary(
-            heightBreakdown,
+            positionBreakdown,
             angleBreakdown,
             handPresenceBreakdown,
             handPostureBreakdown,
@@ -392,16 +412,16 @@ class Profile(private val context: Context) {
     }
 
     private fun generateTotalSummary(userId: String, timestamp: String, durationSeconds: Long = 0L, durationFormatted: String = "0s"): SessionSummary {
-        val heightCounts = accumulatedHeightCounts[userId] ?: mutableMapOf()
+        val positionCounts = accumulatedPositionCounts[userId] ?: mutableMapOf()
         val angleCounts = accumulatedAngleCounts[userId] ?: mutableMapOf()
         val handCounts = accumulatedHandCounts[userId] ?: mutableMapOf()
         val poseCounts = accumulatedPoseCounts[userId] ?: mutableMapOf()
         val handPostureCounts = accumulatedHandPostureCounts[userId] ?: mutableMapOf()
         val elbowPostureCounts = accumulatedElbowPostureCounts[userId] ?: mutableMapOf()
 
-        val heightTotal = heightCounts.values.sum().toDouble()
-        val heightBreakdown = if (heightTotal > 0) {
-            heightCounts.mapValues { (it.value / heightTotal) * 100 }
+        val positionTotal = positionCounts.values.sum().toDouble()
+        val positionBreakdown = if (positionTotal > 0) {
+            positionCounts.mapValues { (it.value / positionTotal) * 100 }
         } else {
             emptyMap()
         }
@@ -442,7 +462,7 @@ class Profile(private val context: Context) {
         }
 
         return SessionSummary(
-            heightBreakdown,
+            positionBreakdown,
             angleBreakdown,
             handPresenceBreakdown,
             handPostureBreakdown,
@@ -459,7 +479,6 @@ class Profile(private val context: Context) {
         val hours = totalSeconds / 3600
         val minutes = (totalSeconds % 3600) / 60
         val seconds = totalSeconds % 60
-        
         return when {
             hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
             minutes > 0 -> "${minutes}m ${seconds}s"
@@ -474,7 +493,7 @@ class Profile(private val context: Context) {
             append("\"timestamp\":\"${summary.timestamp}\",")
             append("\"durationSeconds\":${summary.durationSeconds},")
             append("\"durationFormatted\":\"${summary.durationFormatted}\",")
-            append("\"heightBreakdown\":${mapToJson(summary.heightBreakdown)},")
+            append("\"positionBreakdown\":${mapToJson(summary.positionBreakdown)},")
             append("\"angleBreakdown\":${mapToJson(summary.angleBreakdown)},")
             append("\"handPresenceBreakdown\":${mapToJson(summary.handPresenceBreakdown)},")
             append("\"handPostureBreakdown\":${mapToJson(summary.handPostureBreakdown)},")

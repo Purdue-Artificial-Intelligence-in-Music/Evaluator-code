@@ -33,7 +33,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow crossing the center of the string area should have a good position",
-            0,
+            BowPosition.GOOD,
             result.position
         )
     }
@@ -61,7 +61,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow completely outside the string area should be classified as fully outside",
-            1,
+            BowPosition.OUTSIDE,
             result.position
         )
     }
@@ -88,7 +88,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow near the left edge of the string area should be classified as too far left",
-            2,
+            BowPosition.LEFT,
             result.position
         )
     }
@@ -115,7 +115,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow near the right edge of the string area should be classified as too far right",
-            3,
+            BowPosition.RIGHT,
             result.position
         )
     }
@@ -143,7 +143,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "Bow exactly at the left boundary should be classified as too far left",
-            2,
+            BowPosition.LEFT,
             result.position
         )
     }
@@ -171,7 +171,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "Bow exactly at the right boundary should be classified as too far right",
-            3,
+            BowPosition.RIGHT,
             result.position
         )
     }
@@ -200,7 +200,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow angle close to but below 20 degrees should be classified as a good angle",
-            0,
+            BowAngle.GOOD,
             result.angle
         )
     }
@@ -226,7 +226,7 @@ class ViolinBowClassifierTest {
         )
         assertEquals(
             "A bow angle just above 20 degrees should be classified as too angled",
-            1,
+            BowAngle.TOO_ANGLED,
             result.angle
         )
     }
@@ -254,7 +254,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow angle at 20 degrees should be classified as a good angle",
-            0,
+            BowAngle.GOOD,
             result.angle
         )
     }
@@ -282,7 +282,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow crossing the center of a rotated string box should have a good position",
-            0,
+            BowPosition.GOOD,
             result.position
         )
     }
@@ -308,13 +308,13 @@ class ViolinBowClassifierTest {
         )
         assertEquals(
             "A vertical bow crossing the center of the string area should have a good position",
-            0,
+            BowPosition.GOOD,
             result.position
         )
 
         assertEquals(
             "A vertical bow against horizontal strings should be classified as too angled",
-            1,
+            BowAngle.TOO_ANGLED,
             result.angle
         )
     }
@@ -342,7 +342,7 @@ class ViolinBowClassifierTest {
 
         assertEquals(
             "A bow nearly parallel to the strings should have a good angle",
-            0,
+            BowAngle.GOOD,
             result.angle
         )
     }

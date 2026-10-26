@@ -10,8 +10,8 @@ object ViolinBowClassifier {
     )
 
     data class ClassificationResult(
-        val position: Int,
-        val angle: Int
+        val position: BowPosition,
+        val angle: BowAngle
     )
 
     fun classify(
@@ -222,7 +222,7 @@ object ViolinBowClassifier {
         bowLine: List<Double>,
         horizontalLines: List<List<Double>>,
         stringPoints: List<Point>
-    ): Int {
+    ): BowPosition {
 
         val bowSlope = bowLine[0]
         val bowIntercept = bowLine[1]
@@ -302,7 +302,7 @@ object ViolinBowClassifier {
 
         // No valid intersection means the bow is fully outside.
         if (pointOne == null || pointTwo == null) {
-            return 1
+            return BowPosition.OUTSIDE
         }
 
         return bowWidthIntersection(
@@ -314,7 +314,7 @@ object ViolinBowClassifier {
     private fun bowWidthIntersection(
         intersectionPoints: List<Point>,
         horizontalLines: List<List<Double>>
-    ): Int {
+    ): BowPosition {
 
         val leftZonePercentage = 0.1
         val rightZonePercentage = 0.1
@@ -342,14 +342,14 @@ object ViolinBowClassifier {
             intersectionPoints.map { it.x }.average()
 
         if (intersectionX <= tooLeftThreshold) {
-            return 2
+            return BowPosition.LEFT
         }
 
         if (intersectionX >= tooRightThreshold) {
-            return 3
+            return BowPosition.RIGHT
         }
 
-        return 0
+        return BowPosition.GOOD
     }
 
     private fun degrees(
@@ -362,7 +362,7 @@ object ViolinBowClassifier {
         bowLine: List<Double>,
         horizontalLines: List<List<Double>>,
         maxAngle: Double
-    ): Int {
+    ): BowAngle {
 
         val bowSlope = bowLine[0]
 
@@ -394,7 +394,7 @@ object ViolinBowClassifier {
             !stringDirectionOne.isFinite() ||
             !stringDirectionTwo.isFinite()
         ) {
-            return 1
+            return BowAngle.UNKNOWN
         }
 
         val angleOne = normalizedAngleDifference(
@@ -410,9 +410,9 @@ object ViolinBowClassifier {
         val minimumAngle = min(angleOne, angleTwo)
 
         return if (minimumAngle > maxAngle) {
-            1
+            BowAngle.TOO_ANGLED
         } else {
-            0
+            BowAngle.GOOD
         }
     }
 }
