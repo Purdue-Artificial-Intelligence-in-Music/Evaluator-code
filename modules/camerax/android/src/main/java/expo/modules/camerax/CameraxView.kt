@@ -443,9 +443,7 @@ class CameraxView(
                 overlayView.setBitmapFrame(rotatedBitmap)
 
                 // Perform YOLO detection
-                //performDetection(rotatedBitmap)
-                // Mock violin classification result for testing
-                testMockBowResult()
+                performDetection(rotatedBitmap)
                 handLandmarkerHelper.detectBitmap(rotatedBitmap, (lensType == CameraSelector.LENS_FACING_FRONT))
             }
         } catch (e: Exception) {
@@ -524,26 +522,7 @@ class CameraxView(
         }
     }
 
-    private fun testMockBowResult() {
-        latestBowResults = Detector.returnBow(
-            classification = 3,
-            bow = listOf(
-                Detector.Point(45.0, 0.0),
-                Detector.Point(55.0, 0.0),
-                Detector.Point(45.0, 100.0),
-                Detector.Point(55.0, 100.0)
-            ),
-            string = listOf(
-                Detector.Point(0.0, 30.0),
-                Detector.Point(100.0, 30.0),
-                Detector.Point(0.0, 70.0),
-                Detector.Point(100.0, 70.0)
-            ),
-            angle = 1
-        )
 
-        updateOverlay()
-    }
 
     private fun sendDetectionResults() {
         // Optionally send to JS via event dispatcher
