@@ -36,12 +36,7 @@ class CameraxModule : Module() {
                 view.setMaxBowAngle(angle)
             }
 
-            // Commented out Calibration code as we are using a timer, can be deleted.
-           /* Prop("skipCalibration") { view: CameraxView, skip: Boolean ->
-                view.skipCalibration(skip)
-            }*/
-
-            Events("onDetectionResult", "onNoDetection", "onSessionEnd"/*, "onCalibrated"*/)
+            Events("onDetectionResult", "onNoDetection", "onSessionEnd")
         }
 
         AsyncFunction("getRecentSessions") { userId: String, count: Int ->

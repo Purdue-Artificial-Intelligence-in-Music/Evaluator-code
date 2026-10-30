@@ -110,10 +110,6 @@ class Detector (
     }
 
 
-    private fun Double.f1() = String.format("%.1f", this)
-    private fun Double.f3() = String.format("%.3f", this)
-    private fun Float.f2() = String.format("%.2f", this)
-
     private val imageProcessor = ImageProcessor.Builder()
         .add(NormalizeOp(INPUT_MEAN, INPUT_STANDARD_DEVIATION))
         .add(CastOp(INPUT_IMAGE_TYPE))
