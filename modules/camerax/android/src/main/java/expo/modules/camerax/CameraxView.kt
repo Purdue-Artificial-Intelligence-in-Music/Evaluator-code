@@ -71,19 +71,12 @@ class CameraxView(
 
     private var detector: Detector? = null
 
-    // Commented out Calibration code as we are using a timer, can be deleted.
-    /*private var calibrationCount: Int = 0
-    private var calibrationCorrect: Int = 0
-    private var isCalibrated: Boolean = false*/
-
     private lateinit var handLandmarkerHelper: HandLandmarkerHelper
 
-    //private val profile = Profile()
     // Pass the application context so Profile can safely access
     // the app-specific external storage directory.
     private val profile = Profile(context.applicationContext)
     private var userId: String = "default_user"
-    //private val userId = "session" // You can dynamically change this per user
 
     private var isDetectionEnabled = false
     private var isCameraActive = false
@@ -153,10 +146,6 @@ class CameraxView(
         Log.d("DetectionEnabled: ", enabled.toString())
         if (isDetectionEnabled == enabled) return
         isDetectionEnabled = enabled
-        // Commented out Calibration code as we are using a timer, can be deleted.
-        /*isCalibrated = false
-        calibrationCount = 0
-        calibrationCorrect = 0*/
 
         if (enabled) {
             // Start a new session
@@ -274,15 +263,6 @@ class CameraxView(
             stopCamera()
         }
     }
-    // Commented out Calibration code as we are using a timer, can be deleted.
-    /*
-    fun skipCalibration(skip: Boolean) {
-        if (skip) {
-            isCalibrated = true
-            calibrationCorrect = 0
-            calibrationCount = 0
-        }
-    }*/
 
     // ===== Lifecycle =====
     override fun onAttachedToWindow() {
@@ -482,50 +462,18 @@ class CameraxView(
     override fun detected(results: Detector.YoloResults, sourceWidth: Int, sourceHeight: Int) {
         if (!isDetectionEnabled) return
         val bowPoints = detector?.classify(results)
-        // Commented out Calibration code as we are using a timer, can be deleted.
-        /*if (isCalibrated) {*/
+
         if (bowPoints != null) {
             profile.addSessionData(userId, bowPoints)
         }
         latestBowResults = bowPoints
         updateOverlay()
         sendDetectionResults()
-        /*} else {
-            calibrationCount++
-            calibrationCorrect++
-            if (calibrationCount == 30) {
-                if ((calibrationCorrect.toDouble() / calibrationCount.toDouble()) >= .6) {
-                    isCalibrated = true
-                    Log.d("Calibration", "Model Calibrated, emitting Event")
-                    onCalibrated(mapOf("calibration" to isCalibrated))
-                } else {
-                    calibrationCount = 0
-                    Log.d("Calibration", "Calibration Failed")
-                }
-            }
-            latestBowResults = Detector.returnBow(-2, null, null, 0)
-            updateOverlay()
-            sendDetectionResults()
-            onNoDetection(mapOf("message" to "No objects detected"))
-        //}*/
     }
 
     override fun noDetect() {
         if (!isDetectionEnabled) return
-        // Commented out Calibration code as we are using a timer, can be deleted.
-        /*if (!isCalibrated) {
-            calibrationCount++
-            if (calibrationCount == 30) {
-                if ((calibrationCorrect.toDouble() / calibrationCount.toDouble()) >= .6) {
-                    isCalibrated = true
-                    Log.d("Calibration", "Model Calibrated, emitting Event")
-                    onCalibrated(mapOf("calibration" to isCalibrated))
-                } else {
-                    calibrationCount = 0
-                    Log.d("Calibration", "Calibration Failed")
-                }
-            }
-        }*/
+
         latestBowResults = Detector.returnBow(-2, null, null, 0)
         updateOverlay()
         onNoDetection(mapOf("message" to "No objects detected"))
@@ -573,6 +521,8 @@ class CameraxView(
             )
         }
     }
+
+
 
     private fun sendDetectionResults() {
         // Optionally send to JS via event dispatcher
