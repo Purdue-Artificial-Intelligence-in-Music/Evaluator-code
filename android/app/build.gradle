@@ -1,7 +1,9 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-apply plugin: 'com.google.gms.google-services'
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+}
 apply plugin: 'com.google.firebase.appdistribution'
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
