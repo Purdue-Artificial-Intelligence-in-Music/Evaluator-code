@@ -389,14 +389,14 @@ class Detector (
 
         // Determine if there's an issue with classification or angle
         // 0 = correct, anything else is an issue
-        val position = BowPosition.fromCode(classification)
+        val height = BowHeight.fromCode(classification)
         val angleResult = BowAngle.fromCode(angle)
 
-        val positionMessage = BowFeedback.positionInstruction(position)
+        val positionMessage = BowFeedback.heightInstruction(height)
         val angleMessage = BowFeedback.angleInstruction(angleResult)
 
-        val hasIssue = positionMessage.isNotEmpty() ||
-                angleMessage.isNotEmpty()
+        val hasIssue = (classification != null && height != BowHeight.GOOD) ||
+                angleResult == BowAngle.TOO_ANGLED
 
         // Choose colors based on classification
         val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Orange or Blue
@@ -461,21 +461,6 @@ class Detector (
                 paint
             )
         }
-
-        // Classification labels mapping
-        // -2: No detection, -1: Partial, 0: Correct, 1: Outside, 2: Too high, 3: Too low
-        /*val classificationLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Keep the bow in zone",    // Bow outside zone
-            2 to "Lower the bow",    // Bow too high
-            3 to "Lift the bow"    // Bow too low
-        )
-
-        // Angle labels: 0 = correct, 1 = wrong
-        val angleLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Adjust your bow angle"    // Incorrect bow angle
-        )*/
 
         // Prepare text paint styles
         val textPaint = Paint().apply {
@@ -1021,29 +1006,28 @@ class Detector (
     }
 
     data class returnBow(
-        var positionResult: BowPosition,
+        var heightResult: BowHeight,
         var bow: List<Point>?,
         var string: List<Point>?,
-        var angleResult: BowAngle
+        var angleResult: BowAngle?
     ) {
-        // Compatibility with existing callers using integer codes
         constructor(
             classification: Int?,
             bow: List<Point>?,
             string: List<Point>?,
             angle: Int?
         ) : this(
-            BowPosition.fromCode(classification),
+            BowHeight.fromCode(classification),
             bow,
             string,
-            BowAngle.fromCode(angle)
+            angle?.let { BowAngle.fromCode(it) }
         )
 
         val classification: Int
-            get() = positionResult.code
+            get() = heightResult.code
 
-        val angle: Int
-            get() = angleResult.code
+        val angle: Int?
+            get() = angleResult?.code
     }
 
     data class bitmapAndClassifications(
@@ -1055,19 +1039,20 @@ class Detector (
 
 
 
+
     fun classify(results: YoloResults): returnBow {
         val classResults = returnBow(
-            positionResult = BowPosition.UNKNOWN,
+            heightResult = BowHeight.UNKNOWN,
             bow = null,
             string = null,
-            angleResult = BowAngle.UNKNOWN
+            angleResult = null
         )
 
         if (results.stringResults != null) {
             stringRepeat = 0
             stringPoints = results.stringResults
         } else if (stringRepeat < 5 && stringPoints != null) {
-            classResults.positionResult = BowPosition.PARTIAL
+            classResults.heightResult = BowHeight.PARTIAL
             stringRepeat++
             results.stringResults = stringPoints!!.toMutableList()
         } else {
@@ -1078,7 +1063,7 @@ class Detector (
             bowRepeat = 0
             bowPoints = results.bowResults
         } else if (bowRepeat < 5 && bowPoints != null) {
-            classResults.positionResult = BowPosition.PARTIAL
+            classResults.heightResult = BowHeight.PARTIAL
             bowRepeat++
             results.bowResults = bowPoints!!.toMutableList()
         } else {
@@ -1086,18 +1071,18 @@ class Detector (
         }
 
         if (stringPoints == null && bowPoints == null) {
-            classResults.positionResult = BowPosition.NONE
+            classResults.heightResult = BowHeight.NONE
             return classResults
         }
 
         if (results.stringResults == null) {
-            classResults.positionResult = BowPosition.PARTIAL
+            classResults.heightResult = BowHeight.PARTIAL
             classResults.bow = results.bowResults
             return classResults
         }
 
         if (results.bowResults == null) {
-            classResults.positionResult = BowPosition.PARTIAL
+            classResults.heightResult = BowHeight.PARTIAL
             classResults.string = results.stringResults
             return classResults
         }
@@ -1105,39 +1090,30 @@ class Detector (
         classResults.string = results.stringResults
         classResults.bow = results.bowResults
 
-        // Keep existing point stabilization.
-        updatePoints(
-            results.stringResults!!,
-            results.bowResults!!
+        updatePoints(results.stringResults!!, results.bowResults!!)
+
+        val midlines = getMidline()
+        val vertLines = getVerticalLines()
+
+        val height = BowHeight.fromCode(
+            intersectsVertical(midlines, vertLines)
         )
 
-        // Use the violin-specific classification algorithm.
-        val violinResult = ViolinBowClassifier.classify(
-            bowPoints = bowPoints!!.map {
-                ViolinBowClassifier.Point(it.x, it.y)
-            },
-            stringPoints = stringPoints!!.map {
-                ViolinBowClassifier.Point(it.x, it.y)
-            },
-            maxAngle = maxAngle.toDouble()
-        )
-
-        classResults.positionResult = violinResult.position
+        classResults.heightResult = height
 
         classResults.angleResult =
-            if (violinResult.position == BowPosition.OUTSIDE) {
-                BowAngle.UNKNOWN
+            if (height != BowHeight.OUTSIDE &&
+                height != BowHeight.PARTIAL) {
+                BowAngle.fromCode(bowAngle(midlines, vertLines))
             } else {
-                violinResult.angle
+                BowAngle.UNKNOWN
             }
 
-        Log.d(
-            "BOW",
-            "Position=${classResults.positionResult}, Angle=${classResults.angleResult}"
-        )
+        Log.d("BOW", "Height=${classResults.heightResult}")
 
         return classResults
     }
+
 
 
 

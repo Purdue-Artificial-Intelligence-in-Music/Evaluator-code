@@ -205,7 +205,7 @@ class OverlayView @JvmOverloads constructor(
         val scaleY = height.toFloat()
         val scaleFactor = 1f //max(scaleX, scaleY)
 
-        if (results?.positionResult != BowPosition.NONE) {
+        if (results?.heightResult != BowHeight.NONE) {
             val stringBox = results?.string
             val bowBox = results?.bow
             Log.d("CheckDelCoords", "stringBox value: $stringBox")
@@ -235,13 +235,14 @@ class OverlayView @JvmOverloads constructor(
                 }
             }
             // Determine if there's an issue
-            val position = results?.positionResult ?: BowPosition.UNKNOWN
+            val height = results?.heightResult ?: BowHeight.UNKNOWN
             val angle = results?.angleResult ?: BowAngle.UNKNOWN
 
-            val hasIssue = position in setOf(
-                BowPosition.OUTSIDE,
-                BowPosition.LEFT,
-                BowPosition.RIGHT
+            val hasIssue = height in setOf(
+                BowHeight.PARTIAL,
+                BowHeight.OUTSIDE,
+                BowHeight.TOO_HIGH,
+                BowHeight.TOO_LOW
             ) || angle == BowAngle.TOO_ANGLED
 
             // Choose box color based on classification
@@ -349,10 +350,10 @@ class OverlayView @JvmOverloads constructor(
 
             // Filename identifiers (not user-facing feedback labels).
             val fileLabelsBow = mapOf(
-                BowPosition.GOOD to "correct_bow",
-                BowPosition.OUTSIDE to "bow_outside_zone",
-                BowPosition.LEFT to "bow_too_far_left",
-                BowPosition.RIGHT to "bow_too_far_right"
+                BowHeight.GOOD to "correct_bow",
+                BowHeight.OUTSIDE to "bow_outside_zone",
+                BowHeight.TOO_HIGH to "bow_too_high",
+                BowHeight.TOO_LOW to "bow_too_low"
             )
 
             val fileLabelsAngle = mapOf(
@@ -367,11 +368,9 @@ class OverlayView @JvmOverloads constructor(
             // Read typed results; display text comes from the shared mapping.
             now = System.currentTimeMillis()
             bowMessage = results?.let {
-                BowFeedback.positionInstruction(it.positionResult)
+                BowFeedback.heightInstruction(it.heightResult)
             } ?: ""
-            results?.positionResult?.let { position ->
-                fileLabelsBow[position]?.let { file_list.add(it) }
-            }
+            fileLabelsBow[height]?.let { file_list.add(it) }
 
             if (bowMessage.isNotEmpty()) {
                 recordIssue(bowMessage)
@@ -395,7 +394,7 @@ class OverlayView @JvmOverloads constructor(
             }
 
             angleMessage = results?.let {
-                BowFeedback.angleInstruction(it.angleResult)
+                BowFeedback.angleInstruction(it.angleResult ?: BowAngle.UNKNOWN)
             } ?: ""
             results?.angleResult?.let { angle ->
                 fileLabelsAngle[angle]?.let { file_list.add(it) }
