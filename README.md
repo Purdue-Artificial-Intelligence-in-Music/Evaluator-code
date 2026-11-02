@@ -65,6 +65,7 @@ without deleting the ones in arm64-v8a because there's two of them.
   ```
   use ```npx expo run:android --variant release``` for release build, which would allow you to completely close and reopen the app
   it will take longer to build
+
 6. You should see 3 buttons on the home page. Try testing with "Open Camera" or "Choose Video".
 
 
