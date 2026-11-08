@@ -39,7 +39,7 @@ class Detector (
     private val parser: ModelOutputParser = LegacyObbParser()
 ){
 
-    private var interpreter: Interpreter
+    private var interpreter: Interpreter? = null
     private var qnnDelegate: QnnDelegate? = null
     private var tfliteGpu: GpuDelegate? = null
 
@@ -165,21 +165,25 @@ class Detector (
     }
 
     init {
-        interpreter = createInterpreterWithFallbacks(context)
+        try{
+            interpreter = createInterpreterWithFallbacks(context)
 
         // Cache input tensor shape (NHWC or NCHW). Output layout is the parser's concern.
-        val inputShape = interpreter.getInputTensor(0)?.shape()
+            val inputShape = interpreter?.getInputTensor(0)?.shape()
 
-        if (inputShape != null && inputShape.size >= 4) {
-            if (inputShape[1] == 3) {           // NCHW: [1,3,H,W]
-                tensorWidth = inputShape[3]
-                tensorHeight = inputShape[2]
-            } else {                            // NHWC: [1,H,W,3]
-                tensorWidth = inputShape[2]
-                tensorHeight = inputShape[1]
+            if (inputShape != null && inputShape.size >= 4) {
+                if (inputShape[1] == 3) {           // NCHW: [1,3,H,W]
+                    tensorWidth = inputShape[3]
+                    tensorHeight = inputShape[2]
+                } else {                            // NHWC: [1,H,W,3]
+                    tensorWidth = inputShape[2]
+                    tensorHeight = inputShape[1]
+                }
             }
-        }
-
+        } catch(e:Throwable){
+                Log.e(TAG, "Failed to initialize detector model: ${e.message}")
+                interpreter = null
+            }
         modelReadyLatch.countDown()
     }
     private fun createInterpreterWithFallbacks(context: Context): org.tensorflow.lite.Interpreter {
@@ -246,7 +250,7 @@ class Detector (
     }
 
     fun close() {
-        try { interpreter.close() } catch (_: Throwable) {}
+        try { interpreter?.close() } catch (_: Throwable) {}
         try { tfliteGpu?.close() } catch (_: Throwable) {}
         try { qnnDelegate?.close() } catch (_: Throwable) {}
     }
@@ -264,7 +268,13 @@ class Detector (
     fun detect(frame: Bitmap, sourceWidth: Int = 1, sourceHeight: Int = 1): YoloResults {
         val results = YoloResults(null, null)
 
-        if (tensorWidth == 0 || tensorHeight == 0 || interpreter.outputTensorCount == 0) {
+        val interp = interpreter
+        if(interp == null){
+            Log.e(TAG, "Detector is not initialized")
+            return results
+        }
+
+        if (tensorWidth == 0 || tensorHeight == 0 || interp.outputTensorCount == 0) {
             Log.e(TAG, "MODEL ERROR: invalid tensor shapes")
             return results
         }
@@ -281,18 +291,18 @@ class Detector (
         val imageBuffer = processed.buffer
 
         // One output buffer per output tensor, sized from the interpreter's own shapes
-        val outputBuffers = (0 until interpreter.outputTensorCount).associateWith { i ->
-            TensorBuffer.createFixedSize(interpreter.getOutputTensor(i).shape(), OUTPUT_IMAGE_TYPE)
+        val outputBuffers = (0 until interp.outputTensorCount).associateWith { i ->
+            TensorBuffer.createFixedSize(interp.getOutputTensor(i).shape(), OUTPUT_IMAGE_TYPE)
         }
 
         // Inference
         val t0 = SystemClock.uptimeMillis()
-        interpreter.runForMultipleInputsOutputs(arrayOf<Any>(imageBuffer), outputBuffers.mapValues { it.value.buffer })
+        interp.runForMultipleInputsOutputs(arrayOf<Any>(imageBuffer), outputBuffers.mapValues { it.value.buffer })
         val inferMs = SystemClock.uptimeMillis() - t0
         Log.i("Time Comparing", "Bow YOLO: inference ${inferMs}ms")
 
         val outputs = outputBuffers.mapValues { (i, buffer) ->
-            OutputTensor(interpreter.getOutputTensor(i).shape(), buffer.floatArray)
+            OutputTensor(interp.getOutputTensor(i).shape(), buffer.floatArray)
         }
         val detection = try {
             parser.parse(outputs, PREPROCESS_LETTERBOX)

@@ -267,6 +267,9 @@ class CameraxView(
     // ===== Lifecycle =====
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (cameraExecutor.isShutdown) {
+            cameraExecutor = Executors.newSingleThreadExecutor()
+        }
     }
 
     override fun onDetachedFromWindow() {
@@ -274,6 +277,12 @@ class CameraxView(
         cameraExecutor.shutdown()
         cameraProvider?.unbindAll()
         cameraProvider = null
+
+        detector?.close()
+        detector = null
+        if(::handLandmarkerHelper.isInitialized){
+            handLandmarkerHelper.clearLandmarkers()
+        }
     }
 
     private fun stopCamera() {
