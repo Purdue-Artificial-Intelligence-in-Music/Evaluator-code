@@ -208,32 +208,7 @@ class OverlayView @JvmOverloads constructor(
         if (results?.heightResult != BowHeight.NONE) {
             val stringBox = results?.string
             val bowBox = results?.bow
-            Log.d("CheckDelCoords", "stringBox value: $stringBox")
 
-            Log.d("CheckDelCoords", "bowBox value: $bowBox")
-            if (stringBox != null) {
-                stringBox.forEachIndexed { index, point ->
-                    val x = point.x.toFloat()
-                    val y = point.y.toFloat()
-                    if (x > 1 || y > 1) {
-                        Log.d("CheckDelStringBoxCoords", "Point[$index] has coords > 1: x=$x, y=$y - NEEDS DIVISION BY 640")
-                    } else {
-                        Log.d("CheckDelStringBoxCoords", "Point[$index] is normalized: x=$x, y=$y")
-                    }
-                }
-            }
-
-            if (bowBox != null) {
-                bowBox.forEachIndexed { index, point ->
-                    val x = point.x.toFloat()
-                    val y = point.y.toFloat()
-                    if (x > 1 || y > 1) {
-                        Log.d("CheckDelBowBoxCoords", "Point[$index] has coords > 1: x=$x, y=$y - NEEDS DIVISION BY 640")
-                    } else {
-                        Log.d("CheckDelBowBoxCoords", "Point[$index] is normalized: x=$x, y=$y")
-                    }
-                }
-            }
             // Determine if there's an issue
             val height = results?.heightResult ?: BowHeight.UNKNOWN
             val angle = results?.angleResult ?: BowAngle.UNKNOWN
@@ -767,13 +742,6 @@ class OverlayView @JvmOverloads constructor(
         xOffset = (width - displayedImageWidth) / 2f
         yOffset = (height - displayedImageHeight) / 2f
 
-        Log.d(
-            "HandOverlay",
-            "view=${width}x$height, " +
-                "image=${imageWidth}x$imageHeight, " +
-                "scale=$handsScaleFactor, " +
-                "offset=($xOffset, $yOffset)"
-        )
     }
 
     /**

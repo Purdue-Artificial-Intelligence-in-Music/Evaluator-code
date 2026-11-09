@@ -394,7 +394,7 @@ object ViolinBowClassifier {
             !stringDirectionOne.isFinite() ||
             !stringDirectionTwo.isFinite()
         ) {
-            return BowAngle.UNKNOWN
+            return BowAngle.TOO_ANGLED
         }
 
         val angleOne = normalizedAngleDifference(

@@ -1108,9 +1108,6 @@ class Detector (
             } else {
                 BowAngle.UNKNOWN
             }
-
-        Log.d("BOW", "Height=${classResults.heightResult}")
-
         return classResults
     }
 

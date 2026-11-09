@@ -69,6 +69,7 @@ class BowClassificationTest {
 
     @Test
     fun testBowHeightFromCode() {
+        assertEquals(BowHeight.UNKNOWN, BowHeight.fromCode(-3))
         assertEquals(BowHeight.NONE, BowHeight.fromCode(-2))
         assertEquals(BowHeight.PARTIAL, BowHeight.fromCode(-1))
         assertEquals(BowHeight.GOOD, BowHeight.fromCode(0))
@@ -97,5 +98,13 @@ class BowClassificationTest {
             "Lift the bow",
             BowFeedback.heightInstruction(BowHeight.TOO_LOW)
         )
+        assertEquals(
+            "Keep the bow in zone",
+            BowFeedback.heightInstruction(BowHeight.OUTSIDE)
+        )
+        assertEquals("", BowFeedback.heightInstruction(BowHeight.NONE))
+        assertEquals("", BowFeedback.heightInstruction(BowHeight.PARTIAL))
+        assertEquals("", BowFeedback.heightInstruction(BowHeight.GOOD))
+        assertEquals("", BowFeedback.heightInstruction(BowHeight.UNKNOWN))
     }
 }

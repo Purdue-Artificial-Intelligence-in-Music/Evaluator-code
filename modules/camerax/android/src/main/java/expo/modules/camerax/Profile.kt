@@ -192,7 +192,7 @@ class Profile(private val context: Context) {
         // Create session summary file with duration
         val sessionStartTimestamp = sessionTimestampsFormatted[userId]
             ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
+        
         // Calculate session duration
         val startTimeMs = sessionStartTimes[userId] ?: System.currentTimeMillis()
         val endTimeMs = System.currentTimeMillis()
@@ -459,7 +459,7 @@ class Profile(private val context: Context) {
         val hours = totalSeconds / 3600
         val minutes = (totalSeconds % 3600) / 60
         val seconds = totalSeconds % 60
-
+        
         return when {
             hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
             minutes > 0 -> "${minutes}m ${seconds}s"
