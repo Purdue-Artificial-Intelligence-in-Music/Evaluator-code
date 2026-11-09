@@ -323,8 +323,14 @@ class Detector (
 
         // Determine if there's an issue with classification or angle
         // 0 = correct, anything else is an issue
-        val hasIssue = (classification != null && classification != 0) ||
-                (angle != null && angle == 1)
+        val height = BowHeight.fromCode(classification)
+        val angleResult = BowAngle.fromCode(angle)
+
+        val positionMessage = BowFeedback.heightInstruction(height)
+        val angleMessage = BowFeedback.angleInstruction(angleResult)
+
+        val hasIssue = (classification != null && height != BowHeight.GOOD) ||
+                angleResult == BowAngle.TOO_ANGLED
 
         // Choose colors based on classification
         val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Orange or Blue
@@ -390,21 +396,6 @@ class Detector (
             )
         }
 
-        // Classification labels mapping
-        // -2: No detection, -1: Partial, 0: Correct, 1: Outside, 2: Too high, 3: Too low
-        val classificationLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Keep the bow in zone",    // Bow outside zone
-            2 to "Lower the bow",    // Bow too high
-            3 to "Lift the bow"    // Bow too low
-        )
-
-        // Angle labels: 0 = correct, 1 = wrong
-        val angleLabels = mapOf(
-            0 to "",  // Correct - don't display
-            1 to "Adjust your bow angle"    // Incorrect bow angle
-        )
-
         // Prepare text paint styles
         val textPaint = Paint().apply {
             color = Color.BLACK
@@ -431,8 +422,8 @@ class Detector (
         var currentY = topMargin
 
         // Draw classification message if there's an issue
-        if (classification != null && classification != 0) {
-            val message = classificationLabels[classification] ?: ""
+        if (positionMessage.isNotEmpty()) {
+            val message = positionMessage
             if (message.isNotEmpty()) {
                 val textWidth = textPaint.measureText(message)
                 val fm = textPaint.fontMetrics
@@ -452,8 +443,8 @@ class Detector (
         }
 
         // Draw angle message if there's an issue
-        if (angle != null && angle == 1) {
-            val message = angleLabels[angle] ?: ""
+        if (angleMessage.isNotEmpty()) {
+            val message = angleMessage
             if (message.isNotEmpty()) {
                 val textWidth = textPaint.measureText(message)
                 val fm = textPaint.fontMetrics
@@ -843,16 +834,37 @@ class Detector (
         val angle_two: Double = abs(degrees(atan(abs(m1 - m_bow) / (1 + m1 * m_bow))))
 
         val min_angle: Double = min(abs(90 - min(angle_one, angle_two)), min(angle_one, angle_two))
-        return if (min_angle > maxAngle) 1 else 0  // 1 = Wrong Angle, 0 = Correct Angle
+        return if (min_angle > maxAngle) {
+            BowAngle.TOO_ANGLED.code
+        } else {
+            BowAngle.GOOD.code
+        }  // 1 = Wrong Angle, 0 = Correct Angle
     }
 
     data class returnBow(
-
-        var classification: Int?,
+        var heightResult: BowHeight,
         var bow: List<Point>?,
         var string: List<Point>?,
-        var angle: Int?
-    )
+        var angleResult: BowAngle?
+    ) {
+        constructor(
+            classification: Int?,
+            bow: List<Point>?,
+            string: List<Point>?,
+            angle: Int?
+        ) : this(
+            BowHeight.fromCode(classification),
+            bow,
+            string,
+            angle?.let { BowAngle.fromCode(it) }
+        )
+
+        val classification: Int
+            get() = heightResult.code
+
+        val angle: Int?
+            get() = angleResult?.code
+    }
 
     data class bitmapAndClassifications(
         var bitmap: Bitmap,
@@ -861,61 +873,82 @@ class Detector (
     )
 
 
+
+
+
     fun classify(results: YoloResults): returnBow {
         val classResults = returnBow(
-            classification = null,
+            heightResult = BowHeight.UNKNOWN,
             bow = null,
             string = null,
-            angle = null
+            angleResult = null
         )
+
         if (results.stringResults != null) {
             stringRepeat = 0
             stringPoints = results.stringResults
         } else if (stringRepeat < 5 && stringPoints != null) {
-            classResults.classification = -1
+            classResults.heightResult = BowHeight.PARTIAL
             stringRepeat++
             results.stringResults = stringPoints!!.toMutableList()
         } else {
             stringPoints = null
         }
+
         if (results.bowResults != null) {
             bowRepeat = 0
             bowPoints = results.bowResults
         } else if (bowRepeat < 5 && bowPoints != null) {
-            classResults.classification = -1
+            classResults.heightResult = BowHeight.PARTIAL
             bowRepeat++
             results.bowResults = bowPoints!!.toMutableList()
         } else {
             bowPoints = null
         }
+
         if (stringPoints == null && bowPoints == null) {
-            classResults.classification = -2
+            classResults.heightResult = BowHeight.NONE
             return classResults
         }
+
         if (results.stringResults == null) {
-            classResults.classification = -1
+            classResults.heightResult = BowHeight.PARTIAL
             classResults.bow = results.bowResults
-            return classResults
-        } else if (results.bowResults == null) {
-            classResults.classification = -1
-            classResults.string = results.stringResults
-            return classResults
-        } else {
-            classResults.string = results.stringResults
-            classResults.bow = results.bowResults
-            updatePoints(results.stringResults!!, results.bowResults!!)
-            val midlines = getMidline()
-            val vert_lines = getVerticalLines()
-            val intersect_points = intersectsVertical(midlines, vert_lines)
-            if (intersect_points != -1 && intersect_points != 1) {
-                classResults.angle = bowAngle(midlines, vert_lines)
-            } else {
-                classResults.angle = -1
-            }
-            classResults.classification = intersect_points
             return classResults
         }
+
+        if (results.bowResults == null) {
+            classResults.heightResult = BowHeight.PARTIAL
+            classResults.string = results.stringResults
+            return classResults
+        }
+
+        classResults.string = results.stringResults
+        classResults.bow = results.bowResults
+
+        updatePoints(results.stringResults!!, results.bowResults!!)
+
+        val midlines = getMidline()
+        val vertLines = getVerticalLines()
+
+        val height = BowHeight.fromCode(
+            intersectsVertical(midlines, vertLines)
+        )
+
+        classResults.heightResult = height
+
+        classResults.angleResult =
+            if (height != BowHeight.OUTSIDE &&
+                height != BowHeight.PARTIAL) {
+                BowAngle.fromCode(bowAngle(midlines, vertLines))
+            } else {
+                BowAngle.UNKNOWN
+            }
+        return classResults
     }
+
+
+
 
     interface DetectorListener {
         fun noDetect()

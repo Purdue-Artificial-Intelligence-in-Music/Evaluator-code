@@ -474,7 +474,12 @@ class CameraxView(
     override fun noDetect() {
         if (!isDetectionEnabled) return
 
-        latestBowResults = Detector.returnBow(-2, null, null, 0)
+        latestBowResults = Detector.returnBow(
+            heightResult = BowHeight.NONE,
+            bow = null,
+            string = null,
+            angleResult = BowAngle.GOOD
+        )
         updateOverlay()
         onNoDetection(mapOf("message" to "No objects detected"))
     }

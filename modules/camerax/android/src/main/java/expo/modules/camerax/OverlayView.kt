@@ -111,32 +111,6 @@ class OverlayView @JvmOverloads constructor(
     }
 
     companion object {
-        // Classification constants
-        const val CLASS_NONE = -2
-        const val CLASS_PARTIAL = -1
-        const val CLASS_CORRECT = 0
-        const val CLASS_OUTSIDE = 1
-        const val CLASS_TOO_FAR_LEFT = 2
-        const val CLASS_TOO_FAR_RIGHT = 3
-
-        const val ANGLE_RIGHT = 0
-        const val ANGLE_WRONG = 1
-
-        // Map classifications to labels
-        val CLASSIFICATION_LABELS = mapOf(
-            CLASS_NONE to "No detection",
-            CLASS_PARTIAL to "Partial detection",
-            CLASS_CORRECT to "Good Bow Position",
-            CLASS_OUTSIDE to "Bow Fully Outside",
-            CLASS_TOO_FAR_LEFT to "Bow Too Far Left",
-            CLASS_TOO_FAR_RIGHT to "Bow Too Far Right"
-        )
-
-        val ANGLE_LABELS = mapOf(
-            ANGLE_RIGHT to "Good Bow Angle",
-            ANGLE_WRONG to "Bow Too Angled"
-        )
-
         const val LANDMARK_STROKE_WIDTH = 8f
     }
 
@@ -219,6 +193,8 @@ class OverlayView @JvmOverloads constructor(
         //overlayBitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
         tempCanvas = Canvas(overlayBitmap!!)
         file_list.clear()
+        bowMessage = ""
+        angleMessage = ""
 
         var currentY = 120f
         val lineSpacing = 60f
@@ -228,12 +204,19 @@ class OverlayView @JvmOverloads constructor(
         val scaleY = height.toFloat()
         val scaleFactor = 1f //max(scaleX, scaleY)
 
-        if (results?.classification != -2) {
+        if (results?.heightResult != BowHeight.NONE) {
             val stringBox = results?.string
             val bowBox = results?.bow
             // Determine if there's an issue
-            val hasIssue = (results?.classification != null && results?.classification != 0) ||
-                    (results?.angle != null && results?.angle == 1)
+            val height = results?.heightResult ?: BowHeight.UNKNOWN
+            val angle = results?.angleResult ?: BowAngle.UNKNOWN
+
+            val hasIssue = height in setOf(
+                BowHeight.PARTIAL,
+                BowHeight.OUTSIDE,
+                BowHeight.TOO_HIGH,
+                BowHeight.TOO_LOW
+            ) || angle == BowAngle.TOO_ANGLED
 
             // Choose box color based on classification
             val boxColor = if (hasIssue) Color.rgb(255, 140, 0) else Color.BLUE // Orange or Blue
@@ -338,43 +321,29 @@ class OverlayView @JvmOverloads constructor(
 //                    , boxPaint)
 //            }
 
-            // Classification labels - only show if not correct
-            val classificationLabels = mapOf(
-                0 to "",  // Correct - don't display
-                1 to "Keep the bow in zone",    // Bow outside zone
-                2 to "Move the bow to the right",    // Bow too left
-                3 to "Move the bow to the left"    // Bow too right
-            )
-
+            // Filename identifiers (not user-facing feedback labels).
             val fileLabelsBow = mapOf(
-                0 to "correct_bow",  // Correct
-                1 to "bow_outside_zone",    // Bow outside zone
-                2 to "bow_too_far_left",    // Bow too left
-                3 to "bow_too_far_right"    // Bow too right
-            )
-
-            val angleLabels = mapOf(
-                0 to "",  // Correct - don't display
-                1 to "Adjust your bow angle"    // Incorrect bow angle
+                BowHeight.GOOD to "correct_bow",
+                BowHeight.OUTSIDE to "bow_outside_zone",
+                BowHeight.TOO_HIGH to "bow_too_high",
+                BowHeight.TOO_LOW to "bow_too_low"
             )
 
             val fileLabelsAngle = mapOf(
-                0 to "correct_angle",  // Correct
-                1 to "incorrect_angle"    // Incorrect bow angle
+                BowAngle.GOOD to "correct_angle",
+                BowAngle.TOO_ANGLED to "incorrect_angle"
             )
 
             // Fixed positions from top - below hand/pose classifications
             centerX = width / 2f
 
 
-            // Draw classification message if there's an issue
+            // Read typed results; display text comes from the shared mapping.
             now = System.currentTimeMillis()
-            if (results?.classification != null/* && results?.classification != 0*/) {
-                bowMessage = classificationLabels[results?.classification] ?: ""
-                file_list.add(fileLabelsBow[results?.classification] ?: "")
-            } else if (results?.classification == 0) {
-                file_list.add(fileLabelsBow[results?.classification] ?: "")
-            }
+            bowMessage = results?.let {
+                BowFeedback.heightInstruction(it.heightResult)
+            } ?: ""
+            fileLabelsBow[height]?.let { file_list.add(it) }
 
             if (bowMessage.isNotEmpty()) {
                 recordIssue(bowMessage)
@@ -397,12 +366,11 @@ class OverlayView @JvmOverloads constructor(
                 }
             }
 
-            // Draw angle message if there's an issue
-            if (results?.angle != null/* && results?.angle == 1*/) {
-                angleMessage = angleLabels[results?.angle] ?: ""
-                file_list.add(fileLabelsAngle[results?.angle] ?: "")
-            } else if (results?.angle == 0) {
-                file_list.add(fileLabelsAngle[results?.angle] ?: "")
+            angleMessage = results?.let {
+                BowFeedback.angleInstruction(it.angleResult ?: BowAngle.UNKNOWN)
+            } ?: ""
+            results?.angleResult?.let { angle ->
+                fileLabelsAngle[angle]?.let { file_list.add(it) }
             }
 
             if (angleMessage.isNotEmpty()) {
@@ -798,6 +766,8 @@ class OverlayView @JvmOverloads constructor(
 
     fun clear() {
         results = null
+        bowMessage = ""
+        angleMessage = ""
         handLandmarkerResult = null
         poseLandmarkerResult = null
         handDetect = ""

@@ -310,8 +310,12 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
       const fileName = path.toLowerCase();
       console.log(`Image ${index}: ${path.split('/').pop()}`);
 
-      // Bow Height: bow_too_high, correct_bow
-      if (fileName.includes('bow_too_high') || fileName.includes('correct_bow')) {
+      // Bow Height: bow_too_high, bow_too_low, correct_bow
+      if (
+        fileName.includes('bow_too_high') ||
+        fileName.includes('bow_too_low') ||
+        fileName.includes('correct_bow')
+      ) {
         categorized.bowHeight.push(path);
         console.log(`  -> Categorized as bowHeight`);
       }
