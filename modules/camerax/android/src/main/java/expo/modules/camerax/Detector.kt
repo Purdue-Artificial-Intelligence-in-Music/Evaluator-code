@@ -36,7 +36,9 @@ class Detector (
     private val listener: DetectorListener? = null,
     private val modelAsset: String = DEFAULT_MODEL_ASSET,
     // Converts raw model outputs into a ViolinDetection; swap this when the model changes.
-    private val parser: ModelOutputParser = LegacyObbParser()
+    private val parser: ModelOutputParser = LegacyObbParser(),
+    // Places the frame inside the model input; LEGACY_STRETCH matches try.tflite.
+    private val preprocessor: FramePreprocessor = FramePreprocessor()
 ){
 
     private var interpreter: Interpreter
@@ -148,17 +150,6 @@ class Detector (
         private val INPUT_IMAGE_TYPE = DataType.FLOAT32
         private val OUTPUT_IMAGE_TYPE = DataType.FLOAT32
 
-        // Current preprocessing: frame stretched to 360x640 at the top-left of a 640x640 input.
-        private const val PREPROCESS_CONTENT_WIDTH = 360
-        private const val PREPROCESS_CONTENT_HEIGHT = 640
-        private const val PREPROCESS_TENSOR_SIZE = 640
-        private val PREPROCESS_LETTERBOX = LetterboxInfo(
-            tensorWidth = PREPROCESS_TENSOR_SIZE,
-            tensorHeight = PREPROCESS_TENSOR_SIZE,
-            contentWidth = PREPROCESS_CONTENT_WIDTH.toFloat(),
-            contentHeight = PREPROCESS_CONTENT_HEIGHT.toFloat()
-        )
-
         // classify(), OverlayView and Profile still expect box points in a 0..640 space
         // on both axes, so normalized detections are scaled back by this factor.
         private const val LEGACY_POINT_SCALE = 640.0
@@ -269,12 +260,12 @@ class Detector (
             return results
         }
 
-        // Resize → normalize → cast
-        //val resized = Bitmap.createScaledBitmap(frame, tensorWidth, tensorHeight, false)
-        val resizedNew = Bitmap.createScaledBitmap(frame, PREPROCESS_CONTENT_WIDTH, PREPROCESS_CONTENT_HEIGHT, false)
-        val padded = Bitmap.createBitmap(PREPROCESS_TENSOR_SIZE, PREPROCESS_TENSOR_SIZE, Bitmap.Config.ARGB_8888)
+        // Resize → place in model input → normalize → cast
+        val plan = preprocessor.plan(frame.width, frame.height, tensorWidth, tensorHeight)
+        val resizedNew = Bitmap.createScaledBitmap(frame, plan.contentWidth, plan.contentHeight, false)
+        val padded = Bitmap.createBitmap(tensorWidth, tensorHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(padded)
-        canvas.drawBitmap(resizedNew, 0f, 0f, null)
+        canvas.drawBitmap(resizedNew, plan.padX.toFloat(), plan.padY.toFloat(), null)
 
         val tensorImage = TensorImage(INPUT_IMAGE_TYPE).also { it.load(padded) }
         val processed = imageProcessor.process(tensorImage)
@@ -295,7 +286,7 @@ class Detector (
             OutputTensor(interpreter.getOutputTensor(i).shape(), buffer.floatArray)
         }
         val detection = try {
-            parser.parse(outputs, PREPROCESS_LETTERBOX)
+            parser.parse(outputs, plan.letterbox)
         } catch (e: IllegalArgumentException) {
             Log.e(TAG, "MODEL ERROR: ${e.message}")
             return results
