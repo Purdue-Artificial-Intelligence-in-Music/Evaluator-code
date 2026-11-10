@@ -57,6 +57,8 @@ interface CameraComponentProps {
   startDelay?: number;
   onClose: () => void;
   initialHistoryOpen?: boolean;
+  initialSetupOpen?: boolean;
+  instrumentMode: 'cello' | 'violinViola';
 }
 
 const SESSIONS_PER_PAGE = 5;
@@ -66,7 +68,8 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
   startDelay,
   onClose,
   initialHistoryOpen,
-  initialSetupOpen
+  initialSetupOpen,
+  instrumentMode
 }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(false);
@@ -950,7 +953,14 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
         onCalibrated={handleCalibrated}
         skipCalibration={!showSetupOverlay}
         maxBowAngle={maxAngle}
+        instrumentMode={instrumentMode}
       />
+
+      <View style={styles.instrumentModeBadge}>
+        <Text style={styles.instrumentModeBadgeText}>
+          Mode: {instrumentMode === 'cello' ? 'Cello' : 'Violin/Viola'}
+        </Text>
+      </View>
 
       {/* Top-left menu + dropdown */}
       <View style={styles.topLeftMenuArea}>
@@ -964,6 +974,7 @@ const CameraComponent: React.FC<CameraComponentProps> = ({
 
         {toolbarExpanded && (
           <View style={styles.menuPanel}>
+
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => {
